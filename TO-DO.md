@@ -15,6 +15,7 @@
 - [x] Add unit tests for scoring, locking, and standings.
 - [x] Add result-sync script with dry-run support.
 - [x] Add GitHub Actions for CI and scheduled result sync.
+- [x] Avoid duplicate and non-app CI runs after checked pull requests.
 - [x] Add Firestore security rules foundation.
 - [x] Add README, MIT license, and project tracking.
 
