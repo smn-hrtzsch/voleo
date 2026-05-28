@@ -1,0 +1,8 @@
+{
+  "name": "voleo-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:results": "node tool/sync-results.mjs"
+  }
+}
