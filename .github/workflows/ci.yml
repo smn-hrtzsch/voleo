@@ -2,8 +2,15 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    paths:
+      - "android/**"
+      - "ios/**"
+      - "lib/**"
+      - "test/**"
+      - "analysis_options.yaml"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+  workflow_dispatch:
 
 jobs:
   flutter:
