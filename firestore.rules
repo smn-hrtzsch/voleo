@@ -1,0 +1,61 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isLeagueMember(leagueId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/leagues/$(leagueId)/members/$(request.auth.uid));
+    }
+
+    function isLeagueOwner(leagueId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/leagues/$(leagueId)).data.ownerUid == request.auth.uid;
+    }
+
+    function tipIsUnlocked() {
+      return exists(/databases/$(database)/documents/matches/$(request.resource.data.matchId))
+        && request.time < get(/databases/$(database)/documents/matches/$(request.resource.data.matchId)).data.kickoff;
+    }
+
+    match /users/{uid} {
+      allow read, update, delete: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /leagues/{leagueId} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isLeagueMember(leagueId);
+      allow update, delete: if isLeagueOwner(leagueId);
+
+      match /members/{uid} {
+        allow read: if isLeagueMember(leagueId);
+        allow create: if signedIn() && request.auth.uid == uid;
+        allow update: if signedIn() && request.auth.uid == uid;
+        allow delete: if isLeagueOwner(leagueId) || (signedIn() && request.auth.uid == uid);
+      }
+
+      match /tips/{tipId} {
+        allow read: if isLeagueMember(leagueId);
+        allow create, update: if isLeagueMember(leagueId)
+          && request.resource.data.uid == request.auth.uid
+          && tipId == request.auth.uid + '_' + request.resource.data.matchId
+          && tipIsUnlocked();
+        allow delete: if false;
+      }
+
+      match /standings/{uid} {
+        allow read: if isLeagueMember(leagueId);
+        allow write: if false;
+      }
+    }
+  }
+}
