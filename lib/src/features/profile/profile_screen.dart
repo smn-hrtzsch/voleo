@@ -54,7 +54,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           FilledButton.icon(
             onPressed: _linkEmail,
             icon: const Icon(Icons.link),
-            label: const Text('Verknuepfen'),
+            label: const Text('Verknüpfen'),
           ),
           const SizedBox(height: 24),
           OutlinedButton.icon(

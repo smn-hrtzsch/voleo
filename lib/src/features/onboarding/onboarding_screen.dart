@@ -26,6 +26,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    ref.listen(userProvider, (_, next) {
+      final user = next.valueOrNull;
+      if (user != null && mounted) {
+        context.go('/home');
+      }
+    });
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -49,7 +55,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               controller: _nicknameController,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: 'Spitzname',
+                labelText: 'Dein Spitzname',
                 prefixIcon: Icon(Icons.badge_outlined),
               ),
             ),
@@ -58,7 +64,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               controller: _inviteController,
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
-                labelText: 'Invite-Code',
+                labelText: 'Invite-Code einer Runde',
+                helperText: 'Leer lassen, wenn du eine eigene Runde startest.',
                 prefixIcon: Icon(Icons.key_outlined),
               ),
             ),
@@ -66,13 +73,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             FilledButton.icon(
               onPressed: _isLoading ? null : _start,
               icon: const Icon(Icons.arrow_forward),
-              label: const Text('Loslegen'),
+              label: const Text('Runde beitreten'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: _isLoading ? null : _startWithoutCode,
               icon: const Icon(Icons.add),
-              label: const Text('Neue Runde'),
+              label: const Text('Eigene Runde erstellen'),
             ),
           ],
         ),

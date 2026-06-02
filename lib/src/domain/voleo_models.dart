@@ -49,6 +49,7 @@ class CupMatch {
     required this.awayTeam,
     required this.kickoff,
     required this.stage,
+    required this.group,
     required this.status,
     this.homeScore,
     this.awayScore,
@@ -60,6 +61,7 @@ class CupMatch {
   final String awayTeam;
   final DateTime kickoff;
   final String stage;
+  final String group;
   final MatchStatus status;
   final int? homeScore;
   final int? awayScore;
@@ -78,6 +80,7 @@ class CupMatch {
       awayTeam: awayTeam,
       kickoff: kickoff,
       stage: stage,
+      group: group,
       status: status ?? this.status,
       homeScore: homeScore ?? this.homeScore,
       awayScore: awayScore ?? this.awayScore,

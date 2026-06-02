@@ -21,6 +21,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   final _homeController = TextEditingController();
   final _awayController = TextEditingController();
   bool _isSaving = false;
+  bool _didSeedTip = false;
 
   @override
   void dispose() {
@@ -45,6 +46,15 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
           data: (matches) {
             final match =
                 matches.firstWhere((item) => item.id == widget.matchId);
+            final existingTip = _tipForMatch(
+              ref.watch(tipsProvider).valueOrNull ?? const <Tip>[],
+              match.id,
+            );
+            if (!_didSeedTip && existingTip != null) {
+              _homeController.text = existingTip.predictedHome.toString();
+              _awayController.text = existingTip.predictedAway.toString();
+              _didSeedTip = true;
+            }
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -63,6 +73,24 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                         const SizedBox(height: 8),
                         Text(DateFormat('dd.MM.yyyy HH:mm')
                             .format(match.kickoff)),
+                        if (match.status == MatchStatus.finalResult) ...[
+                          const SizedBox(height: 12),
+                          Chip(
+                            avatar: const Icon(Icons.sports_score, size: 18),
+                            label: Text(
+                              'Offizielles Ergebnis: ${match.homeScore}:${match.awayScore}',
+                            ),
+                          ),
+                        ],
+                        if (existingTip != null) ...[
+                          const SizedBox(height: 12),
+                          Chip(
+                            avatar: const Icon(Icons.check, size: 18),
+                            label: Text(
+                              'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -98,7 +126,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
     final away = int.tryParse(_awayController.text);
     if (home == null || away == null || home < 0 || away < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte gueltiges Ergebnis eingeben.')),
+        const SnackBar(content: Text('Bitte gültiges Ergebnis eingeben.')),
       );
       return;
     }
@@ -120,6 +148,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+}
+
+Tip? _tipForMatch(List<Tip> tips, String matchId) {
+  for (final tip in tips) {
+    if (tip.matchId == matchId) return tip;
+  }
+  return null;
 }
 
 class _ScoreField extends StatelessWidget {
