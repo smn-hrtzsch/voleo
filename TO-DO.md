@@ -3,7 +3,7 @@
 ## In Progress
 
 - [ ] Configure Firebase project on Spark plan and add platform config files locally.
-- [ ] Replace demo repository wiring with Firebase repository after config exists.
+- [ ] Replace local-first repository wiring with Firebase repository after config exists.
 - [ ] Authenticate GitHub CLI and create private remote repository.
 
 ## MVP
@@ -18,6 +18,10 @@
 - [x] Avoid duplicate and non-app CI runs after checked pull requests.
 - [x] Add Firestore security rules foundation.
 - [x] Add README, MIT license, and project tracking.
+- [x] Persist local account and tips across app restarts.
+- [x] Add full WM 2026 group-stage fixture fallback with date/group filters.
+- [x] Merge OpenLigaDB match/result data into local fixture display.
+- [x] Remove demo leaderboard users from the MVP league view.
 
 ## Later
 

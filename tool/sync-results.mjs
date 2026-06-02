@@ -1,7 +1,83 @@
 import { createSign } from 'node:crypto';
 
-const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026';
+const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026/2026';
 const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
+const GROUP_BY_FIXTURE = new Map(
+  [
+    ['A', 'Mexiko', 'Südafrika'],
+    ['A', 'Südkorea', 'Tschechien'],
+    ['B', 'Kanada', 'Bosnien-Herzegowina'],
+    ['D', 'USA', 'Paraguay'],
+    ['B', 'Katar', 'Schweiz'],
+    ['C', 'Brasilien', 'Marokko'],
+    ['C', 'Haiti', 'Schottland'],
+    ['D', 'Australien', 'Türkei'],
+    ['E', 'Deutschland', 'Curaçao'],
+    ['F', 'Niederlande', 'Japan'],
+    ['E', 'Elfenbeinküste', 'Ecuador'],
+    ['F', 'Schweden', 'Tunesien'],
+    ['H', 'Spanien', 'Kap Verde'],
+    ['G', 'Belgien', 'Ägypten'],
+    ['H', 'Saudi-Arabien', 'Uruguay'],
+    ['G', 'Iran', 'Neuseeland'],
+    ['I', 'Frankreich', 'Senegal'],
+    ['I', 'Irak', 'Norwegen'],
+    ['J', 'Argentinien', 'Algerien'],
+    ['J', 'Österreich', 'Jordanien'],
+    ['K', 'Portugal', 'DR Kongo'],
+    ['L', 'England', 'Kroatien'],
+    ['L', 'Ghana', 'Panama'],
+    ['K', 'Usbekistan', 'Kolumbien'],
+    ['A', 'Tschechien', 'Südafrika'],
+    ['B', 'Schweiz', 'Bosnien-Herzegowina'],
+    ['B', 'Kanada', 'Katar'],
+    ['A', 'Mexiko', 'Südkorea'],
+    ['D', 'USA', 'Australien'],
+    ['C', 'Schottland', 'Marokko'],
+    ['C', 'Brasilien', 'Haiti'],
+    ['D', 'Türkei', 'Paraguay'],
+    ['F', 'Niederlande', 'Schweden'],
+    ['E', 'Deutschland', 'Elfenbeinküste'],
+    ['E', 'Ecuador', 'Curaçao'],
+    ['F', 'Tunesien', 'Japan'],
+    ['H', 'Spanien', 'Saudi-Arabien'],
+    ['G', 'Belgien', 'Iran'],
+    ['H', 'Uruguay', 'Kap Verde'],
+    ['G', 'Neuseeland', 'Ägypten'],
+    ['J', 'Argentinien', 'Österreich'],
+    ['I', 'Frankreich', 'Irak'],
+    ['I', 'Norwegen', 'Senegal'],
+    ['J', 'Jordanien', 'Algerien'],
+    ['K', 'Portugal', 'Usbekistan'],
+    ['L', 'England', 'Ghana'],
+    ['L', 'Panama', 'Kroatien'],
+    ['K', 'Kolumbien', 'DR Kongo'],
+    ['B', 'Schweiz', 'Kanada'],
+    ['B', 'Bosnien-Herzegowina', 'Katar'],
+    ['C', 'Marokko', 'Haiti'],
+    ['C', 'Schottland', 'Brasilien'],
+    ['A', 'Südafrika', 'Südkorea'],
+    ['A', 'Tschechien', 'Mexiko'],
+    ['E', 'Curaçao', 'Elfenbeinküste'],
+    ['E', 'Ecuador', 'Deutschland'],
+    ['F', 'Japan', 'Schweden'],
+    ['F', 'Tunesien', 'Niederlande'],
+    ['D', 'Paraguay', 'Australien'],
+    ['D', 'Türkei', 'USA'],
+    ['I', 'Norwegen', 'Frankreich'],
+    ['I', 'Senegal', 'Irak'],
+    ['H', 'Kap Verde', 'Saudi-Arabien'],
+    ['H', 'Uruguay', 'Spanien'],
+    ['G', 'Ägypten', 'Iran'],
+    ['G', 'Neuseeland', 'Belgien'],
+    ['L', 'Kroatien', 'Ghana'],
+    ['L', 'Panama', 'England'],
+    ['K', 'Kolumbien', 'Portugal'],
+    ['K', 'DR Kongo', 'Usbekistan'],
+    ['J', 'Algerien', 'Österreich'],
+    ['J', 'Jordanien', 'Argentinien'],
+  ].map(([group, home, away]) => [`${teamKey(home)}:${teamKey(away)}`, group]),
+);
 const args = new Set(process.argv.slice(2));
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 const dryRun = args.has('--dry-run') || !serviceAccountJson;
@@ -54,6 +130,7 @@ function normalizeMatch(match) {
     awayTeam,
     kickoff: new Date(kickoff).toISOString(),
     stage: match.group?.groupName ?? 'WM 2026',
+    group: groupKey(match.group?.groupName) || groupForFixture(homeTeam, awayTeam),
     status: finalResult ? 'finalResult' : 'scheduled',
     homeScore: finalResult?.pointsTeam1 ?? null,
     awayScore: finalResult?.pointsTeam2 ?? null,
@@ -137,12 +214,32 @@ function fieldsForMatch(match) {
     awayTeam: stringValue(match.awayTeam),
     kickoff: timestampValue(match.kickoff),
     stage: stringValue(match.stage),
+    group: stringValue(match.group),
     status: stringValue(match.status),
     homeScore: nullableIntValue(match.homeScore),
     awayScore: nullableIntValue(match.awayScore),
     source: stringValue(match.source),
     updatedAt: timestampValue(match.updatedAt),
   };
+}
+
+function groupKey(groupName) {
+  if (!groupName) return '';
+  const match = String(groupName).trim().match(/([A-L])$/);
+  return match?.[1] ?? '';
+}
+
+function groupForFixture(homeTeam, awayTeam) {
+  return GROUP_BY_FIXTURE.get(`${teamKey(homeTeam)}:${teamKey(awayTeam)}`) ?? '';
+}
+
+function teamKey(value) {
+  return String(value)
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/&/g, 'und')
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {

@@ -16,27 +16,33 @@ class LeagueScreen extends ConsumerWidget {
       selectedIndex: 2,
       child: AsyncValueView<List<Standing>>(
         value: ref.watch(standingsProvider),
-        data: (standings) => ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: standings.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final standing = standings[index];
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(child: Text('${standing.rank}')),
-                title: Text(standing.displayName),
-                subtitle: Text(
-                  '${standing.exactCount} exakt · ${standing.tendencyCount} Tendenzen',
+        data: (standings) {
+          if (standings.isEmpty) {
+            return const Center(
+                child: Text('Noch keine Spieler in dieser Runde.'));
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: standings.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final standing = standings[index];
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(child: Text('${standing.rank}')),
+                  title: Text(standing.displayName),
+                  subtitle: Text(
+                    '${standing.exactCount} exakt · ${standing.tendencyCount} Tendenzen',
+                  ),
+                  trailing: Text(
+                    '${standing.totalPoints}',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
-                trailing: Text(
-                  '${standing.totalPoints}',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          );
+        },
       ),
     );
   }

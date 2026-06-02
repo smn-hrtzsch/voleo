@@ -64,6 +64,7 @@ void main() {
       awayTeam: 'B',
       kickoff: DateTime(2026, 6, 11, 21),
       stage: 'Gruppenphase',
+      group: 'A',
       status: MatchStatus.scheduled,
     );
 

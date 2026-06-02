@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'data/demo_voleo_repository.dart';
+import 'data/local_first_voleo_repository.dart';
 import 'data/voleo_repository.dart';
 import 'domain/voleo_models.dart';
 
 final repositoryProvider = Provider<VoleoRepository>((ref) {
-  return DemoVoleoRepository();
+  final repository = LocalFirstVoleoRepository();
+  ref.onDispose(repository.dispose);
+  return repository;
 });
 
 final userProvider = StreamProvider<VoleoUser?>((ref) {

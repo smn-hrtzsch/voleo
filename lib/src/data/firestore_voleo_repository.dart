@@ -208,6 +208,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       awayTeam: data['awayTeam'] as String,
       kickoff: (data['kickoff'] as Timestamp).toDate(),
       stage: data['stage'] as String? ?? 'Gruppenphase',
+      group: data['group'] as String? ?? '',
       status: MatchStatus.values.firstWhere(
         (status) => status.name == statusName,
         orElse: () => MatchStatus.scheduled,
