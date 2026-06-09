@@ -36,10 +36,10 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
-
     match /leagues/{leagueId} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if isLeagueMember(leagueId);
+      allow read: if isLeagueMember(leagueId)
+        || (signedIn() && request.auth.uid in resource.data.memberIds);
       allow update: if isLeagueOwner(leagueId)
         || (isLeagueMember(leagueId) && onlyJoinsOwnLeague());
       allow delete: if isLeagueOwner(leagueId);
