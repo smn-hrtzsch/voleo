@@ -17,6 +17,18 @@ class _JoinLeagueScreenState extends ConsumerState<JoinLeagueScreen> {
   bool _isJoining = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = ref.read(userProvider).value;
+      if (user == null) {
+        ref.read(cachedInviteCodeProvider.notifier).value = widget.inviteCode;
+        context.go('/');
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProvider).value;
     final leagues = ref.watch(leaguesProvider).value ?? const [];
