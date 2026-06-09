@@ -53,6 +53,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
           photoUrl: data['photoUrl'] as String? ?? currentUser.photoURL,
           email: data['email'] as String? ?? currentUser.email,
           providerIds: _providerIds(currentUser),
+          favoriteTeam: data['favoriteTeam'] as String?,
+          predictedChampion: data['predictedChampion'] as String?,
+          riskTeam: data['riskTeam'] as String?,
+          riskStage: data['riskStage'] as String?,
         );
       });
     });
@@ -299,10 +303,14 @@ class FirestoreVoleoRepository implements VoleoRepository {
     );
     await user.linkWithCredential(credential);
     await user.reload();
+    final updatedUser = _auth.currentUser ?? user;
     await _ensureUserDocument(
-      _auth.currentUser ?? user,
-      nickname: (_auth.currentUser ?? user).displayName ?? 'Spieler',
+      updatedUser,
+      nickname: updatedUser.displayName ?? 'Spieler',
     );
+    if (updatedUser.photoURL != null) {
+      await updateProfile(photoUrl: updatedUser.photoURL);
+    }
   }
 
   @override
@@ -320,10 +328,14 @@ class FirestoreVoleoRepository implements VoleoRepository {
     );
     await user.linkWithCredential(credential);
     await user.reload();
+    final updatedUser = _auth.currentUser ?? user;
     await _ensureUserDocument(
-      _auth.currentUser ?? user,
-      nickname: (_auth.currentUser ?? user).displayName ?? 'Spieler',
+      updatedUser,
+      nickname: updatedUser.displayName ?? 'Spieler',
     );
+    if (updatedUser.photoURL != null) {
+      await updateProfile(photoUrl: updatedUser.photoURL);
+    }
   }
 
   @override
@@ -332,40 +344,48 @@ class FirestoreVoleoRepository implements VoleoRepository {
     String? photoUrl,
   }) async {
     final user = _requireFirebaseUser();
-    final leagueId = await _activeLeagueIdFor(user.uid);
-    if (nickname != null && leagueId != null) {
-      await _ensureDisplayNameAvailable(
-        leagueId: leagueId,
-        uid: user.uid,
-        displayName: nickname,
-      );
+    
+    final leaguesSnapshot = await _firestore
+        .collection('leagues')
+        .where('memberIds', arrayContains: user.uid)
+        .get();
+
+    if (nickname != null) {
+      for (final doc in leaguesSnapshot.docs) {
+        await _ensureDisplayNameAvailable(
+          leagueId: doc.id,
+          uid: user.uid,
+          displayName: nickname,
+        );
+      }
     }
+
     final updates = <String, Object?>{
       'updatedAt': FieldValue.serverTimestamp(),
     };
     if (nickname != null) updates['nickname'] = nickname;
     if (photoUrl != null) updates['photoUrl'] = photoUrl;
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .set(updates, SetOptions(merge: true));
+
+    final batch = _firestore.batch();
+    final userRef = _firestore.collection('users').doc(user.uid);
+    batch.set(userRef, updates, SetOptions(merge: true));
+
+    for (final doc in leaguesSnapshot.docs) {
+      final memberRef = doc.reference.collection('members').doc(user.uid);
+      batch.set(memberRef, {
+        if (nickname != null) 'displayName': nickname,
+        if (photoUrl != null) 'photoUrl': photoUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    await batch.commit();
+
     if (nickname != null) {
       await user.updateDisplayName(nickname);
     }
     if (photoUrl != null) {
       await user.updatePhotoURL(photoUrl);
-    }
-    if (leagueId != null && (nickname != null || photoUrl != null)) {
-      await _firestore
-          .collection('leagues')
-          .doc(leagueId)
-          .collection('members')
-          .doc(user.uid)
-          .set({
-        if (nickname != null) 'displayName': nickname,
-        if (photoUrl != null) 'photoUrl': photoUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
     }
   }
 
@@ -386,6 +406,46 @@ class FirestoreVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Future<void> updateExtraPicks({
+    String? favoriteTeam,
+    String? predictedChampion,
+    String? riskTeam,
+    String? riskStage,
+  }) async {
+    final user = _requireFirebaseUser();
+
+    final matchesSnapshot = await _firestore.collection('matches').get();
+    final kickoffs = matchesSnapshot.docs
+        .map((doc) => doc.data()['kickoff'] as Timestamp?)
+        .whereType<Timestamp>()
+        .map((t) => t.toDate())
+        .toList()
+      ..sort();
+
+    final tournamentStarted =
+        kickoffs.isNotEmpty && DateTime.now().isAfter(kickoffs.first);
+    if (tournamentStarted) {
+      throw StateError(
+          'Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
+    }
+
+    final updates = <String, Object?>{
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (favoriteTeam != null) updates['favoriteTeam'] = favoriteTeam;
+    if (predictedChampion != null) {
+      updates['predictedChampion'] = predictedChampion;
+    }
+    if (riskTeam != null) updates['riskTeam'] = riskTeam;
+    if (riskStage != null) updates['riskStage'] = riskStage;
+
+    await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .set(updates, SetOptions(merge: true));
+  }
+
+  @override
   Future<void> createLeague({required String name}) async {
     final user = _requireFirebaseUser();
     final inviteCode = await _createInviteCode();
@@ -402,9 +462,15 @@ class FirestoreVoleoRepository implements VoleoRepository {
       'uid': user.uid,
       'role': 'owner',
       'displayName': await _displayNameFor(user),
-      'photoUrl': user.photoURL,
+      'photoUrl': await _photoUrlFor(user),
       'totalPoints': 0,
+      'exactCount': 0,
+      'tendencyCount': 0,
+      'frozenPoints': 0,
+      'frozenExactCount': 0,
+      'frozenTendencyCount': 0,
       'joinedAt': FieldValue.serverTimestamp(),
+      'leftAt': null,
     });
     await _firestore.collection('users').doc(user.uid).set({
       'activeLeagueId': league.id,
@@ -431,23 +497,120 @@ class FirestoreVoleoRepository implements VoleoRepository {
       uid: user.uid,
       displayName: displayName,
     );
-    await league.collection('members').doc(user.uid).set({
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    final activeId = userDoc.data()?['activeLeagueId'] as String?;
+
+    final memberDoc = await league.collection('members').doc(user.uid).get();
+    final memberData = memberDoc.data();
+
+    final Map<String, Object?> memberUpdates = {
       'uid': user.uid,
-      'role': 'member',
       'displayName': displayName,
-      'photoUrl': user.photoURL,
-      'totalPoints': 0,
+      'photoUrl': await _photoUrlFor(user),
       'joinedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      'leftAt': null,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (memberDoc.exists && memberData != null) {
+      memberUpdates['frozenPoints'] = memberData['totalPoints'] ?? 0;
+      memberUpdates['frozenExactCount'] = memberData['exactCount'] ?? 0;
+      memberUpdates['frozenTendencyCount'] = memberData['tendencyCount'] ?? 0;
+    } else {
+      memberUpdates['role'] = 'member';
+      memberUpdates['totalPoints'] = 0;
+      memberUpdates['exactCount'] = 0;
+      memberUpdates['tendencyCount'] = 0;
+      memberUpdates['frozenPoints'] = 0;
+      memberUpdates['frozenExactCount'] = 0;
+      memberUpdates['frozenTendencyCount'] = 0;
+    }
+
+    await league.collection('members').doc(user.uid).set(memberUpdates, SetOptions(merge: true));
+
     await league.set({
       'memberIds': FieldValue.arrayUnion([user.uid]),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    // Copy existing tips to the new league
+    if (activeId != null && activeId.isNotEmpty) {
+      final tipsSnapshot = await _firestore
+          .collection('leagues')
+          .doc(activeId)
+          .collection('tips')
+          .where('uid', isEqualTo: user.uid)
+          .get();
+      if (tipsSnapshot.docs.isNotEmpty) {
+        final tipsBatch = _firestore.batch();
+        for (final tipDoc in tipsSnapshot.docs) {
+          final data = tipDoc.data();
+          final newTipRef = league.collection('tips').doc(tipDoc.id);
+          tipsBatch.set(newTipRef, {
+            'uid': user.uid,
+            'matchId': data['matchId'],
+            'predictedHome': data['predictedHome'],
+            'predictedAway': data['predictedAway'],
+            'lockedAt': data['lockedAt'],
+            'points': 0,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await tipsBatch.commit();
+      }
+    }
+
     await _firestore.collection('users').doc(user.uid).set({
       'activeLeagueId': league.id,
       'leagueIds': FieldValue.arrayUnion([league.id]),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> leaveLeague({required String leagueId}) async {
+    final user = _requireFirebaseUser();
+    final leagueRef = _firestore.collection('leagues').doc(leagueId);
+    final memberDoc = await leagueRef.collection('members').doc(user.uid).get();
+    if (!memberDoc.exists) {
+      throw StateError('Du bist kein Mitglied dieser Tipprunde.');
+    }
+
+    final data = memberDoc.data();
+    final totalPoints = data?['totalPoints'] as int? ?? 0;
+    final exactCount = data?['exactCount'] as int? ?? 0;
+    final tendencyCount = data?['tendencyCount'] as int? ?? 0;
+
+    await leagueRef.collection('members').doc(user.uid).set({
+      'leftAt': FieldValue.serverTimestamp(),
+      'frozenPoints': totalPoints,
+      'frozenExactCount': exactCount,
+      'frozenTendencyCount': tendencyCount,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await leagueRef.set({
+      'memberIds': FieldValue.arrayRemove([user.uid]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    final userDocRef = _firestore.collection('users').doc(user.uid);
+    await userDocRef.set({
+      'leagueIds': FieldValue.arrayRemove([leagueId]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    final userDoc = await userDocRef.get();
+    final activeId = userDoc.data()?['activeLeagueId'] as String?;
+    if (activeId == leagueId) {
+      final leagueIds = List<String>.from(userDoc.data()?['leagueIds'] as List? ?? []);
+      final nextActive = leagueIds.isNotEmpty ? leagueIds.first : '';
+      await userDocRef.set({
+        'activeLeagueId': nextActive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
   }
 
   @override
@@ -491,27 +654,57 @@ class FirestoreVoleoRepository implements VoleoRepository {
     required int away,
   }) async {
     final user = _requireFirebaseUser();
-    final league = await watchLeague().first;
-    if (league == null) throw StateError('Keine aktive Tipprunde.');
     final matches = await watchMatches().first;
     final match = matches.firstWhere((match) => match.id == matchId);
     if (!canEditTip(match, DateTime.now())) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
-    await _firestore
+
+    final leaguesSnapshot = await _firestore
         .collection('leagues')
-        .doc(league.id)
-        .collection('tips')
-        .doc('${user.uid}_$matchId')
-        .set({
-      'uid': user.uid,
-      'matchId': matchId,
-      'predictedHome': home,
-      'predictedAway': away,
-      'lockedAt': Timestamp.fromDate(match.kickoff),
-      'points': 0,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+        .where('memberIds', arrayContains: user.uid)
+        .get();
+
+    if (leaguesSnapshot.docs.isEmpty) {
+      throw StateError('Du bist in keiner Tipprunde Mitglied.');
+    }
+
+    final batch = _firestore.batch();
+    for (final doc in leaguesSnapshot.docs) {
+      final tipRef = doc.reference.collection('tips').doc('${user.uid}_$matchId');
+      batch.set(tipRef, {
+        'uid': user.uid,
+        'matchId': matchId,
+        'predictedHome': home,
+        'predictedAway': away,
+        'lockedAt': Timestamp.fromDate(match.kickoff),
+        'points': 0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  @override
+  Future<void> deleteTip({required String matchId}) async {
+    final user = _requireFirebaseUser();
+    final matches = await watchMatches().first;
+    final match = matches.firstWhere((match) => match.id == matchId);
+    if (!canEditTip(match, DateTime.now())) {
+      throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
+    }
+
+    final leaguesSnapshot = await _firestore
+        .collection('leagues')
+        .where('memberIds', arrayContains: user.uid)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in leaguesSnapshot.docs) {
+      final tipRef = doc.reference.collection('tips').doc('${user.uid}_$matchId');
+      batch.delete(tipRef);
+    }
+    await batch.commit();
   }
 
   @override
@@ -524,6 +717,46 @@ class FirestoreVoleoRepository implements VoleoRepository {
 
   @override
   Future<void> signOut() => _auth.signOut();
+
+  @override
+  Future<void> deleteAccount() async {
+    final user = _requireFirebaseUser();
+    final uid = user.uid;
+
+    final leaguesSnapshot = await _firestore
+        .collection('leagues')
+        .where('memberIds', arrayContains: uid)
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (final leagueDoc in leaguesSnapshot.docs) {
+      final memberRef = leagueDoc.reference.collection('members').doc(uid);
+      batch.delete(memberRef);
+
+      final standingRef = leagueDoc.reference.collection('standings').doc(uid);
+      batch.delete(standingRef);
+
+      batch.set(leagueDoc.reference, {
+        'memberIds': FieldValue.arrayRemove([uid]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final tipsSnapshot = await leagueDoc.reference
+          .collection('tips')
+          .where('uid', isEqualTo: uid)
+          .get();
+      for (final tipDoc in tipsSnapshot.docs) {
+        batch.delete(tipDoc.reference);
+      }
+    }
+
+    final userRef = _firestore.collection('users').doc(uid);
+    batch.delete(userRef);
+
+    await batch.commit();
+    await user.delete();
+  }
 
   auth.User _requireFirebaseUser() {
     final user = _auth.currentUser;
@@ -556,6 +789,11 @@ class FirestoreVoleoRepository implements VoleoRepository {
     return userDoc.data()?['nickname'] as String? ??
         user.displayName ??
         'Spieler';
+  }
+
+  Future<String?> _photoUrlFor(auth.User user) async {
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    return userDoc.data()?['photoUrl'] as String? ?? user.photoURL;
   }
 
   Future<String?> _activeLeagueIdFor(String uid) async {
