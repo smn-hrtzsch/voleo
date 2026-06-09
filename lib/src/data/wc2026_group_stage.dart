@@ -481,14 +481,46 @@ List<CupMatch> buildWc2026GroupStageMatches() {
 
   // 2. Achtelfinale (July 7 - July 10)
   final afMatches = [
-    ('Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', DateTime(2026, 7, 7, 19)),
-    ('Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 4', DateTime(2026, 7, 7, 22)),
-    ('Sieger Sechzehntelfinale 5', 'Sieger Sechzehntelfinale 7', DateTime(2026, 7, 8, 19)),
-    ('Sieger Sechzehntelfinale 6', 'Sieger Sechzehntelfinale 8', DateTime(2026, 7, 8, 22)),
-    ('Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 11', DateTime(2026, 7, 9, 19)),
-    ('Sieger Sechzehntelfinale 10', 'Sieger Sechzehntelfinale 12', DateTime(2026, 7, 9, 22)),
-    ('Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', DateTime(2026, 7, 10, 19)),
-    ('Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', DateTime(2026, 7, 10, 22)),
+    (
+      'Sieger Sechzehntelfinale 1',
+      'Sieger Sechzehntelfinale 3',
+      DateTime(2026, 7, 7, 19)
+    ),
+    (
+      'Sieger Sechzehntelfinale 2',
+      'Sieger Sechzehntelfinale 4',
+      DateTime(2026, 7, 7, 22)
+    ),
+    (
+      'Sieger Sechzehntelfinale 5',
+      'Sieger Sechzehntelfinale 7',
+      DateTime(2026, 7, 8, 19)
+    ),
+    (
+      'Sieger Sechzehntelfinale 6',
+      'Sieger Sechzehntelfinale 8',
+      DateTime(2026, 7, 8, 22)
+    ),
+    (
+      'Sieger Sechzehntelfinale 9',
+      'Sieger Sechzehntelfinale 11',
+      DateTime(2026, 7, 9, 19)
+    ),
+    (
+      'Sieger Sechzehntelfinale 10',
+      'Sieger Sechzehntelfinale 12',
+      DateTime(2026, 7, 9, 22)
+    ),
+    (
+      'Sieger Sechzehntelfinale 13',
+      'Sieger Sechzehntelfinale 15',
+      DateTime(2026, 7, 10, 19)
+    ),
+    (
+      'Sieger Sechzehntelfinale 14',
+      'Sieger Sechzehntelfinale 16',
+      DateTime(2026, 7, 10, 22)
+    ),
   ];
 
   for (var i = 0; i < afMatches.length; i++) {
@@ -506,10 +538,26 @@ List<CupMatch> buildWc2026GroupStageMatches() {
 
   // 3. Viertelfinale (July 12 - July 13)
   final vfMatches = [
-    ('Sieger Achtelfinale 1', 'Sieger Achtelfinale 3', DateTime(2026, 7, 12, 19)),
-    ('Sieger Achtelfinale 2', 'Sieger Achtelfinale 4', DateTime(2026, 7, 12, 22)),
-    ('Sieger Achtelfinale 5', 'Sieger Achtelfinale 7', DateTime(2026, 7, 13, 19)),
-    ('Sieger Achtelfinale 6', 'Sieger Achtelfinale 8', DateTime(2026, 7, 13, 22)),
+    (
+      'Sieger Achtelfinale 1',
+      'Sieger Achtelfinale 3',
+      DateTime(2026, 7, 12, 19)
+    ),
+    (
+      'Sieger Achtelfinale 2',
+      'Sieger Achtelfinale 4',
+      DateTime(2026, 7, 12, 22)
+    ),
+    (
+      'Sieger Achtelfinale 5',
+      'Sieger Achtelfinale 7',
+      DateTime(2026, 7, 13, 19)
+    ),
+    (
+      'Sieger Achtelfinale 6',
+      'Sieger Achtelfinale 8',
+      DateTime(2026, 7, 13, 22)
+    ),
   ];
 
   for (var i = 0; i < vfMatches.length; i++) {
@@ -527,8 +575,16 @@ List<CupMatch> buildWc2026GroupStageMatches() {
 
   // 4. Halbfinale (July 15 - July 16)
   final hfMatches = [
-    ('Sieger Viertelfinale 1', 'Sieger Viertelfinale 3', DateTime(2026, 7, 15, 21)),
-    ('Sieger Viertelfinale 2', 'Sieger Viertelfinale 4', DateTime(2026, 7, 16, 21)),
+    (
+      'Sieger Viertelfinale 1',
+      'Sieger Viertelfinale 3',
+      DateTime(2026, 7, 15, 21)
+    ),
+    (
+      'Sieger Viertelfinale 2',
+      'Sieger Viertelfinale 4',
+      DateTime(2026, 7, 16, 21)
+    ),
   ];
 
   for (var i = 0; i < hfMatches.length; i++) {
