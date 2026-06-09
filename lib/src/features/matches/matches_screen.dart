@@ -20,7 +20,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   String _selectedGroup = 'Alle';
   String _selectedRound = 'Alle';
   String _selectedTeam = 'Alle';
-  bool _swipeByDay = true;
+  bool _swipeByDay = false;
   bool _didSetInitialDay = false;
   int _selectedDayIndex = 0;
 
@@ -33,6 +33,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   @override
   Widget build(BuildContext context) {
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
+    final user = ref.watch(userProvider).value;
     return Scaffold(
       appBar: AppBar(title: const Text('Spiele')),
       body: AsyncValueView<List<CupMatch>>(
@@ -110,6 +111,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
                             day: day,
                             matches: days[day] ?? const <CupMatch>[],
                             tips: tips,
+                            user: user,
                           ),
                         ],
                       );
@@ -128,6 +130,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
                         day: day,
                         matches: days[day] ?? const <CupMatch>[],
                         tips: tips,
+                        user: user,
                       );
                     },
                   ),
@@ -215,6 +218,7 @@ class _FilterRail extends StatelessWidget {
         children: [
           FilterChip(
             selected: swipeByDay,
+            showCheckmark: false,
             label: Text(swipeByDay ? 'Datum · Swipe' : 'Datum · Liste'),
             avatar: const Icon(Icons.calendar_today_outlined, size: 18),
             onSelected: (_) => onToggleDateMode(),
@@ -230,6 +234,7 @@ class _FilterRail extends StatelessWidget {
             label: selectedTeam == 'Alle' ? 'Mannschaft' : selectedTeam,
             values: teams,
             onSelected: onTeamChanged,
+            showFlags: true,
           ),
           const SizedBox(width: 8),
           _MenuChip(
@@ -248,11 +253,13 @@ class _MenuChip extends StatelessWidget {
     required this.label,
     required this.values,
     required this.onSelected,
+    this.showFlags = false,
   });
 
   final String label;
   final List<String> values;
   final ValueChanged<String> onSelected;
+  final bool showFlags;
 
   @override
   Widget build(BuildContext context) {
@@ -260,10 +267,31 @@ class _MenuChip extends StatelessWidget {
       onSelected: onSelected,
       itemBuilder: (context) => [
         for (final value in values)
-          PopupMenuItem(value: value, child: Text(_labelFor(value))),
+          PopupMenuItem(
+            value: value,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showFlags && value != 'Alle') ...[
+                  Text(CountryFlags.getFlag(value), style: const TextStyle(fontSize: 20)),
+                  const SizedBox(width: 8),
+                ],
+                Text(_labelFor(value)),
+              ],
+            ),
+          ),
       ],
       child: Chip(
-        label: Text(label),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showFlags && label != 'Mannschaft' && label != 'Alle') ...[
+              Text(CountryFlags.getFlag(label), style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 6),
+            ],
+            Text(label),
+          ],
+        ),
         avatar: const Icon(Icons.expand_more, size: 18),
       ),
     );
@@ -331,27 +359,57 @@ class _DayMatchCard extends StatelessWidget {
     required this.day,
     required this.matches,
     required this.tips,
+    this.user,
   });
 
   final DateTime day;
   final List<CupMatch> matches;
   final List<Tip> tips;
+  final VoleoUser? user;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_formatDay(day),
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _formatDay(day),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                SizedBox(
+                  width: 40,
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Tipp',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8),
+              child: Divider(height: 1),
+            ),
             for (final match in matches)
               _MatchRow(
                 match: match,
                 tip: _tipForMatch(tips, match.id),
+                user: user,
               ),
           ],
         ),
@@ -361,10 +419,11 @@ class _DayMatchCard extends StatelessWidget {
 }
 
 class _MatchRow extends StatelessWidget {
-  const _MatchRow({required this.match, this.tip});
+  const _MatchRow({required this.match, this.tip, this.user});
 
   final CupMatch match;
   final Tip? tip;
+  final VoleoUser? user;
 
   @override
   Widget build(BuildContext context) {
@@ -376,52 +435,69 @@ class _MatchRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       onTap: () => context.go('/matches/tip/${match.id}'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Expanded(
-              child: Text(
-                match.homeTeam,
-                textAlign: TextAlign.right,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(homeFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 10),
+            // Kickoff time on the left
             SizedBox(
-              width: 50,
+              width: 42,
               child: Text(
-                match.status == MatchStatus.finalResult
-                    ? '${match.homeScore}:${match.awayScore}'
-                    : time,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: match.status == MatchStatus.finalResult
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
+                time,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
                     ),
               ),
             ),
-            const SizedBox(width: 10),
-            Text(awayFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
             Expanded(
+              child: _buildTeamName(context, match.homeTeam, user, isRightAligned: true),
+            ),
+            const SizedBox(width: 8),
+            Text(homeFlag, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 8),
+            // Actual score in the middle
+            SizedBox(
+              width: 44,
               child: Text(
-                match.awayTeam,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                match.status == MatchStatus.finalResult
+                    ? '${match.homeScore}:${match.awayScore}'
+                    : '-:-',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: match.status == MatchStatus.finalResult
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
               ),
             ),
             const SizedBox(width: 8),
-            if (tip != null)
-              Text(
-                '${tip!.predictedHome}:${tip!.predictedAway}',
-                style: Theme.of(context).textTheme.labelLarge,
-              )
-            else
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+            Text(awayFlag, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildTeamName(context, match.awayTeam, user, isRightAligned: false),
+            ),
+            const SizedBox(width: 8),
+            // Tip prediction on the right
+            SizedBox(
+              width: 40,
+              child: Align(
+                alignment: Alignment.center,
+                child: tip != null
+                    ? Text(
+                        '${tip!.predictedHome}:${tip!.predictedAway}',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: scheme.primary,
+                            ),
+                      )
+                    : Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      ),
+              ),
+            ),
           ],
         ),
       ),
@@ -455,16 +531,55 @@ List<String> _groupsFor(List<CupMatch> matches) {
 
 List<String> _roundsFor(List<CupMatch> matches) {
   final rounds = {for (final match in matches) _roundFor(match)}.toList()
-    ..sort();
+    ..sort((a, b) => _roundOrder(a).compareTo(_roundOrder(b)));
   return ['Alle', ...rounds];
+}
+
+int _roundOrder(String round) {
+  switch (round) {
+    case 'Gruppenphase':
+      return 1;
+    case 'Sechzehntelfinale':
+      return 2;
+    case 'Achtelfinale':
+      return 3;
+    case 'Viertelfinale':
+      return 4;
+    case 'Halbfinale':
+      return 5;
+    case 'Spiel um Platz 3':
+      return 6;
+    case 'Finale':
+      return 7;
+    default:
+      return 99;
+  }
 }
 
 List<String> _teamsFor(List<CupMatch> matches) {
   final teams = {
     for (final match in matches) ...[match.homeTeam, match.awayTeam],
-  }.toList()
+  }.where((t) => !isPlaceholderTeam(t)).toList()
     ..sort();
   return ['Alle', ...teams];
+}
+
+bool isPlaceholderTeam(String name) {
+  final lower = name.toLowerCase();
+  return lower.startsWith('sieger') ||
+      lower.startsWith('zweiter') ||
+      lower.startsWith('dritter') ||
+      lower.startsWith('bester') ||
+      lower.startsWith('verlierer') ||
+      lower.contains('gruppe') ||
+      lower.contains('sechzehntelfinale') ||
+      lower.contains('achtelfinale') ||
+      lower.contains('viertel') ||
+      lower.contains('halb') ||
+      lower.contains('platz 3') ||
+      lower.contains('finale') ||
+      lower.startsWith('tbd') ||
+      lower.trim().isEmpty;
 }
 
 String _roundFor(CupMatch match) {
@@ -491,3 +606,74 @@ Tip? _tipForMatch(List<Tip> tips, String matchId) {
   }
   return null;
 }
+
+Widget _buildTeamName(
+  BuildContext context,
+  String teamName,
+  VoleoUser? user, {
+  required bool isRightAligned,
+}) {
+  final List<Widget> markers = [];
+  if (user != null) {
+    if (user.favoriteTeam == teamName) {
+      markers.add(
+        const Icon(
+          Icons.star,
+          color: Colors.amber,
+          size: 14,
+        ),
+      );
+    }
+    if (user.predictedChampion == teamName) {
+      markers.add(
+        const Icon(
+          Icons.sports_soccer,
+          color: Colors.blue,
+          size: 14,
+        ),
+      );
+    }
+    if (user.riskTeam == teamName) {
+      markers.add(
+        const Icon(
+          Icons.close,
+          color: Colors.red,
+          size: 14,
+        ),
+      );
+    }
+  }
+
+  final textWidget = Text(
+    teamName,
+    textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+
+  if (markers.isEmpty) {
+    return textWidget;
+  }
+
+  final List<Widget> children = [];
+  if (isRightAligned) {
+    for (var i = 0; i < markers.length; i++) {
+      children.add(markers[i]);
+      children.add(const SizedBox(width: 2));
+    }
+    children.add(Flexible(child: textWidget));
+  } else {
+    children.add(Flexible(child: textWidget));
+    for (var i = 0; i < markers.length; i++) {
+      children.add(const SizedBox(width: 2));
+      children.add(markers[i]);
+    }
+  }
+
+  return Row(
+    mainAxisAlignment: isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: children,
+  );
+}
+

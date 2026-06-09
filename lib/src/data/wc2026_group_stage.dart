@@ -431,7 +431,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
     ),
   ];
 
-  return [
+  final groupMatches = [
     for (var index = 0; index < rows.length; index++)
       CupMatch(
         id: 'wc2026-g${rows[index].group.toLowerCase()}-${index + 1}',
@@ -443,4 +443,128 @@ List<CupMatch> buildWc2026GroupStageMatches() {
         status: MatchStatus.scheduled,
       ),
   ];
+
+  final list = [...groupMatches];
+
+  // 1. Sechzehntelfinale (June 29 - July 3)
+  final sfMatches = [
+    ('Sieger Gruppe A', 'Zweiter Gruppe C', DateTime(2026, 6, 29, 19)),
+    ('Zweiter Gruppe A', 'Sieger Gruppe C', DateTime(2026, 6, 29, 22)),
+    ('Sieger Gruppe B', 'Zweiter Gruppe D', DateTime(2026, 6, 30, 19)),
+    ('Zweiter Gruppe B', 'Sieger Gruppe D', DateTime(2026, 6, 30, 22)),
+    ('Sieger Gruppe E', 'Zweiter Gruppe G', DateTime(2026, 7, 1, 19)),
+    ('Zweiter Gruppe E', 'Sieger Gruppe G', DateTime(2026, 7, 1, 22)),
+    ('Sieger Gruppe F', 'Zweiter Gruppe H', DateTime(2026, 7, 2, 19)),
+    ('Zweiter Gruppe F', 'Sieger Gruppe H', DateTime(2026, 7, 2, 22)),
+    ('Sieger Gruppe I', 'Zweiter Gruppe K', DateTime(2026, 7, 3, 19)),
+    ('Zweiter Gruppe I', 'Sieger Gruppe K', DateTime(2026, 7, 3, 22)),
+    ('Sieger Gruppe J', 'Zweiter Gruppe L', DateTime(2026, 7, 4, 19)),
+    ('Zweiter Gruppe J', 'Sieger Gruppe L', DateTime(2026, 7, 4, 22)),
+    ('Bester 3. Gruppe A/B/C', 'Sieger Gruppe H', DateTime(2026, 7, 5, 19)),
+    ('Bester 3. Gruppe D/E/F', 'Sieger Gruppe I', DateTime(2026, 7, 5, 22)),
+    ('Bester 3. Gruppe G/H/I', 'Sieger Gruppe J', DateTime(2026, 7, 6, 19)),
+    ('Bester 3. Gruppe J/K/L', 'Sieger Gruppe K', DateTime(2026, 7, 6, 22)),
+  ];
+
+  for (var i = 0; i < sfMatches.length; i++) {
+    final m = sfMatches[i];
+    list.add(CupMatch(
+      id: 'wc-ko-sf-${i + 1}',
+      homeTeam: m.$1,
+      awayTeam: m.$2,
+      kickoff: m.$3,
+      stage: 'Sechzehntelfinale',
+      group: '',
+      status: MatchStatus.scheduled,
+    ));
+  }
+
+  // 2. Achtelfinale (July 7 - July 10)
+  final afMatches = [
+    ('Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', DateTime(2026, 7, 7, 19)),
+    ('Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 4', DateTime(2026, 7, 7, 22)),
+    ('Sieger Sechzehntelfinale 5', 'Sieger Sechzehntelfinale 7', DateTime(2026, 7, 8, 19)),
+    ('Sieger Sechzehntelfinale 6', 'Sieger Sechzehntelfinale 8', DateTime(2026, 7, 8, 22)),
+    ('Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 11', DateTime(2026, 7, 9, 19)),
+    ('Sieger Sechzehntelfinale 10', 'Sieger Sechzehntelfinale 12', DateTime(2026, 7, 9, 22)),
+    ('Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', DateTime(2026, 7, 10, 19)),
+    ('Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', DateTime(2026, 7, 10, 22)),
+  ];
+
+  for (var i = 0; i < afMatches.length; i++) {
+    final m = afMatches[i];
+    list.add(CupMatch(
+      id: 'wc-ko-af-${i + 1}',
+      homeTeam: m.$1,
+      awayTeam: m.$2,
+      kickoff: m.$3,
+      stage: 'Achtelfinale',
+      group: '',
+      status: MatchStatus.scheduled,
+    ));
+  }
+
+  // 3. Viertelfinale (July 12 - July 13)
+  final vfMatches = [
+    ('Sieger Achtelfinale 1', 'Sieger Achtelfinale 3', DateTime(2026, 7, 12, 19)),
+    ('Sieger Achtelfinale 2', 'Sieger Achtelfinale 4', DateTime(2026, 7, 12, 22)),
+    ('Sieger Achtelfinale 5', 'Sieger Achtelfinale 7', DateTime(2026, 7, 13, 19)),
+    ('Sieger Achtelfinale 6', 'Sieger Achtelfinale 8', DateTime(2026, 7, 13, 22)),
+  ];
+
+  for (var i = 0; i < vfMatches.length; i++) {
+    final m = vfMatches[i];
+    list.add(CupMatch(
+      id: 'wc-ko-vf-${i + 1}',
+      homeTeam: m.$1,
+      awayTeam: m.$2,
+      kickoff: m.$3,
+      stage: 'Viertelfinale',
+      group: '',
+      status: MatchStatus.scheduled,
+    ));
+  }
+
+  // 4. Halbfinale (July 15 - July 16)
+  final hfMatches = [
+    ('Sieger Viertelfinale 1', 'Sieger Viertelfinale 3', DateTime(2026, 7, 15, 21)),
+    ('Sieger Viertelfinale 2', 'Sieger Viertelfinale 4', DateTime(2026, 7, 16, 21)),
+  ];
+
+  for (var i = 0; i < hfMatches.length; i++) {
+    final m = hfMatches[i];
+    list.add(CupMatch(
+      id: 'wc-ko-hf-${i + 1}',
+      homeTeam: m.$1,
+      awayTeam: m.$2,
+      kickoff: m.$3,
+      stage: 'Halbfinale',
+      group: '',
+      status: MatchStatus.scheduled,
+    ));
+  }
+
+  // 5. Spiel um Platz 3 (July 18)
+  list.add(CupMatch(
+    id: 'wc-ko-p3-1',
+    homeTeam: 'Verlierer Halbfinale 1',
+    awayTeam: 'Verlierer Halbfinale 2',
+    kickoff: DateTime(2026, 7, 18, 21),
+    stage: 'Spiel um Platz 3',
+    group: '',
+    status: MatchStatus.scheduled,
+  ));
+
+  // 6. Finale (July 19)
+  list.add(CupMatch(
+    id: 'wc-ko-fi-1',
+    homeTeam: 'Sieger Halbfinale 1',
+    awayTeam: 'Sieger Halbfinale 2',
+    kickoff: DateTime(2026, 7, 19, 21),
+    stage: 'Finale',
+    group: '',
+    status: MatchStatus.scheduled,
+  ));
+
+  return list;
 }
