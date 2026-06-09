@@ -57,10 +57,12 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && tipId == request.auth.uid + '_' + request.resource.data.matchId
           && tipIsUnlocked();
-        allow delete: if isLeagueMember(leagueId)
+        allow delete: if resource == null || (
+          isLeagueMember(leagueId)
           && resource.data.uid == request.auth.uid
           && exists(/databases/$(database)/documents/matches/$(resource.data.matchId))
-          && request.time < get(/databases/$(database)/documents/matches/$(resource.data.matchId)).data.kickoff;
+          && request.time < get(/databases/$(database)/documents/matches/$(resource.data.matchId)).data.kickoff
+        );
       }
 
       match /standings/{uid} {
