@@ -1,34 +1,34 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../domain/flags.dart';
+import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
 
 class TipEntryScreen extends ConsumerStatefulWidget {
-  const TipEntryScreen({required this.matchId, super.key});
+  const TipEntryScreen({
+    required this.matchId,
+    required this.returnPath,
+    super.key,
+  });
 
   final String matchId;
+  final String returnPath;
 
   @override
   ConsumerState<TipEntryScreen> createState() => _TipEntryScreenState();
 }
 
 class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
-  final _homeController = TextEditingController();
-  final _awayController = TextEditingController();
+  int _homeGoals = 0;
+  int _awayGoals = 0;
   bool _isSaving = false;
   bool _didSeedTip = false;
-
-  @override
-  void dispose() {
-    _homeController.dispose();
-    _awayController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +37,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
         title: const Text('Tipp'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/matches'),
+          onPressed: () => context.go(widget.returnPath),
         ),
       ),
       body: SafeArea(
@@ -47,14 +47,23 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
             final match =
                 matches.firstWhere((item) => item.id == widget.matchId);
             final existingTip = _tipForMatch(
-              ref.watch(tipsProvider).valueOrNull ?? const <Tip>[],
+              ref.watch(tipsProvider).value ?? const <Tip>[],
               match.id,
             );
+            final allTips =
+                ref.watch(leagueTipsProvider).value ?? const <Tip>[];
+            final standings =
+                ref.watch(standingsProvider).value ?? const <Standing>[];
+            final displayNames = {
+              for (final standing in standings)
+                standing.uid: standing.displayName,
+            };
             if (!_didSeedTip && existingTip != null) {
-              _homeController.text = existingTip.predictedHome.toString();
-              _awayController.text = existingTip.predictedAway.toString();
+              _homeGoals = existingTip.predictedHome;
+              _awayGoals = existingTip.predictedAway;
               _didSeedTip = true;
             }
+            final scoreResult = _scoreResult(match, existingTip);
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -67,7 +76,8 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                         Text(match.stage),
                         const SizedBox(height: 12),
                         Text(
-                          '${match.homeTeam} - ${match.awayTeam}',
+                          '${CountryFlags.getFlag(match.homeTeam)} ${match.homeTeam} - '
+                          '${match.awayTeam} ${CountryFlags.getFlag(match.awayTeam)}',
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(height: 8),
@@ -91,6 +101,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             ),
                           ),
                         ],
+                        if (scoreResult != null) ...[
+                          const SizedBox(height: 8),
+                          Chip(
+                            avatar: const Icon(Icons.stars, size: 18),
+                            label: Text(_scoreLabel(scoreResult)),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -98,12 +115,29 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _ScoreField(controller: _homeController)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(':'),
+                    Expanded(
+                      child: _ScoreWheel(
+                        label: match.homeTeam,
+                        value: _homeGoals,
+                        onChanged: (value) =>
+                            setState(() => _homeGoals = value),
+                      ),
                     ),
-                    Expanded(child: _ScoreField(controller: _awayController)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        ':',
+                        style: Theme.of(context).textTheme.displaySmall,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ScoreWheel(
+                        label: match.awayTeam,
+                        value: _awayGoals,
+                        onChanged: (value) =>
+                            setState(() => _awayGoals = value),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -113,6 +147,29 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                   icon: const Icon(Icons.save),
                   label: Text(match.isLocked ? 'Gesperrt' : 'Tipp speichern'),
                 ),
+                if (match.isLocked) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    'Tipps der Runde',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  for (final tip
+                      in allTips.where((tip) => tip.matchId == match.id))
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: Text(displayNames[tip.uid] ?? 'Spieler'),
+                        trailing: Text(
+                          '${tip.predictedHome}:${tip.predictedAway}',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        subtitle: match.status == MatchStatus.finalResult
+                            ? Text('${tip.points} Punkte')
+                            : null,
+                      ),
+                    ),
+                ],
               ],
             );
           },
@@ -122,22 +179,14 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   }
 
   Future<void> _save(CupMatch match) async {
-    final home = int.tryParse(_homeController.text);
-    final away = int.tryParse(_awayController.text);
-    if (home == null || away == null || home < 0 || away < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte gültiges Ergebnis eingeben.')),
-      );
-      return;
-    }
     setState(() => _isSaving = true);
     try {
       await ref.read(repositoryProvider).saveTip(
             matchId: match.id,
-            home: home,
-            away: away,
+            home: _homeGoals,
+            away: _awayGoals,
           );
-      if (mounted) context.go('/matches');
+      if (mounted) context.go(widget.returnPath);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -157,19 +206,80 @@ Tip? _tipForMatch(List<Tip> tips, String matchId) {
   return null;
 }
 
-class _ScoreField extends StatelessWidget {
-  const _ScoreField({required this.controller});
+ScoreResult? _scoreResult(CupMatch match, Tip? tip) {
+  if (tip == null ||
+      match.status != MatchStatus.finalResult ||
+      match.homeScore == null ||
+      match.awayScore == null) {
+    return null;
+  }
+  return scoreTip(
+    predictedHome: tip.predictedHome,
+    predictedAway: tip.predictedAway,
+    actualHome: match.homeScore!,
+    actualAway: match.awayScore!,
+  );
+}
 
-  final TextEditingController controller;
+String _scoreLabel(ScoreResult result) {
+  if (result.isExact) return '${result.points} Punkte: exaktes Ergebnis';
+  if (result.points == 3) return '3 Punkte: richtige Tordifferenz';
+  if (result.isTendency) return '${result.points} Punkte: richtige Tendenz';
+  return '0 Punkte';
+}
+
+class _ScoreWheel extends StatelessWidget {
+  const _ScoreWheel({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  static const _maxGoals = 12;
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      textAlign: TextAlign.center,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: const InputDecoration(labelText: 'Tore'),
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 156,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: CupertinoPicker.builder(
+            scrollController: FixedExtentScrollController(initialItem: value),
+            itemExtent: 48,
+            diameterRatio: 1.35,
+            selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
+              background: Color(0x1A000000),
+            ),
+            onSelectedItemChanged: onChanged,
+            childCount: _maxGoals + 1,
+            itemBuilder: (context, index) {
+              return Center(
+                child: Text(
+                  '$index',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -13,6 +13,9 @@ class AsyncValueView<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (value.hasValue) {
+      return data(value.requireValue);
+    }
     return value.when(
       data: data,
       error: (error, stackTrace) => Center(

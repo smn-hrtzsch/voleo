@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers.dart';
@@ -27,7 +29,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     ref.listen(userProvider, (_, next) {
-      final user = next.valueOrNull;
+      final user = next.value;
       if (user != null && mounted) {
         context.go('/home');
       }
@@ -81,10 +83,56 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Eigene Runde erstellen'),
             ),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _isLoading ? null : () => _signInWithGoogle(),
+              icon: SvgPicture.asset('assets/google_logo.svg', width: 18, height: 18),
+              label: const Text('Mit Google anmelden'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isLoading ? null : () => _signInWithApple(),
+              icon: const FaIcon(FontAwesomeIcons.apple, size: 20, color: Colors.black),
+              label: const Text('Mit Apple anmelden'),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(repositoryProvider).signInWithGoogle();
+      if (mounted) context.go('/home');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Google Login fehlgeschlagen: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(repositoryProvider).signInWithApple();
+      if (mounted) context.go('/home');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Apple Login fehlgeschlagen: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _startWithoutCode() async {
