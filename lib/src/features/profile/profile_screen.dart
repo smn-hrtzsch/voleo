@@ -3,14 +3,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../domain/flags.dart';
 import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
+import '../shared/app_toast.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -44,7 +47,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onPickImage: _pickProfileImage,
                   ),
                   const SizedBox(height: 24),
-                  if (value.isAnonymous) ...[
+                  if (!value.hasLinkedProvider) ...[
                     _AnonymousWarning(),
                     const SizedBox(height: 20),
                   ],
@@ -77,13 +80,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onPressed: _isLoading || value.hasGoogleProvider
                         ? null
                         : _linkWithGoogle,
+                    onUnlink: _isLoading || !value.hasGoogleProvider
+                        ? null
+                        : () => _confirmUnlinkProvider(
+                              providerId: 'google.com',
+                              providerName: 'Google',
+                            ),
                   ),
                   const SizedBox(height: 10),
                   _ProviderTile(
-                    icon: const FaIcon(
+                    icon: FaIcon(
                       FontAwesomeIcons.apple,
                       size: 21,
-                      color: Colors.black,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                     title: value.hasAppleProvider
                         ? 'Apple verknüpft'
@@ -95,6 +104,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onPressed: _isLoading || value.hasAppleProvider
                         ? null
                         : _linkWithApple,
+                    onUnlink: _isLoading || !value.hasAppleProvider
+                        ? null
+                        : () => _confirmUnlinkProvider(
+                              providerId: 'apple.com',
+                              providerName: 'Apple',
+                            ),
                   ),
                   const SizedBox(height: 28),
                   const Divider(),
@@ -106,7 +121,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: _isLoading ? null : () => _confirmDeleteAccount(value),
+                    onPressed:
+                        _isLoading ? null : () => _confirmDeleteAccount(value),
                     style: FilledButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.error,
                       foregroundColor: Theme.of(context).colorScheme.onError,
@@ -187,10 +203,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _linkWithGoogle() async {
-    await _runProfileAction(
-      () => ref.read(repositoryProvider).linkWithGoogle(),
-      'Google verknüpft.',
-    );
+    setState(() => _isLoading = true);
+    var succeeded = false;
+    try {
+      await ref.read(repositoryProvider).linkWithGoogle();
+      succeeded = true;
+    } catch (error) {
+      if (_isUserCanceledAuth(error)) return;
+      if (error is auth.FirebaseAuthException &&
+          _isAlreadyLinkedError(error.code)) {
+        await _handleLinkedAccountError(
+          providerName: 'Google',
+          switchCredential: error.credential,
+        );
+        return;
+      }
+      if (mounted) {
+        showAppToast(
+          context,
+          'Aktion fehlgeschlagen: $error',
+          type: AppToastType.error,
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+    if (mounted && succeeded) {
+      showAppToast(context, 'Google verknüpft.', type: AppToastType.success);
+    }
   }
 
   Future<void> _linkWithApple() async {
@@ -198,6 +239,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       () => ref.read(repositoryProvider).linkWithApple(),
       'Apple verknüpft.',
     );
+  }
+
+  Future<void> _confirmUnlinkProvider({
+    required String providerId,
+    required String providerName,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('$providerName-Verknüpfung entfernen?'),
+          content: Text(
+            'Du kannst dich danach nicht mehr mit $providerName anmelden, '
+            'bis du das Konto wieder verknüpfst.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Entfernen'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(repositoryProvider).unlinkProvider(providerId);
+      if (mounted) {
+        showAppToast(
+          context,
+          '$providerName-Verknüpfung entfernt.',
+          type: AppToastType.success,
+        );
+      }
+    } catch (error) {
+      if (_isUserCanceledAuth(error)) return;
+      if (mounted) {
+        showAppToast(
+          context,
+          'Aktion fehlgeschlagen: $error',
+          type: AppToastType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _confirmSignOut(VoleoUser user) async {
@@ -209,10 +305,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             user.isAnonymous ? 'Anonymen Account abmelden?' : 'Abmelden?',
           ),
           content: Text(
-            user.isAnonymous
+            !user.hasLinkedProvider
                 ? 'Dieser Account ist nicht mit Google oder Apple verknüpft. '
-                    'Nach dem Abmelden können deine Tipps nicht mehr eindeutig '
-                    'diesem Gerät zugeordnet werden.'
+                    'Beim Abmelden wird er inklusive Tipps und Mitgliedschaften gelöscht.'
                 : 'Du kannst dich später wieder mit deinem verknüpften Account anmelden.',
           ),
           actions: [
@@ -222,7 +317,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(user.isAnonymous ? 'Trotzdem abmelden' : 'Abmelden'),
+              child: Text(!user.hasLinkedProvider
+                  ? 'Account löschen & abmelden'
+                  : 'Abmelden'),
             ),
           ],
         );
@@ -235,7 +332,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _signOut() async {
     await _runProfileAction(
       () async {
+        ref.read(sessionTransitionProvider.notifier).value = true;
+        ref.read(forceOnboardingProvider.notifier).value = false;
+        if (mounted) context.go('/loading');
         await ref.read(repositoryProvider).signOut();
+        ref.read(forceOnboardingProvider.notifier).value = true;
+        ref.read(sessionTransitionProvider.notifier).value = false;
         if (mounted) context.go('/');
       },
       null,
@@ -276,7 +378,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _deleteAccount() async {
     await _runProfileAction(
       () async {
+        ref.read(sessionTransitionProvider.notifier).value = true;
+        ref.read(forceOnboardingProvider.notifier).value = false;
+        if (mounted) context.go('/loading');
         await ref.read(repositoryProvider).deleteAccount();
+        ref.read(forceOnboardingProvider.notifier).value = true;
+        ref.read(sessionTransitionProvider.notifier).value = false;
         if (mounted) context.go('/');
       },
       'Account erfolgreich gelöscht.',
@@ -291,20 +398,90 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await action();
       if (mounted && successMessage != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successMessage)),
-        );
+        showAppToast(context, successMessage, type: AppToastType.success);
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Aktion fehlgeschlagen: $error')),
-        );
+        showAppToast(context, 'Aktion fehlgeschlagen: $error',
+            type: AppToastType.error);
       }
     } finally {
+      ref.read(sessionTransitionProvider.notifier).value = false;
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  Future<void> _handleLinkedAccountError({
+    required String providerName,
+    required auth.AuthCredential? switchCredential,
+  }) async {
+    if (!mounted) return;
+    final choice = await showDialog<_LinkedAccountChoice>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('$providerName bereits verknüpft'),
+          content: Text(
+            'Dieses $providerName gehört bereits zu einem anderen Voleo-Konto. '
+            'Möchtest du zu diesem Konto wechseln oder ein anderes Konto verknüpfen?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, _LinkedAccountChoice.tryAnother),
+              child: const Text('Anderes Konto'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, _LinkedAccountChoice.switchAccount),
+              child: const Text('Konto wechseln'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || choice == null) return;
+    if (choice == _LinkedAccountChoice.tryAnother) {
+      try {
+        await ref.read(repositoryProvider).linkWithGoogle();
+      } catch (error) {
+        if (_isUserCanceledAuth(error)) return;
+        rethrow;
+      }
+      return;
+    }
+    if (switchCredential == null) {
+      showAppToast(
+        context,
+        'Dieses Konto kann nicht direkt gewechselt werden. Bitte melde dich über den Startbildschirm an.',
+        type: AppToastType.error,
+      );
+      return;
+    }
+    await ref.read(repositoryProvider).signInWithCredential(switchCredential);
+  }
+
+  bool _isAlreadyLinkedError(String code) {
+    return code == 'credential-already-in-use' ||
+        code == 'account-exists-with-different-credential' ||
+        code == 'email-already-in-use';
+  }
+
+  bool _isUserCanceledAuth(Object error) {
+    if (error is GoogleSignInException) {
+      return error.code == GoogleSignInExceptionCode.canceled ||
+          error.code == GoogleSignInExceptionCode.interrupted;
+    }
+    final raw = error.toString().toLowerCase();
+    return raw.contains('canceled') ||
+        raw.contains('cancelled') ||
+        raw.contains('singlesigninexceptioncode.failed');
+  }
+}
+
+enum _LinkedAccountChoice {
+  switchAccount,
+  tryAnother,
 }
 
 class _ProfileHeader extends StatelessWidget {
@@ -416,7 +593,8 @@ class _AnonymousWarning extends StatelessWidget {
           Expanded(
             child: Text(
               'Anonymer Account: Verknüpfe Google oder Apple, bevor du dich '
-              'abmeldest oder das Gerät wechselst.',
+              'abmeldest oder das Gerät wechselst. Ohne Verknüpfung wird der '
+              'Account beim Abmelden gelöscht.',
               style: TextStyle(color: scheme.onErrorContainer),
             ),
           ),
@@ -486,6 +664,7 @@ class _ProviderTile extends StatelessWidget {
     required this.subtitle,
     required this.isLinked,
     required this.onPressed,
+    this.onUnlink,
   });
 
   final Widget icon;
@@ -493,6 +672,7 @@ class _ProviderTile extends StatelessWidget {
   final String subtitle;
   final bool isLinked;
   final VoidCallback? onPressed;
+  final VoidCallback? onUnlink;
 
   @override
   Widget build(BuildContext context) {
@@ -538,10 +718,18 @@ class _ProviderTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                isLinked ? Icons.check_circle : Icons.chevron_right,
-                color: isLinked ? scheme.primary : scheme.onSurfaceVariant,
-              ),
+              if (isLinked)
+                IconButton(
+                  onPressed: onUnlink,
+                  icon: const Icon(Icons.link_off_outlined),
+                  color: scheme.error,
+                  tooltip: 'Verknüpfung entfernen',
+                )
+              else
+                Icon(
+                  Icons.chevron_right,
+                  color: scheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),
@@ -571,13 +759,14 @@ class _BoosterAndRiskPicksCardState
 
     return matchesValue.when(
       data: (matches) {
-        final sorted = [...matches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+        final sorted = [...matches]
+          ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
         final tournamentStarted =
             sorted.isNotEmpty && DateTime.now().isAfter(sorted.first.kickoff);
 
-        final teams = {for (final m in matches) ...[m.homeTeam, m.awayTeam]}
-            .where((t) => !isPlaceholderTeam(t))
-            .toList()
+        final teams = {
+          for (final m in matches) ...[m.homeTeam, m.awayTeam]
+        }.where((t) => !isPlaceholderTeam(t)).toList()
           ..sort();
 
         return Card(
@@ -602,7 +791,9 @@ class _BoosterAndRiskPicksCardState
                       ? 'Das Turnier hat bereits begonnen. Die Picks können nicht mehr geändert werden.'
                       : 'Wähle deine Teams vor Turnierstart. Später sind keine Änderungen möglich.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: tournamentStarted ? scheme.error : scheme.onSurfaceVariant,
+                        color: tournamentStarted
+                            ? scheme.error
+                            : scheme.onSurfaceVariant,
                       ),
                 ),
                 const Divider(height: 24),
@@ -639,28 +830,37 @@ class _BoosterAndRiskPicksCardState
                   title: 'Risiko-Mannschaft',
                   value: widget.user.riskTeam,
                   teams: teams,
+                  groupByRiskTier: true,
                   disabled: tournamentStarted || _isSaving,
-                  onSelected: (team) => _savePick(riskTeam: team, riskStage: ''),
+                  onSelected: (team) =>
+                      _savePick(riskTeam: team, riskStage: ''),
                 ),
                 const SizedBox(height: 12),
                 _buildStageTile(
                   title: 'Ausscheidungs-Runde',
                   value: widget.user.riskStage,
-                  disabled: tournamentStarted || _isSaving || widget.user.riskTeam == null || widget.user.riskTeam!.isEmpty,
+                  disabled: tournamentStarted ||
+                      _isSaving ||
+                      widget.user.riskTeam == null ||
+                      widget.user.riskTeam!.isEmpty,
                   onSelected: (stage) => _savePick(riskStage: stage),
                 ),
-                if (widget.user.riskTeam != null && widget.user.riskTeam!.isNotEmpty &&
-                    widget.user.riskStage != null && widget.user.riskStage!.isNotEmpty) ...[
+                if (widget.user.riskTeam != null &&
+                    widget.user.riskTeam!.isNotEmpty &&
+                    widget.user.riskStage != null &&
+                    widget.user.riskStage!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      color:
+                          scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      _getRiskPointsInfo(widget.user.riskTeam!, widget.user.riskStage!),
+                      _getRiskPointsInfo(
+                          widget.user.riskTeam!, widget.user.riskStage!),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: scheme.primary,
                             fontWeight: FontWeight.bold,
@@ -684,6 +884,7 @@ class _BoosterAndRiskPicksCardState
     required List<String> teams,
     required bool disabled,
     required ValueChanged<String> onSelected,
+    bool groupByRiskTier = false,
   }) {
     final hasValue = value != null && value.isNotEmpty;
     final flag = hasValue ? CountryFlags.getFlag(value) : '';
@@ -697,11 +898,18 @@ class _BoosterAndRiskPicksCardState
         OutlinedButton(
           onPressed: disabled
               ? null
-              : () => _showTeamPickerDialog(title, value, teams, onSelected),
+              : () => _showTeamPickerDialog(
+                    title,
+                    value,
+                    teams,
+                    onSelected,
+                    groupByRiskTier: groupByRiskTier,
+                  ),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.centerLeft,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
           child: Row(
             children: [
@@ -718,7 +926,8 @@ class _BoosterAndRiskPicksCardState
               ] else
                 Text(
                   'Mannschaft wählen...',
-                  style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
                 ),
               const Spacer(),
               if (!disabled) const Icon(Icons.arrow_drop_down, size: 20),
@@ -744,13 +953,13 @@ class _BoosterAndRiskPicksCardState
         Text(title, style: Theme.of(context).textTheme.labelSmall),
         const SizedBox(height: 4),
         OutlinedButton(
-          onPressed: disabled
-              ? null
-              : () => _showStagePickerDialog(value, onSelected),
+          onPressed:
+              disabled ? null : () => _showStagePickerDialog(value, onSelected),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.centerLeft,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
           child: Row(
             children: [
@@ -767,7 +976,8 @@ class _BoosterAndRiskPicksCardState
                   widget.user.riskTeam == null || widget.user.riskTeam!.isEmpty
                       ? 'Bitte zuerst Risiko-Mannschaft wählen...'
                       : 'Ausscheidungsrunde wählen...',
-                  style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
                 ),
               const Spacer(),
               if (!disabled) const Icon(Icons.arrow_drop_down, size: 20),
@@ -778,12 +988,10 @@ class _BoosterAndRiskPicksCardState
     );
   }
 
-  void _showTeamPickerDialog(
-    String title,
-    String? selectedValue,
-    List<String> teams,
-    ValueChanged<String> onSelected,
-  ) {
+  void _showTeamPickerDialog(String title, String? selectedValue,
+      List<String> teams, ValueChanged<String> onSelected,
+      {bool groupByRiskTier = false}) {
+    final groupedTeams = groupByRiskTier ? _teamsByRiskTier(teams) : null;
     showDialog(
       context: context,
       builder: (context) {
@@ -792,25 +1000,42 @@ class _BoosterAndRiskPicksCardState
           content: SizedBox(
             width: double.maxFinite,
             height: 380,
-            child: ListView.builder(
-              itemCount: teams.length,
-              itemBuilder: (context, index) {
-                final team = teams[index];
-                final flag = CountryFlags.getFlag(team);
-                final isSelected = team == selectedValue;
-                return ListTile(
-                  leading: Text(flag, style: const TextStyle(fontSize: 22)),
-                  title: Text(team),
-                  trailing: isSelected
-                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(context);
-                    onSelected(team);
-                  },
-                );
-              },
-            ),
+            child: groupByRiskTier
+                ? ListView(
+                    children: [
+                      for (final entry in groupedTeams!.entries) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                          child: Text(
+                            entry.key,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                        for (final team in entry.value)
+                          _TeamPickerTile(
+                            team: team,
+                            selectedValue: selectedValue,
+                            onSelected: onSelected,
+                          ),
+                      ],
+                    ],
+                  )
+                : ListView.builder(
+                    itemCount: teams.length,
+                    itemBuilder: (context, index) {
+                      return _TeamPickerTile(
+                        team: teams[index],
+                        selectedValue: selectedValue,
+                        onSelected: onSelected,
+                      );
+                    },
+                  ),
           ),
           actions: [
             TextButton(
@@ -823,12 +1048,29 @@ class _BoosterAndRiskPicksCardState
     );
   }
 
+  Map<String, List<String>> _teamsByRiskTier(List<String> teams) {
+    final order = [
+      'Absolute Titelfavoriten',
+      'Top Team',
+      'Durchschnittliches Team',
+      'Gurkentruppe',
+    ];
+    return {
+      for (final tier in order)
+        tier: [
+          for (final team in teams)
+            if (getTier(team) == tier) team,
+        ]..sort(),
+    };
+  }
+
   void _showStagePickerDialog(
     String? selectedValue,
     ValueChanged<String> onSelected,
   ) {
     final stages = [
       'Gruppenphase',
+      'Sechzehntelfinale',
       'Achtelfinale',
       'Viertelfinale',
       'Halbfinale',
@@ -846,7 +1088,8 @@ class _BoosterAndRiskPicksCardState
                 ListTile(
                   title: Text(stage),
                   trailing: stage == selectedValue
-                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                      ? Icon(Icons.check,
+                          color: Theme.of(context).colorScheme.primary)
                       : null,
                   onTap: () {
                     Navigator.pop(context);
@@ -870,7 +1113,7 @@ class _BoosterAndRiskPicksCardState
     final tier = getTier(team);
     final correct = calculateRiskPoints(team, stage, stage);
     final incorrect = -correct;
-    return 'Risiko-Tier: $tier\nKorrekt getippt: +$correct Punkte\nFalsch getippt: $incorrect Punkte';
+    return 'Risiko-Tier: $tier\nPluspunkte, wenn das Team spätestens im $stage ausscheidet: +$correct\nBleibt es länger im Turnier: $incorrect Punkte';
   }
 
   Future<void> _savePick({
@@ -904,6 +1147,35 @@ class _BoosterAndRiskPicksCardState
   }
 }
 
+class _TeamPickerTile extends StatelessWidget {
+  const _TeamPickerTile({
+    required this.team,
+    required this.selectedValue,
+    required this.onSelected,
+  });
+
+  final String team;
+  final String? selectedValue;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final flag = CountryFlags.getFlag(team);
+    final isSelected = team == selectedValue;
+    return ListTile(
+      leading: Text(flag, style: const TextStyle(fontSize: 22)),
+      title: Text(team),
+      trailing: isSelected
+          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+          : null,
+      onTap: () {
+        Navigator.pop(context);
+        onSelected(team);
+      },
+    );
+  }
+}
+
 bool isPlaceholderTeam(String name) {
   final lower = name.toLowerCase();
   return lower.startsWith('sieger') ||
@@ -921,4 +1193,3 @@ bool isPlaceholderTeam(String name) {
       lower.startsWith('tbd') ||
       lower.trim().isEmpty;
 }
-

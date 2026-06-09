@@ -103,4 +103,36 @@ void main() {
     expect(ranked.map((standing) => standing.uid), ['a', 'b', 'c']);
     expect(ranked.map((standing) => standing.rank), [1, 2, 3]);
   });
+
+  group('calculateRiskPoints', () {
+    test('awards points when team exits earlier than predicted', () {
+      final points = calculateRiskPoints(
+        'Brasilien',
+        'Viertelfinale',
+        'Achtelfinale',
+      );
+
+      expect(points, 30);
+    });
+
+    test('penalizes when team stays longer than predicted', () {
+      final points = calculateRiskPoints(
+        'Brasilien',
+        'Achtelfinale',
+        'Viertelfinale',
+      );
+
+      expect(points, -50);
+    });
+
+    test('supports sixteenth-final risk stage', () {
+      final points = calculateRiskPoints(
+        'Brasilien',
+        'Sechzehntelfinale',
+        'Sechzehntelfinale',
+      );
+
+      expect(points, 60);
+    });
+  });
 }

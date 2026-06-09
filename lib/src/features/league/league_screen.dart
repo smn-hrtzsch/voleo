@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
+import '../shared/app_toast.dart';
 
 class LeagueScreen extends ConsumerStatefulWidget {
   const LeagueScreen({super.key});
@@ -63,12 +64,19 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                   league: league,
                   leagues: leagues.isEmpty ? [league] : leagues,
                   isOwner: user?.uid == league.ownerUid,
-                  onSwitchLeague: (leagueId) =>
-                      ref.read(repositoryProvider).switchLeague(
-                            leagueId: leagueId,
-                          ),
+                  onSwitchLeague: _switchLeague,
                   onRenameLeague: () => _renameLeague(league),
-                  onLeaveLeague: () => _confirmLeaveLeague(context, ref, league),
+                  onJoinLeague: _joinLeague,
+                  onCreateLeague: _createLeague,
+                  onLeaveLeague: () =>
+                      _confirmLeaveLeague(context, ref, league),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (league == null) ...[
+                _LeagueSetupCard(
+                  onJoinLeague: _joinLeague,
+                  onCreateLeague: _createLeague,
                 ),
                 const SizedBox(height: 16),
               ],
@@ -176,20 +184,126 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
     try {
       await ref.read(repositoryProvider).renameLeague(name: name);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tipprunde umbenannt.')),
-        );
+        showAppToast(context, 'Tipprunde umbenannt.',
+            type: AppToastType.success);
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Umbenennen fehlgeschlagen: $error')),
-        );
+        showAppToast(context, 'Umbenennen fehlgeschlagen: $error',
+            type: AppToastType.error);
       }
     }
   }
 
-  Future<void> _confirmLeaveLeague(BuildContext context, WidgetRef ref, League league) async {
+  Future<void> _switchLeague(String leagueId) async {
+    try {
+      await ref.read(repositoryProvider).switchLeague(leagueId: leagueId);
+      ref.invalidate(leagueProvider);
+      ref.invalidate(leaguesProvider);
+      ref.invalidate(leagueTipsProvider);
+      ref.invalidate(standingsProvider);
+      if (mounted) {
+        showAppToast(context, 'Tipprunde gewechselt.',
+            type: AppToastType.success);
+      }
+    } catch (error) {
+      if (mounted) {
+        showAppToast(
+            context, _formatLeagueError('Wechsel fehlgeschlagen', error),
+            type: AppToastType.error);
+      }
+    }
+  }
+
+  Future<void> _joinLeague() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tipprunde beitreten'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+            labelText: 'Einladungscode',
+            prefixIcon: Icon(Icons.key_outlined),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Beitreten'),
+          ),
+        ],
+      ),
+    );
+    if (code == null || code.isEmpty) return;
+    try {
+      await ref.read(repositoryProvider).joinLeague(inviteCode: code);
+      if (mounted) {
+        showAppToast(context, 'Tipprunde beigetreten.',
+            type: AppToastType.success);
+      }
+    } catch (error) {
+      if (mounted) {
+        showAppToast(
+            context, _formatLeagueError('Beitritt fehlgeschlagen', error),
+            type: AppToastType.error);
+      }
+    }
+  }
+
+  Future<void> _createLeague() async {
+    final controller = TextEditingController(text: 'Meine WM-Runde');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Neue Tipprunde'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Name der Tipprunde',
+            prefixIcon: Icon(Icons.edit_outlined),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Erstellen'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    try {
+      await ref.read(repositoryProvider).createLeague(name: name);
+      if (mounted) {
+        showAppToast(context, 'Tipprunde erstellt.',
+            type: AppToastType.success);
+      }
+    } catch (error) {
+      if (mounted) {
+        showAppToast(
+            context, _formatLeagueError('Erstellung fehlgeschlagen', error),
+            type: AppToastType.error);
+      }
+    }
+  }
+
+  Future<void> _confirmLeaveLeague(
+      BuildContext context, WidgetRef ref, League league) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -220,17 +334,29 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
     try {
       await ref.read(repositoryProvider).leaveLeague(leagueId: league.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Du hast die Tipprunde "${league.name}" verlassen.')),
-        );
+        showAppToast(
+            context, 'Du hast die Tipprunde "${league.name}" verlassen.',
+            type: AppToastType.success);
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Verlassen der Tipprunde: $e')),
-        );
+        showAppToast(context,
+            _formatLeagueError('Fehler beim Verlassen der Tipprunde', e),
+            type: AppToastType.error);
       }
     }
+  }
+
+  String _formatLeagueError(String prefix, Object error) {
+    final raw = error.toString();
+    if (raw.contains('Dieser Name ist in der Liga bereits vergeben')) {
+      return '$prefix: Dein Spitzname ist in dieser Tipprunde schon vergeben. Bitte ändere deinen Namen im Profil und versuche es erneut.';
+    }
+    if (raw.contains('permission-denied') ||
+        raw.contains('PERMISSION_DENIED')) {
+      return '$prefix: Keine Berechtigung in Firestore. Bitte Regeln deployen.';
+    }
+    return '$prefix: $raw';
   }
 }
 
@@ -241,14 +367,18 @@ class _LeagueControlCard extends StatelessWidget {
     required this.isOwner,
     required this.onSwitchLeague,
     required this.onRenameLeague,
+    required this.onJoinLeague,
+    required this.onCreateLeague,
     required this.onLeaveLeague,
   });
 
   final League league;
   final List<League> leagues;
   final bool isOwner;
-  final ValueChanged<String> onSwitchLeague;
+  final Future<void> Function(String leagueId) onSwitchLeague;
   final VoidCallback onRenameLeague;
+  final VoidCallback onJoinLeague;
+  final VoidCallback onCreateLeague;
   final VoidCallback onLeaveLeague;
 
   void _showLeaguePicker(BuildContext context) {
@@ -267,7 +397,8 @@ class _LeagueControlCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Text(
                     'Tipprunde wechseln',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -330,12 +461,10 @@ class _LeagueControlCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appLink = 'voleo://voleo-sho2303.web.app/join/${league.inviteCode}';
     final webLink = 'https://voleo-sho2303.web.app/join/${league.inviteCode}';
-    final shareMessage = 'Tritt meiner Voleo-Tipprunde bei! 🏆\n\n'
-        'Direkt in der App öffnen: $appLink\n'
-        'Oder über Web: $webLink\n'
-        'Alternativer Einladungscode: ${league.inviteCode}';
+    final shareMessage = 'Tritt meiner Voleo-Tipprunde bei:\n'
+        '$webLink\n'
+        'Code: ${league.inviteCode}';
     final scheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -345,7 +474,8 @@ class _LeagueControlCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onTap: leagues.length > 1 ? () => _showLeaguePicker(context) : null,
+              onTap:
+                  leagues.length > 1 ? () => _showLeaguePicker(context) : null,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
@@ -357,7 +487,10 @@ class _LeagueControlCard extends StatelessWidget {
                         children: [
                           Text(
                             'Tipprunde',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
                                   color: scheme.primary,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -368,7 +501,10 @@ class _LeagueControlCard extends StatelessWidget {
                               Flexible(
                                 child: Text(
                                   league.name,
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
                                         fontWeight: FontWeight.bold,
                                       ),
                                   maxLines: 1,
@@ -402,6 +538,26 @@ class _LeagueControlCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onJoinLeague,
+                    icon: const Icon(Icons.group_add_outlined),
+                    label: const Text('Beitreten'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onCreateLeague,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Neu'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -413,10 +569,11 @@ class _LeagueControlCard extends StatelessWidget {
                       ),
                       Text(
                         league.inviteCode,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.1,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.1,
+                                ),
                       ),
                     ],
                   ),
@@ -449,6 +606,48 @@ class _LeagueControlCard extends StatelessWidget {
   }
 }
 
+class _LeagueSetupCard extends StatelessWidget {
+  const _LeagueSetupCard({
+    required this.onJoinLeague,
+    required this.onCreateLeague,
+  });
+
+  final VoidCallback onJoinLeague;
+  final VoidCallback onCreateLeague;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Tipprunde',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onJoinLeague,
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Tipprunde beitreten'),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: onCreateLeague,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Neue Tipprunde erstellen'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RankAvatar extends StatelessWidget {
   const _RankAvatar({required this.standing});
 
@@ -469,14 +668,16 @@ class _RankAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               )
             : Image.file(
                 File(photoUrl),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               ),
       );
     } else {
@@ -569,14 +770,16 @@ class _MemberAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               )
             : Image.file(
                 File(photoUrl!),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               ),
       );
     } else {

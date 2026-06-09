@@ -93,15 +93,13 @@ String getTier(String team) {
   final tops = [
     'Belgien',
     'Japan',
-    'Kolumbien',
     'Kroatien',
     'Marokko',
-    'Mexiko',
     'Niederlande',
+    'Norwegen',
     'Schweiz',
     'Senegal',
-    'Uruguay',
-    'USA'
+    'Uruguay'
   ];
   final mids = [
     'Algerien',
@@ -110,18 +108,17 @@ String getTier(String team) {
     'Bosnien-Herzegowina',
     'Bosnien Herzegowina',
     'Bosnia and Herzegovina',
+    'Kolumbien',
     'Ecuador',
     'Elfenbeinküste',
     'Ghana',
-    'Iran',
-    'Kanada',
-    'Norwegen',
+    'Mexiko',
     'Österreich',
     'Schweden',
     'Südkorea',
     'Tschechien',
     'Türkei',
-    'Ägypten'
+    'USA'
   ];
   if (favorites.contains(team)) return 'Absolute Titelfavoriten';
   if (tops.contains(team)) return 'Top Team';
@@ -130,9 +127,8 @@ String getTier(String team) {
 }
 
 String? getEliminationStage(String team, List<CupMatch> matches) {
-  final teamMatches = matches
-      .where((m) => m.homeTeam == team || m.awayTeam == team)
-      .toList();
+  final teamMatches =
+      matches.where((m) => m.homeTeam == team || m.awayTeam == team).toList();
   if (teamMatches.isEmpty) return null;
 
   final knockouts =
@@ -148,10 +144,10 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
           : (m.awayScore! > m.homeScore!);
       if (!won) {
         final stage = m.stage.toLowerCase();
-        if (stage.contains('sechzehntel') ||
-            stage.contains('achtel') ||
-            stage.contains('32') ||
-            stage.contains('16')) {
+        if (stage.contains('sechzehntel') || stage.contains('32')) {
+          return 'Sechzehntelfinale';
+        }
+        if (stage.contains('achtel') || stage.contains('16')) {
           return 'Achtelfinale';
         }
         if (stage.contains('viertel') || stage.contains('quarter')) {
@@ -194,22 +190,25 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
 int calculateRiskPoints(
     String team, String predictedStage, String actualStage) {
   final tier = getTier(team);
-  final isCorrect = predictedStage == actualStage;
+  final isCorrect = _stageRank(actualStage) <= _stageRank(predictedStage);
 
   if (tier == 'Absolute Titelfavoriten') {
     if (predictedStage == 'Gruppenphase') return isCorrect ? 70 : -70;
+    if (predictedStage == 'Sechzehntelfinale') return isCorrect ? 60 : -60;
     if (predictedStage == 'Achtelfinale') return isCorrect ? 50 : -50;
     if (predictedStage == 'Viertelfinale') return isCorrect ? 30 : -30;
     if (predictedStage == 'Halbfinale') return isCorrect ? 15 : -15;
     if (predictedStage == 'Finale') return isCorrect ? 5 : -5;
   } else if (tier == 'Top Team') {
     if (predictedStage == 'Gruppenphase') return isCorrect ? 40 : -40;
+    if (predictedStage == 'Sechzehntelfinale') return isCorrect ? 30 : -30;
     if (predictedStage == 'Achtelfinale') return isCorrect ? 20 : -20;
     if (predictedStage == 'Viertelfinale') return isCorrect ? 20 : -20;
     if (predictedStage == 'Halbfinale') return isCorrect ? 40 : -40;
     if (predictedStage == 'Finale') return isCorrect ? 50 : -50;
   } else if (tier == 'Durchschnittliches Team') {
     if (predictedStage == 'Gruppenphase') return isCorrect ? 5 : -5;
+    if (predictedStage == 'Sechzehntelfinale') return isCorrect ? 10 : -10;
     if (predictedStage == 'Achtelfinale') return isCorrect ? 15 : -15;
     if (predictedStage == 'Viertelfinale') return isCorrect ? 35 : -35;
     if (predictedStage == 'Halbfinale') return isCorrect ? 55 : -55;
@@ -217,12 +216,33 @@ int calculateRiskPoints(
   } else {
     // Gurkentruppe
     if (predictedStage == 'Gruppenphase') return isCorrect ? 5 : -5;
+    if (predictedStage == 'Sechzehntelfinale') return isCorrect ? 15 : -15;
     if (predictedStage == 'Achtelfinale') return isCorrect ? 30 : -30;
     if (predictedStage == 'Viertelfinale') return isCorrect ? 50 : -50;
     if (predictedStage == 'Halbfinale') return isCorrect ? 65 : -65;
     if (predictedStage == 'Finale') return isCorrect ? 80 : -80;
   }
   return 0;
+}
+
+int _stageRank(String stage) {
+  switch (stage) {
+    case 'Gruppenphase':
+      return 0;
+    case 'Sechzehntelfinale':
+      return 1;
+    case 'Achtelfinale':
+      return 2;
+    case 'Viertelfinale':
+      return 3;
+    case 'Halbfinale':
+      return 4;
+    case 'Finale':
+      return 5;
+    case 'Champion':
+      return 6;
+  }
+  return 99;
 }
 
 int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {

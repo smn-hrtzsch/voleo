@@ -45,7 +45,59 @@
 - [x] Show member profile images in league standings and tip views.
 - [x] Add app theme settings for system, light, and dark mode.
 - [x] Add Lieblingsmannschaft, Favorit, and Risiko-Tipp tournament picks and points scoring dynamics.
-- [ ] Show flags consistently in the tip screen.
+- [x] Fix deleting tips when a synced league has no matching tip document.
+- [x] Shorten league invite sharing text and remove the broken app-link line.
+- [x] Show flags consistently in the tip screen.
+- [x] Make risk-tip scoring award positive points for teams eliminated no later than the predicted round.
+- [x] Add Sechzehntelfinale to risk-tip elimination-round choices.
+- [x] Reset onboarding to the first step after sign-out instead of skipping ahead.
+- [x] Explain already-linked Google or Apple accounts during onboarding and offer account switching.
+- [x] Keep anonymous league creation reachable after skipping account linking.
+- [x] Allow moving back to earlier onboarding steps to edit choices.
+- [x] Replace onboarding error snackbars with floating toast messages.
+- [x] Deploy Firestore rules that allow invite-code league lookup for signed-in users.
+- [x] Add Liga tab actions for joining and creating additional leagues.
+- [x] Remove example invite code from code entry fields.
+- [x] Allow signed-in users to read league members for join-time duplicate-name checks.
+- [x] Add clearer duplicate nickname messaging when joining a league.
+- [x] Allow confirmed unlinking of Google and Apple providers from profile.
+- [x] Refresh Liga tab state immediately after switching active leagues.
+- [x] Center the match title in the tip entry screen.
+- [x] Require confirmation before deleting a tip.
+- [x] Show an app loading screen during auth restoration instead of flashing onboarding.
+- [x] Fix Firestore permissions for saving and deleting active-league tips.
+- [x] Delete anonymous Firebase Auth and Firestore account leftovers.
+- [x] Delete anonymous Firebase accounts during sign-out.
+- [x] Preserve nickname and existing profile image when linking Google or Apple.
+- [x] Keep the user on the Liga tab after switching active leagues.
+- [x] Verify balanced team column widths in upcoming match rows.
+- [x] Fix Sync World Cup Results script syntax failure and require credentials for real syncs.
+- [x] Store, load, and sync theme mode per Firebase user account.
+- [x] Replicate saved and deleted match tips across all joined leagues.
+- [x] Improve compact match row layout so team names get more usable space.
+- [x] Center group, matchup, and kickoff metadata in the single-match tip view.
+- [x] Verify anonymous Test account deletion in Firebase Auth and Firestore.
+- [x] Group risk-team picker options by risk tier.
+- [x] Adjust USA, Mexico, Colombia, Norway, Canada, Iran, and Egypt risk tiers.
+- [x] Allow long team names to wrap in match rows and tip detail matchup columns.
+- [x] Rename Heute tab to Home.
+- [x] Restyle Home league and Top 3 cards with a consistent subtle surface.
+- [x] Delete providerless Firebase accounts during sign-out after Google unlinking.
+- [x] Use lightweight Google sign-in before interactive auth for cleaner repeat logins.
+- [x] Avoid revoking Google app consent on provider unlink.
+- [x] Reauthenticate before unlinking Google so providerless account deletion can proceed.
+- [x] Show loading route during sign-out and account deletion transitions.
+- [x] Reuse already-linked account switch dialog in profile Google linking.
+- [x] Suppress Google cancellation error toasts.
+- [x] Copy league invite code from the Home league card.
+- [x] Refresh league ranking photos from member profile photos.
+- [x] Center own and league-member tips in the single-match view.
+- [x] Keep the tip delete action inside the own-tip chip.
+- [x] Match Apple profile icon color to text in dark mode.
+- [x] Route Back from non-Home tabs to Home and close only from Home.
+- [x] Force onboarding route after sign-out/delete to avoid loading deadlocks.
+- [x] Retry Google unlink reauthentication only when Firebase requires it.
+- [x] Use Google profile photo from GoogleSignIn when Firebase Auth has not populated it yet.
 - [ ] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
 - [ ] Add a date-mode switch for games with swipe navigation and current-day initial focus.
 

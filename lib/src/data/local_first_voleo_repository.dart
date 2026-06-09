@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -123,10 +124,16 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   Future<void> signInWithApple() async {}
 
   @override
+  Future<void> signInWithCredential(auth.AuthCredential credential) async {}
+
+  @override
   Future<void> linkWithGoogle() async {}
 
   @override
   Future<void> linkWithApple() async {}
+
+  @override
+  Future<void> unlinkProvider(String providerId) async {}
 
   @override
   Future<void> updateProfile({
@@ -150,6 +157,11 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       photoUrl: photoUrl ?? user.photoUrl,
       email: user.email,
       providerIds: user.providerIds,
+      favoriteTeam: user.favoriteTeam,
+      predictedChampion: user.predictedChampion,
+      riskTeam: user.riskTeam,
+      riskStage: user.riskStage,
+      themeModeName: user.themeModeName,
     );
     if (nickname != null) {
       _upsertMember(
@@ -161,6 +173,9 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     await _persist();
     _emitAll();
   }
+
+  @override
+  Future<void> updateThemeMode(String modeName) async {}
 
   @override
   Future<void> uploadProfileImage(String filePath) async {
@@ -725,10 +740,13 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     final user = _currentUser;
     if (user == null) throw StateError('Kein aktiver Benutzer.');
 
-    final sortedMatches = [..._currentMatches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-    final tournamentStarted = sortedMatches.isNotEmpty && DateTime.now().isAfter(sortedMatches.first.kickoff);
+    final sortedMatches = [..._currentMatches]
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final tournamentStarted = sortedMatches.isNotEmpty &&
+        DateTime.now().isAfter(sortedMatches.first.kickoff);
     if (tournamentStarted) {
-      throw StateError('Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
+      throw StateError(
+          'Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
     }
 
     _currentUser = VoleoUser(

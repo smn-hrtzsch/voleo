@@ -73,16 +73,59 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(match.stage),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            _matchContextLabel(match),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
                         const SizedBox(height: 12),
-                        Text(
-                          '${CountryFlags.getFlag(match.homeTeam)} ${match.homeTeam} - '
-                          '${match.awayTeam} ${CountryFlags.getFlag(match.awayTeam)}',
-                          style: Theme.of(context).textTheme.headlineSmall,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: _MatchupTeamLabel(
+                                teamName: match.homeTeam,
+                                isHome: true,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 56,
+                              child: Text(
+                                '-:-',
+                                textAlign: TextAlign.center,
+                                style:
+                                    Theme.of(context).textTheme.headlineSmall,
+                              ),
+                            ),
+                            Expanded(
+                              child: _MatchupTeamLabel(
+                                teamName: match.awayTeam,
+                                isHome: false,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
-                        Text(DateFormat('dd.MM.yyyy HH:mm')
-                            .format(match.kickoff)),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            DateFormat('dd.MM.yyyy HH:mm')
+                                .format(match.kickoff),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
                         if (match.status == MatchStatus.finalResult) ...[
                           const SizedBox(height: 12),
                           Chip(
@@ -94,33 +137,33 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                         ],
                         if (existingTip != null) ...[
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Chip(
-                                avatar: const Icon(Icons.check, size: 18),
-                                label: Text(
-                                  'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
-                                ),
+                          Center(
+                            child: InputChip(
+                              avatar: const Icon(Icons.check, size: 18),
+                              label: Text(
+                                'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
                               ),
-                              if (!match.isLocked) ...[
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: _isSaving ? null : () => _deleteTip(match),
-                                  icon: Icon(
-                                    Icons.delete_outline,
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                                  tooltip: 'Tipp löschen',
-                                ),
-                              ],
-                            ],
+                              deleteIcon: !match.isLocked
+                                  ? Icon(
+                                      Icons.delete_outline,
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                    )
+                                  : null,
+                              onDeleted: !match.isLocked && !_isSaving
+                                  ? () => _deleteTip(match)
+                                  : null,
+                              deleteButtonTooltipMessage: 'Tipp löschen',
+                            ),
                           ),
                         ],
                         if (scoreResult != null) ...[
                           const SizedBox(height: 8),
-                          Chip(
-                            avatar: const Icon(Icons.stars, size: 18),
-                            label: Text(_scoreLabel(scoreResult)),
+                          Center(
+                            child: Chip(
+                              avatar: const Icon(Icons.stars, size: 18),
+                              label: Text(_scoreLabel(scoreResult)),
+                            ),
                           ),
                         ],
                       ],
@@ -166,22 +209,38 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                   const SizedBox(height: 24),
                   Text(
                     'Tipps der Runde',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
                   for (final tip
                       in allTips.where((tip) => tip.matchId == match.id))
                     Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.person_outline),
-                        title: Text(displayNames[tip.uid] ?? 'Spieler'),
-                        trailing: Text(
-                          '${tip.predictedHome}:${tip.predictedAway}',
-                          style: Theme.of(context).textTheme.titleLarge,
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          children: [
+                            Text(
+                              displayNames[tip.uid] ?? 'Spieler',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${tip.predictedHome}:${tip.predictedAway}',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            if (match.status == MatchStatus.finalResult) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '${tip.points} Punkte',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
                         ),
-                        subtitle: match.status == MatchStatus.finalResult
-                            ? Text('${tip.points} Punkte')
-                            : null,
                       ),
                     ),
                 ],
@@ -214,19 +273,44 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   }
 
   Future<void> _deleteTip(CupMatch match) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Tipp löschen?'),
+          content: const Text(
+            'Möchtest du deinen Tipp für dieses Spiel wirklich löschen?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Löschen'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _isSaving = true);
     try {
       await ref.read(repositoryProvider).deleteTip(matchId: match.id);
+      if (!mounted) return;
       setState(() {
         _homeGoals = 0;
         _awayGoals = 0;
         _didSeedTip = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tipp gelöscht.')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tipp gelöscht.')),
+      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -236,6 +320,44 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+}
+
+class _MatchupTeamLabel extends StatelessWidget {
+  const _MatchupTeamLabel({
+    required this.teamName,
+    required this.isHome,
+  });
+
+  final String teamName;
+  final bool isHome;
+
+  @override
+  Widget build(BuildContext context) {
+    final flag = Text(
+      CountryFlags.getFlag(teamName),
+      style: const TextStyle(fontSize: 24),
+    );
+    final name = Expanded(
+      child: Text(
+        teamName,
+        maxLines: 2,
+        softWrap: true,
+        overflow: TextOverflow.ellipsis,
+        textAlign: isHome ? TextAlign.right : TextAlign.left,
+        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisAlignment:
+          isHome ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: isHome
+          ? [name, const SizedBox(width: 8), flag]
+          : [flag, const SizedBox(width: 8), name],
+    );
   }
 }
 
@@ -266,6 +388,11 @@ String _scoreLabel(ScoreResult result) {
   if (result.points == 3) return '3 Punkte: richtige Tordifferenz';
   if (result.isTendency) return '${result.points} Punkte: richtige Tendenz';
   return '0 Punkte';
+}
+
+String _matchContextLabel(CupMatch match) {
+  if (match.group.isNotEmpty) return 'Gruppe ${match.group}';
+  return match.stage;
 }
 
 class _ScoreWheel extends StatelessWidget {
