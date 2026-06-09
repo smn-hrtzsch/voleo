@@ -10,6 +10,10 @@ class VoleoUser {
     this.photoUrl,
     this.email,
     this.providerIds = const [],
+    this.favoriteTeam,
+    this.predictedChampion,
+    this.riskTeam,
+    this.riskStage,
   });
 
   final String uid;
@@ -18,6 +22,10 @@ class VoleoUser {
   final String? photoUrl;
   final String? email;
   final List<String> providerIds;
+  final String? favoriteTeam;
+  final String? predictedChampion;
+  final String? riskTeam;
+  final String? riskStage;
 
   bool get hasGoogleProvider => providerIds.contains('google.com');
   bool get hasAppleProvider => providerIds.contains('apple.com');

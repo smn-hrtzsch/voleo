@@ -7,6 +7,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../domain/flags.dart';
+import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 
@@ -51,6 +53,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onChanged: (mode) =>
                         ref.read(themeModeProvider.notifier).setThemeMode(mode),
                   ),
+                  const SizedBox(height: 16),
+                  _BoosterAndRiskPicksCard(user: value),
                   const SizedBox(height: 24),
                   Text(
                     'Anmeldemethoden',
@@ -99,6 +103,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onPressed: _isLoading ? null : () => _confirmSignOut(value),
                     icon: const Icon(Icons.logout),
                     label: const Text('Abmelden'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _isLoading ? null : () => _confirmDeleteAccount(value),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    ),
+                    icon: const Icon(Icons.delete_forever),
+                    label: const Text('Account löschen'),
                   ),
                   const SizedBox(height: 24),
                   const Center(
@@ -225,6 +239,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         if (mounted) context.go('/');
       },
       null,
+    );
+  }
+
+  Future<void> _confirmDeleteAccount(VoleoUser user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Account unwiderruflich löschen?'),
+          content: const Text(
+            'Bist du sicher? Alle deine Tipps, dein Punktestand und dein Account '
+            'werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden!',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Account löschen'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    await _deleteAccount();
+  }
+
+  Future<void> _deleteAccount() async {
+    await _runProfileAction(
+      () async {
+        await ref.read(repositoryProvider).deleteAccount();
+        if (mounted) context.go('/');
+      },
+      'Account erfolgreich gelöscht.',
     );
   }
 
@@ -441,31 +496,429 @@ class _ProviderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        alignment: Alignment.centerLeft,
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final borderSide = BorderSide(
+      color: isDark ? const Color(0xff2f3545) : scheme.outlineVariant,
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.fromBorderSide(borderSide),
       ),
-      child: Row(
-        children: [
-          icon,
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall,
+      child: InkWell(
+        onTap: isLinked ? null : onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              icon,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Icon(
+                isLinked ? Icons.check_circle : Icons.chevron_right,
+                color: isLinked ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ],
           ),
-          Icon(isLinked ? Icons.check_circle : Icons.chevron_right),
-        ],
+        ),
       ),
     );
   }
 }
+
+class _BoosterAndRiskPicksCard extends ConsumerStatefulWidget {
+  const _BoosterAndRiskPicksCard({required this.user});
+
+  final VoleoUser user;
+
+  @override
+  ConsumerState<_BoosterAndRiskPicksCard> createState() =>
+      _BoosterAndRiskPicksCardState();
+}
+
+class _BoosterAndRiskPicksCardState
+    extends ConsumerState<_BoosterAndRiskPicksCard> {
+  bool _isSaving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final matchesValue = ref.watch(matchesProvider);
+    final scheme = Theme.of(context).colorScheme;
+
+    return matchesValue.when(
+      data: (matches) {
+        final sorted = [...matches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+        final tournamentStarted =
+            sorted.isNotEmpty && DateTime.now().isAfter(sorted.first.kickoff);
+
+        final teams = {for (final m in matches) ...[m.homeTeam, m.awayTeam]}
+            .where((t) => !isPlaceholderTeam(t))
+            .toList()
+          ..sort();
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.rocket_launch_outlined),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Turnier-Picks & Booster',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  tournamentStarted
+                      ? 'Das Turnier hat bereits begonnen. Die Picks können nicht mehr geändert werden.'
+                      : 'Wähle deine Teams vor Turnierstart. Später sind keine Änderungen möglich.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: tournamentStarted ? scheme.error : scheme.onSurfaceVariant,
+                      ),
+                ),
+                const Divider(height: 24),
+
+                // 1. Lieblingsmannschaft
+                _buildPickTile(
+                  title: 'Lieblingsmannschaft (+10 Pkt./Sieg)',
+                  value: widget.user.favoriteTeam,
+                  teams: teams,
+                  disabled: tournamentStarted || _isSaving,
+                  onSelected: (team) => _savePick(favoriteTeam: team),
+                ),
+                const SizedBox(height: 12),
+
+                // 2. Favorit (WM-Sieger)
+                _buildPickTile(
+                  title: 'WM-Sieger Tipp (+10 Pkt./Sieg)',
+                  value: widget.user.predictedChampion,
+                  teams: teams,
+                  disabled: tournamentStarted || _isSaving,
+                  onSelected: (team) => _savePick(predictedChampion: team),
+                ),
+                const SizedBox(height: 12),
+
+                // 3. Risiko-Tipp
+                Text(
+                  'WM-Risiko-Tipp (Gewinnen NICHT die WM)',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                _buildPickTile(
+                  title: 'Risiko-Mannschaft',
+                  value: widget.user.riskTeam,
+                  teams: teams,
+                  disabled: tournamentStarted || _isSaving,
+                  onSelected: (team) => _savePick(riskTeam: team, riskStage: ''),
+                ),
+                const SizedBox(height: 12),
+                _buildStageTile(
+                  title: 'Ausscheidungs-Runde',
+                  value: widget.user.riskStage,
+                  disabled: tournamentStarted || _isSaving || widget.user.riskTeam == null || widget.user.riskTeam!.isEmpty,
+                  onSelected: (stage) => _savePick(riskStage: stage),
+                ),
+                if (widget.user.riskTeam != null && widget.user.riskTeam!.isNotEmpty &&
+                    widget.user.riskStage != null && widget.user.riskStage!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _getRiskPointsInfo(widget.user.riskTeam!, widget.user.riskStage!),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildPickTile({
+    required String title,
+    required String? value,
+    required List<String> teams,
+    required bool disabled,
+    required ValueChanged<String> onSelected,
+  }) {
+    final hasValue = value != null && value.isNotEmpty;
+    final flag = hasValue ? CountryFlags.getFlag(value) : '';
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 4),
+        OutlinedButton(
+          onPressed: disabled
+              ? null
+              : () => _showTeamPickerDialog(title, value, teams, onSelected),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            alignment: Alignment.centerLeft,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          child: Row(
+            children: [
+              if (hasValue) ...[
+                Text(flag, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+              ] else
+                Text(
+                  'Mannschaft wählen...',
+                  style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                ),
+              const Spacer(),
+              if (!disabled) const Icon(Icons.arrow_drop_down, size: 20),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStageTile({
+    required String title,
+    required String? value,
+    required bool disabled,
+    required ValueChanged<String> onSelected,
+  }) {
+    final hasValue = value != null && value.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 4),
+        OutlinedButton(
+          onPressed: disabled
+              ? null
+              : () => _showStagePickerDialog(value, onSelected),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            alignment: Alignment.centerLeft,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          child: Row(
+            children: [
+              if (hasValue)
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                )
+              else
+                Text(
+                  widget.user.riskTeam == null || widget.user.riskTeam!.isEmpty
+                      ? 'Bitte zuerst Risiko-Mannschaft wählen...'
+                      : 'Ausscheidungsrunde wählen...',
+                  style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                ),
+              const Spacer(),
+              if (!disabled) const Icon(Icons.arrow_drop_down, size: 20),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showTeamPickerDialog(
+    String title,
+    String? selectedValue,
+    List<String> teams,
+    ValueChanged<String> onSelected,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 380,
+            child: ListView.builder(
+              itemCount: teams.length,
+              itemBuilder: (context, index) {
+                final team = teams[index];
+                final flag = CountryFlags.getFlag(team);
+                final isSelected = team == selectedValue;
+                return ListTile(
+                  leading: Text(flag, style: const TextStyle(fontSize: 22)),
+                  title: Text(team),
+                  trailing: isSelected
+                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(context);
+                    onSelected(team);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showStagePickerDialog(
+    String? selectedValue,
+    ValueChanged<String> onSelected,
+  ) {
+    final stages = [
+      'Gruppenphase',
+      'Achtelfinale',
+      'Viertelfinale',
+      'Halbfinale',
+      'Finale'
+    ];
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Wann scheiden sie aus?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final stage in stages)
+                ListTile(
+                  title: Text(stage),
+                  trailing: stage == selectedValue
+                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(context);
+                    onSelected(stage);
+                  },
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _getRiskPointsInfo(String team, String stage) {
+    final tier = getTier(team);
+    final correct = calculateRiskPoints(team, stage, stage);
+    final incorrect = -correct;
+    return 'Risiko-Tier: $tier\nKorrekt getippt: +$correct Punkte\nFalsch getippt: $incorrect Punkte';
+  }
+
+  Future<void> _savePick({
+    String? favoriteTeam,
+    String? predictedChampion,
+    String? riskTeam,
+    String? riskStage,
+  }) async {
+    setState(() => _isSaving = true);
+    try {
+      await ref.read(repositoryProvider).updateExtraPicks(
+            favoriteTeam: favoriteTeam,
+            predictedChampion: predictedChampion,
+            riskTeam: riskTeam,
+            riskStage: riskStage,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auswahl erfolgreich gespeichert.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Speichern: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+}
+
+bool isPlaceholderTeam(String name) {
+  final lower = name.toLowerCase();
+  return lower.startsWith('sieger') ||
+      lower.startsWith('zweiter') ||
+      lower.startsWith('dritter') ||
+      lower.startsWith('bester') ||
+      lower.startsWith('verlierer') ||
+      lower.contains('gruppe') ||
+      lower.contains('sechzehntelfinale') ||
+      lower.contains('achtelfinale') ||
+      lower.contains('viertel') ||
+      lower.contains('halb') ||
+      lower.contains('platz 3') ||
+      lower.contains('finale') ||
+      lower.startsWith('tbd') ||
+      lower.trim().isEmpty;
+}
+

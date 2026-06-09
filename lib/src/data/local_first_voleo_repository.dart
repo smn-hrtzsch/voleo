@@ -202,6 +202,11 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Future<void> leaveLeague({required String leagueId}) async {
+    _emitAll();
+  }
+
+  @override
   Future<void> renameLeague({required String name}) async {
     final league = _currentLeague;
     if (league == null) throw StateError('Keine aktive Tipprunde.');
@@ -250,6 +255,20 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Future<void> deleteTip({required String matchId}) async {
+    final user = _requireUser();
+    final match = _currentMatches.firstWhere((match) => match.id == matchId);
+    if (!canEditTip(match, DateTime.now())) {
+      throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
+    }
+    _currentTips.removeWhere(
+      (tip) => tip.uid == user.uid && tip.matchId == matchId,
+    );
+    await _persist();
+    _emitAll();
+  }
+
+  @override
   Future<void> linkEmail(String email) async {
     final user = _requireUser();
     _currentUser = VoleoUser(
@@ -266,6 +285,16 @@ class LocalFirstVoleoRepository implements VoleoRepository {
 
   @override
   Future<void> signOut() async {
+    _currentUser = null;
+    _currentLeague = null;
+    _currentTips.clear();
+    _members.clear();
+    await _persist();
+    _emitAll();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
     _currentUser = null;
     _currentLeague = null;
     _currentTips.clear();
@@ -340,6 +369,8 @@ class LocalFirstVoleoRepository implements VoleoRepository {
         if (result.isExact) exact++;
         if (result.isTendency) tendency++;
       }
+      final extraPoints = calculateExtraPoints(user, _currentMatches);
+      total += extraPoints;
       standingSeeds.add(
         Standing(
           uid: user.uid,
@@ -380,6 +411,10 @@ class LocalFirstVoleoRepository implements VoleoRepository {
                   ?.whereType<String>()
                   .toList() ??
               const [],
+          favoriteTeam: userJson['favoriteTeam'] as String?,
+          predictedChampion: userJson['predictedChampion'] as String?,
+          riskTeam: userJson['riskTeam'] as String?,
+          riskStage: userJson['riskStage'] as String?,
         );
         _upsertMember(
           uid: _currentUser!.uid,
@@ -429,6 +464,10 @@ class LocalFirstVoleoRepository implements VoleoRepository {
                 'photoUrl': _currentUser!.photoUrl,
                 'email': _currentUser!.email,
                 'providerIds': _currentUser!.providerIds,
+                'favoriteTeam': _currentUser!.favoriteTeam,
+                'predictedChampion': _currentUser!.predictedChampion,
+                'riskTeam': _currentUser!.riskTeam,
+                'riskStage': _currentUser!.riskStage,
               },
         'league': _currentLeague == null
             ? null
@@ -674,5 +713,37 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       'Uzbekistan': 'Usbekistan',
     };
     return names[value] ?? value;
+  }
+
+  @override
+  Future<void> updateExtraPicks({
+    String? favoriteTeam,
+    String? predictedChampion,
+    String? riskTeam,
+    String? riskStage,
+  }) async {
+    final user = _currentUser;
+    if (user == null) throw StateError('Kein aktiver Benutzer.');
+
+    final sortedMatches = [..._currentMatches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final tournamentStarted = sortedMatches.isNotEmpty && DateTime.now().isAfter(sortedMatches.first.kickoff);
+    if (tournamentStarted) {
+      throw StateError('Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
+    }
+
+    _currentUser = VoleoUser(
+      uid: user.uid,
+      nickname: user.nickname,
+      isAnonymous: user.isAnonymous,
+      photoUrl: user.photoUrl,
+      email: user.email,
+      providerIds: user.providerIds,
+      favoriteTeam: favoriteTeam ?? user.favoriteTeam,
+      predictedChampion: predictedChampion ?? user.predictedChampion,
+      riskTeam: riskTeam ?? user.riskTeam,
+      riskStage: riskStage ?? user.riskStage,
+    );
+    await _persist();
+    _emitAll();
   }
 }
