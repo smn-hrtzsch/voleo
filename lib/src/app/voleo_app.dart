@@ -26,6 +26,12 @@ final routerRefreshListenableProvider = Provider<Listenable>((ref) {
   ref.listen(leagueProvider, (_, __) {
     Future.microtask(() => trigger.trigger());
   });
+  ref.listen(sessionTransitionProvider, (_, __) {
+    Future.microtask(() => trigger.trigger());
+  });
+  ref.listen(forceOnboardingProvider, (_, __) {
+    Future.microtask(() => trigger.trigger());
+  });
   return trigger;
 });
 
@@ -36,10 +42,35 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     refreshListenable: refreshListenable,
     redirect: (context, state) {
-      final user = ref.read(userProvider).value;
-      final league = ref.read(leagueProvider).value;
+      final userValue = ref.read(userProvider);
+      final leagueValue = ref.read(leagueProvider);
+      final sessionTransitioning = ref.read(sessionTransitionProvider);
+      final forceOnboarding = ref.read(forceOnboardingProvider);
+      final isLoadingAuth = userValue.isLoading || userValue.isRefreshing;
+      final user = userValue.value;
+      final league = leagueValue.value;
       final loggedIn = user != null;
+      final isLoadingLeague =
+          loggedIn && (leagueValue.isLoading || leagueValue.isRefreshing);
       final hasLeague = league != null;
+      final isLoadingRoute = state.matchedLocation == '/loading';
+      final isRootRoute = state.matchedLocation == '/';
+
+      if (sessionTransitioning) {
+        return isLoadingRoute ? null : '/loading';
+      }
+      if (forceOnboarding) {
+        return isRootRoute ? null : '/';
+      }
+      if (isLoadingRoute && (isLoadingAuth || isLoadingLeague)) {
+        return null;
+      }
+      if ((isLoadingAuth || isLoadingLeague) && isRootRoute) {
+        return '/loading';
+      }
+      if (isLoadingRoute) {
+        return loggedIn && hasLeague ? '/home' : '/';
+      }
 
       if (loggedIn && hasLeague && state.matchedLocation == '/') {
         return '/home';
@@ -52,6 +83,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/loading',
+        builder: (context, state) => const _AppLoadingScreen(),
+      ),
       GoRoute(
         path: '/',
         builder: (context, state) => const OnboardingScreen(),
@@ -133,6 +168,24 @@ class VoleoApp extends ConsumerWidget {
       darkTheme: buildVoleoTheme(brightness: Brightness.dark),
       themeMode: themeMode,
       routerConfig: router,
+    );
+  }
+}
+
+class _AppLoadingScreen extends StatelessWidget {
+  const _AppLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SizedBox(
+            width: 180,
+            child: LinearProgressIndicator(),
+          ),
+        ),
+      ),
     );
   }
 }

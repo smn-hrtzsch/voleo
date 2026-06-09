@@ -14,6 +14,7 @@ class VoleoUser {
     this.predictedChampion,
     this.riskTeam,
     this.riskStage,
+    this.themeModeName,
   });
 
   final String uid;
@@ -26,9 +27,11 @@ class VoleoUser {
   final String? predictedChampion;
   final String? riskTeam;
   final String? riskStage;
+  final String? themeModeName;
 
   bool get hasGoogleProvider => providerIds.contains('google.com');
   bool get hasAppleProvider => providerIds.contains('apple.com');
+  bool get hasLinkedProvider => providerIds.isNotEmpty;
 }
 
 class League {

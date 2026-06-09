@@ -16,15 +16,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/leagues/$(leagueId)).data.ownerUid == request.auth.uid;
     }
 
-    function onlyJoinsOwnLeague() {
+    function onlyUpdatesOwnLeagueMembership() {
       return signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
-        && request.auth.uid in request.resource.data.memberIds;
+        && (request.auth.uid in request.resource.data.memberIds
+          || request.auth.uid in resource.data.memberIds);
     }
 
     function tipIsUnlocked() {
-      return exists(/databases/$(database)/documents/matches/$(request.resource.data.matchId))
-        && request.time < get(/databases/$(database)/documents/matches/$(request.resource.data.matchId)).data.kickoff;
+      return request.resource.data.lockedAt is timestamp
+        && request.time < request.resource.data.lockedAt;
     }
 
     match /users/{uid} {
@@ -38,14 +39,13 @@ service cloud.firestore {
     }
     match /leagues/{leagueId} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if isLeagueMember(leagueId)
-        || (signedIn() && request.auth.uid in resource.data.memberIds);
+      allow read: if signedIn();
       allow update: if isLeagueOwner(leagueId)
-        || (isLeagueMember(leagueId) && onlyJoinsOwnLeague());
+        || (signedIn() && onlyUpdatesOwnLeagueMembership());
       allow delete: if isLeagueOwner(leagueId);
 
       match /members/{uid} {
-        allow read: if isLeagueMember(leagueId);
+        allow read: if signedIn();
         allow create: if signedIn() && request.auth.uid == uid;
         allow update: if signedIn() && request.auth.uid == uid;
         allow delete: if isLeagueOwner(leagueId) || (signedIn() && request.auth.uid == uid);
@@ -60,13 +60,12 @@ service cloud.firestore {
         allow delete: if resource == null || (
           isLeagueMember(leagueId)
           && resource.data.uid == request.auth.uid
-          && exists(/databases/$(database)/documents/matches/$(resource.data.matchId))
-          && request.time < get(/databases/$(database)/documents/matches/$(resource.data.matchId)).data.kickoff
         );
       }
 
       match /standings/{uid} {
         allow read: if isLeagueMember(leagueId);
+        allow delete: if signedIn() && request.auth.uid == uid;
         allow write: if false;
       }
     }
