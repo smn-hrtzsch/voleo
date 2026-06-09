@@ -45,6 +45,16 @@ final standingsProvider = StreamProvider<List<Standing>>((ref) {
   return ref.watch(repositoryProvider).watchStandings();
 });
 
+class CachedInviteCode extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  set value(String? val) => state = val;
+}
+
+final cachedInviteCodeProvider =
+    NotifierProvider<CachedInviteCode, String?>(CachedInviteCode.new);
+
 final themeModeProvider =
     NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
