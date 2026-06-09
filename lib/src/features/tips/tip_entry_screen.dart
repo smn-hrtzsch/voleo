@@ -94,11 +94,26 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                         ],
                         if (existingTip != null) ...[
                           const SizedBox(height: 12),
-                          Chip(
-                            avatar: const Icon(Icons.check, size: 18),
-                            label: Text(
-                              'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
-                            ),
+                          Row(
+                            children: [
+                              Chip(
+                                avatar: const Icon(Icons.check, size: 18),
+                                label: Text(
+                                  'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
+                                ),
+                              ),
+                              if (!match.isLocked) ...[
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: _isSaving ? null : () => _deleteTip(match),
+                                  icon: Icon(
+                                    Icons.cancel_outlined,
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                  tooltip: 'Tipp löschen',
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                         if (scoreResult != null) ...[
@@ -191,6 +206,31 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _deleteTip(CupMatch match) async {
+    setState(() => _isSaving = true);
+    try {
+      await ref.read(repositoryProvider).deleteTip(matchId: match.id);
+      setState(() {
+        _homeGoals = 0;
+        _awayGoals = 0;
+        _didSeedTip = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tipp gelöscht.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Löschen: $error')),
         );
       }
     } finally {
