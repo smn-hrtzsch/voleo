@@ -68,6 +68,7 @@ List<Standing> rankStandings(List<Standing> standings) {
           exactCount: current.exactCount,
           tendencyCount: current.tendencyCount,
           rank: rank,
+          photoUrl: current.photoUrl,
         );
       }(),
   ];
@@ -77,4 +78,203 @@ int _sign(int value) {
   if (value > 0) return 1;
   if (value < 0) return -1;
   return 0;
+}
+
+String getTier(String team) {
+  final favorites = [
+    'Argentinien',
+    'Brasilien',
+    'Deutschland',
+    'England',
+    'Frankreich',
+    'Portugal',
+    'Spanien'
+  ];
+  final tops = [
+    'Belgien',
+    'Japan',
+    'Kolumbien',
+    'Kroatien',
+    'Marokko',
+    'Mexiko',
+    'Niederlande',
+    'Schweiz',
+    'Senegal',
+    'Uruguay',
+    'USA'
+  ];
+  final mids = [
+    'Algerien',
+    'Australien',
+    'Bosnien und Herzegowina',
+    'Bosnien-Herzegowina',
+    'Bosnien Herzegowina',
+    'Bosnia and Herzegovina',
+    'Ecuador',
+    'Elfenbeinküste',
+    'Ghana',
+    'Iran',
+    'Kanada',
+    'Norwegen',
+    'Österreich',
+    'Schweden',
+    'Südkorea',
+    'Tschechien',
+    'Türkei',
+    'Ägypten'
+  ];
+  if (favorites.contains(team)) return 'Absolute Titelfavoriten';
+  if (tops.contains(team)) return 'Top Team';
+  if (mids.contains(team)) return 'Durchschnittliches Team';
+  return 'Gurkentruppe';
+}
+
+String? getEliminationStage(String team, List<CupMatch> matches) {
+  final teamMatches = matches
+      .where((m) => m.homeTeam == team || m.awayTeam == team)
+      .toList();
+  if (teamMatches.isEmpty) return null;
+
+  final knockouts =
+      teamMatches.where((m) => !m.stage.startsWith('Gruppe')).toList();
+
+  for (final m in knockouts) {
+    if (m.status == MatchStatus.finalResult &&
+        m.homeScore != null &&
+        m.awayScore != null) {
+      final isHome = m.homeTeam == team;
+      final won = isHome
+          ? (m.homeScore! > m.awayScore!)
+          : (m.awayScore! > m.homeScore!);
+      if (!won) {
+        final stage = m.stage.toLowerCase();
+        if (stage.contains('sechzehntel') ||
+            stage.contains('achtel') ||
+            stage.contains('32') ||
+            stage.contains('16')) {
+          return 'Achtelfinale';
+        }
+        if (stage.contains('viertel') || stage.contains('quarter')) {
+          return 'Viertelfinale';
+        }
+        if (stage.contains('halb') || stage.contains('semi')) {
+          return 'Halbfinale';
+        }
+        if (stage.contains('final')) {
+          return 'Finale';
+        }
+      }
+    }
+  }
+
+  final hasWonFinal = knockouts.any((m) =>
+      m.stage.toLowerCase().contains('final') &&
+      !m.stage.toLowerCase().contains('halb') &&
+      !m.stage.toLowerCase().contains('viertel') &&
+      m.status == MatchStatus.finalResult &&
+      m.homeScore != null &&
+      m.awayScore != null &&
+      ((m.homeTeam == team && m.homeScore! > m.awayScore!) ||
+          (m.awayTeam == team && m.awayScore! > m.homeScore!)));
+  if (hasWonFinal) {
+    return 'Champion';
+  }
+
+  final groupMatches =
+      matches.where((m) => m.stage.startsWith('Gruppe')).toList();
+  final allGroupsFinished = groupMatches.isNotEmpty &&
+      groupMatches.every((m) => m.status == MatchStatus.finalResult);
+  if (allGroupsFinished && knockouts.isEmpty) {
+    return 'Gruppenphase';
+  }
+
+  return null;
+}
+
+int calculateRiskPoints(
+    String team, String predictedStage, String actualStage) {
+  final tier = getTier(team);
+  final isCorrect = predictedStage == actualStage;
+
+  if (tier == 'Absolute Titelfavoriten') {
+    if (predictedStage == 'Gruppenphase') return isCorrect ? 70 : -70;
+    if (predictedStage == 'Achtelfinale') return isCorrect ? 50 : -50;
+    if (predictedStage == 'Viertelfinale') return isCorrect ? 30 : -30;
+    if (predictedStage == 'Halbfinale') return isCorrect ? 15 : -15;
+    if (predictedStage == 'Finale') return isCorrect ? 5 : -5;
+  } else if (tier == 'Top Team') {
+    if (predictedStage == 'Gruppenphase') return isCorrect ? 40 : -40;
+    if (predictedStage == 'Achtelfinale') return isCorrect ? 20 : -20;
+    if (predictedStage == 'Viertelfinale') return isCorrect ? 20 : -20;
+    if (predictedStage == 'Halbfinale') return isCorrect ? 40 : -40;
+    if (predictedStage == 'Finale') return isCorrect ? 50 : -50;
+  } else if (tier == 'Durchschnittliches Team') {
+    if (predictedStage == 'Gruppenphase') return isCorrect ? 5 : -5;
+    if (predictedStage == 'Achtelfinale') return isCorrect ? 15 : -15;
+    if (predictedStage == 'Viertelfinale') return isCorrect ? 35 : -35;
+    if (predictedStage == 'Halbfinale') return isCorrect ? 55 : -55;
+    if (predictedStage == 'Finale') return isCorrect ? 65 : -65;
+  } else {
+    // Gurkentruppe
+    if (predictedStage == 'Gruppenphase') return isCorrect ? 5 : -5;
+    if (predictedStage == 'Achtelfinale') return isCorrect ? 30 : -30;
+    if (predictedStage == 'Viertelfinale') return isCorrect ? 50 : -50;
+    if (predictedStage == 'Halbfinale') return isCorrect ? 65 : -65;
+    if (predictedStage == 'Finale') return isCorrect ? 80 : -80;
+  }
+  return 0;
+}
+
+int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
+  var extraPoints = 0;
+
+  // 1. Lieblingsmannschaft
+  final fav = user.favoriteTeam;
+  if (fav != null && fav.isNotEmpty) {
+    for (final match in matches) {
+      if (match.status == MatchStatus.finalResult &&
+          match.homeScore != null &&
+          match.awayScore != null) {
+        if (match.homeTeam == fav && match.homeScore! > match.awayScore!) {
+          extraPoints += 10;
+        } else if (match.awayTeam == fav &&
+            match.awayScore! > match.homeScore!) {
+          extraPoints += 10;
+        }
+      }
+    }
+  }
+
+  // 2. Favorit
+  final championTipp = user.predictedChampion;
+  if (championTipp != null && championTipp.isNotEmpty) {
+    for (final match in matches) {
+      if (match.status == MatchStatus.finalResult &&
+          match.homeScore != null &&
+          match.awayScore != null) {
+        if (match.homeTeam == championTipp &&
+            match.homeScore! > match.awayScore!) {
+          extraPoints += 10;
+        } else if (match.awayTeam == championTipp &&
+            match.awayScore! > match.homeScore!) {
+          extraPoints += 10;
+        }
+      }
+    }
+  }
+
+  // 3. Risiko-Tipp
+  final rTeam = user.riskTeam;
+  final rStage = user.riskStage;
+  if (rTeam != null &&
+      rTeam.isNotEmpty &&
+      rStage != null &&
+      rStage.isNotEmpty) {
+    final actualStage = getEliminationStage(rTeam, matches);
+    if (actualStage != null) {
+      extraPoints += calculateRiskPoints(rTeam, rStage, actualStage);
+    }
+  }
+
+  return extraPoints;
 }

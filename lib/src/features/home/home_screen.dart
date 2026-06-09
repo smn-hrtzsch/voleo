@@ -1,11 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../domain/flags.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
-import '../shared/app_shell.dart';
 import '../shared/async_value_view.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -15,45 +17,74 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final matches = ref.watch(matchesProvider);
     final league = ref.watch(leagueProvider);
-    final tips = ref.watch(tipsProvider).valueOrNull ?? const <Tip>[];
+    final leagueValue = league.value;
+    final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
+    final standings = ref.watch(standingsProvider).value ?? const <Standing>[];
+    final user = ref.watch(userProvider).value;
 
-    return AppShell(
-      title: 'Voleo',
-      selectedIndex: 0,
-      child: AsyncValueView<List<CupMatch>>(
+    return Scaffold(
+      appBar: AppBar(title: const Text('Voleo')),
+      body: AsyncValueView<List<CupMatch>>(
         value: matches,
         data: (items) {
           final now = DateTime.now();
-          final nextMatches = items
-              .where((match) => match.kickoff.isAfter(now))
+          final upcomingMatches = items
+              .where((m) => m.kickoff.isAfter(now) || m.status == MatchStatus.live)
               .toList()
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+
+          final displayMatches = upcomingMatches.take(5).toList();
+
+          if (displayMatches.length < 5) {
+            final finished = items
+                .where((m) => m.status == MatchStatus.finalResult)
+                .toList()
+              ..sort((a, b) => b.kickoff.compareTo(a.kickoff));
+            for (final m in finished) {
+              if (displayMatches.length >= 5) break;
+              if (!displayMatches.contains(m)) {
+                displayMatches.add(m);
+              }
+            }
+            displayMatches.sort((a, b) => a.kickoff.compareTo(b.kickoff));
+          }
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              league.when(
-                data: (value) => _LeagueHero(
-                  title: value?.name ?? 'WM-Runde',
-                  inviteCode: value?.inviteCode ?? 'VOLEO26',
-                ),
-                error: (_, __) => const SizedBox.shrink(),
-                loading: () => const LinearProgressIndicator(),
+              _LeagueHero(
+                title: leagueValue?.name ?? 'WM-Runde',
+                inviteCode: leagueValue?.inviteCode ?? 'VOLEO26',
+                imageUrl: leagueValue?.imageUrl,
+                onTap: () => context.go('/league'),
               ),
               const SizedBox(height: 16),
-              Text('Nächste offene Tipps',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(
-                '${nextMatches.length} Spiele sind noch tippbar. Tipps sind bis zum Anpfiff möglich.',
-                style: Theme.of(context).textTheme.bodyMedium,
+              _TopThreeCard(standings: standings),
+              const SizedBox(height: 12),
+              const _InfoTippspielCard(),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Nächste Spiele',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => context.go('/matches'),
+                    icon: const Icon(Icons.arrow_forward, size: 18),
+                    label: const Text('Alle Spiele'),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              for (final match in nextMatches)
-                _MatchCard(
-                  match: match,
-                  tip: _tipForMatch(tips, match.id),
-                  onTap: () => context.go('/tip/${match.id}'),
-                ),
+              _NextMatchesCard(
+                matches: displayMatches,
+                tips: tips,
+                user: user,
+              ),
             ],
           );
         },
@@ -70,106 +101,584 @@ Tip? _tipForMatch(List<Tip> tips, String matchId) {
 }
 
 class _LeagueHero extends StatelessWidget {
-  const _LeagueHero({required this.title, required this.inviteCode});
+  const _LeagueHero({
+    required this.title,
+    required this.inviteCode,
+    required this.onTap,
+    this.imageUrl,
+  });
 
   final String title;
   final String inviteCode;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text('Code $inviteCode'),
-              ],
-            ),
-          ),
-          Icon(Icons.emoji_events, color: scheme.primary, size: 40),
-        ],
-      ),
-    );
-  }
-}
-
-class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match, required this.onTap, this.tip});
-
-  final CupMatch match;
-  final Tip? tip;
+  final String? imageUrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final date = DateFormat('dd.MM. HH:mm').format(match.kickoff);
+    final scheme = Theme.of(context).colorScheme;
+    final image = imageUrl;
     return Card(
-      child: ListTile(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         onTap: onTap,
-        leading: const Icon(Icons.sports_soccer),
-        title: Text('${match.homeTeam} - ${match.awayTeam}'),
-        subtitle: Text('${match.stage} · Anpfiff $date Uhr'),
-        trailing: tip == null
-            ? const Icon(Icons.chevron_right)
-            : _ScoreBadge(
-                label: 'Tipp',
-                score: '${tip!.predictedHome}:${tip!.predictedAway}',
+        child: SizedBox(
+          height: 132,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (image != null && image.isNotEmpty)
+                Image.network(image, fit: BoxFit.cover)
+              else
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                  ),
+                ),
+              ColoredBox(color: Colors.black.withValues(alpha: 0.24)),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Code $inviteCode',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'zur Liga',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, color: Colors.white, size: 30),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _ScoreBadge extends StatelessWidget {
-  const _ScoreBadge({required this.label, required this.score});
+class _TopThreeCard extends StatelessWidget {
+  const _TopThreeCard({required this.standings});
 
-  final String label;
-  final String score;
+  final List<Standing> standings;
+
+  @override
+  Widget build(BuildContext context) {
+    final topThree = standings.take(3).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.leaderboard_outlined),
+                const SizedBox(width: 8),
+                Text(
+                  'Top 3 Liga',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (topThree.isEmpty)
+              const Text('Noch keine Punkte vergeben.')
+            else
+              for (final standing in topThree)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: _StandingAvatar(standing: standing),
+                  title: Text(
+                    standing.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Text(
+                    '${standing.totalPoints} Pkt.',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StandingAvatar extends StatelessWidget {
+  const _StandingAvatar({required this.standing});
+
+  final Standing standing;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = standing.photoUrl;
+    final hasImage = photoUrl != null && photoUrl.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget avatarChild;
+    if (hasImage) {
+      avatarChild = ClipOval(
+        child: photoUrl.startsWith('http')
+            ? Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              )
+            : Image.file(
+                File(photoUrl),
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              ),
+      );
+    } else {
+      avatarChild = _buildInitials(context);
+    }
+
+    final rank = standing.rank;
+    final Color badgeBg;
+    final Color badgeFg;
+    if (rank == 1) {
+      badgeBg = const Color(0xffffd700); // Gold
+      badgeFg = Colors.black87;
+    } else if (rank == 2) {
+      badgeBg = const Color(0xffc0c0c0); // Silver
+      badgeFg = Colors.black87;
+    } else if (rank == 3) {
+      badgeBg = const Color(0xffcd7f32); // Bronze
+      badgeFg = Colors.white;
+    } else {
+      badgeBg = scheme.primary;
+      badgeFg = scheme.onPrimary;
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: scheme.surfaceContainerHighest,
+          ),
+          child: avatarChild,
+        ),
+        Positioned(
+          right: -3,
+          bottom: -3,
+          child: CircleAvatar(
+            radius: 10,
+            backgroundColor: badgeBg,
+            child: Text(
+              '$rank',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: badgeFg,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInitials(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initial = standing.displayName.isEmpty
+        ? 'S'
+        : standing.displayName.characters.first.toUpperCase();
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _NextMatchesCard extends StatelessWidget {
+  const _NextMatchesCard({
+    required this.matches,
+    required this.tips,
+    this.user,
+  });
+
+  final List<CupMatch> matches;
+  final List<Tip> tips;
+  final VoleoUser? user;
+
+  @override
+  Widget build(BuildContext context) {
+    if (matches.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: Text('Keine anstehenden Spiele.')),
+        ),
+      );
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    'Datum',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Spiel',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                SizedBox(
+                  width: 40,
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Tipp',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8),
+              child: Divider(height: 1),
+            ),
+            for (var i = 0; i < matches.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              _NextMatchRow(
+                match: matches[i],
+                tip: _tipForMatch(tips, matches[i].id),
+                user: user,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NextMatchRow extends StatelessWidget {
+  const _NextMatchRow({required this.match, this.tip, this.user});
+
+  final CupMatch match;
+  final Tip? tip;
+  final VoleoUser? user;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateTimeStr = DateFormat('dd.MM. HH:mm').format(match.kickoff);
+    final homeFlag = CountryFlags.getFlag(match.homeTeam);
+    final awayFlag = CountryFlags.getFlag(match.awayTeam);
+    final scheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => context.go('/home/tip/${match.id}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            // Kickoff time on the left
+            SizedBox(
+              width: 80,
+              child: Text(
+                dateTimeStr,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
+            Expanded(
+              child: _buildTeamName(context, match.homeTeam, user, isRightAligned: true),
+            ),
+            const SizedBox(width: 8),
+            Text(homeFlag, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 8),
+            // Actual score in the middle
+            SizedBox(
+              width: 44,
+              child: Text(
+                match.status == MatchStatus.finalResult
+                    ? '${match.homeScore}:${match.awayScore}'
+                    : '-:-',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: match.status == MatchStatus.finalResult
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(awayFlag, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildTeamName(context, match.awayTeam, user, isRightAligned: false),
+            ),
+            const SizedBox(width: 8),
+            // Tip prediction on the right
+            SizedBox(
+              width: 40,
+              child: Align(
+                alignment: Alignment.center,
+                child: tip != null
+                    ? Text(
+                        '${tip!.predictedHome}:${tip!.predictedAway}',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: scheme.primary,
+                            ),
+                      )
+                    : Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoTippspielCard extends StatelessWidget {
+  const _InfoTippspielCard();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.info_outline, color: scheme.primary, size: 28),
+        title: const Text(
+          'Infos zum Tippspiel',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text('Regeln, Punktevergabe & Sonderregeln'),
+        trailing: const Icon(Icons.keyboard_arrow_right),
+        onTap: () => _showRulesDialog(context),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
+    );
+  }
+
+  void _showRulesDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          title: Row(
             children: [
-              Text(
-                label,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(fontSize: 10, height: 1),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                score,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(height: 1),
-              ),
+              Icon(Icons.gavel, color: scheme.primary),
+              const SizedBox(width: 10),
+              const Text('Regeln & Punkte'),
             ],
           ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSectionTitle(context, 'Tippabgabe'),
+                const Text(
+                  'Tipps können bis zum offiziellen Anpfiff des jeweiligen Spiels abgegeben und geändert werden. Danach sind Tipps gesperrt.',
+                ),
+                const SizedBox(height: 12),
+                _buildSectionTitle(context, 'Punktevergabe für Spiele'),
+                _buildBulletPoint('Exaktes Ergebnis: +4 Punkte (z.B. Tipp 2:1, Spiel endet 2:1)'),
+                _buildBulletPoint('Tordifferenz: +3 Punkte (z.B. Tipp 3:1, Spiel endet 2:0)'),
+                _buildBulletPoint('Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:1)'),
+                _buildBulletPoint('Falscher Tipp: 0 Punkte'),
+                const SizedBox(height: 12),
+                _buildSectionTitle(context, 'Mannschafts-Booster'),
+                _buildBulletPoint('Lieblingsmannschaft: +10 Punkte für jeden Sieg deiner Lieblingsmannschaft!'),
+                _buildBulletPoint('Favorit (WM-Tipp): +10 Punkte für jeden Sieg deiner getippten Weltmeister-Mannschaft!'),
+                _buildBulletPoint('Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden.'),
+                const SizedBox(height: 12),
+                _buildSectionTitle(context, 'WM-Risiko-Tipp'),
+                _buildBulletPoint('Du tippst ein Team, von dem du hoffst, dass es die WM nicht gewinnt, und sagst dessen Ausscheiden (z.B. Gruppenphase, Achtelfinale, etc.) voraus.'),
+                _buildBulletPoint('Punkte und Risiko berechnen sich nach den Stärke-Tiers der Mannschaften:'),
+                _buildBulletPoint('Favoriten (z.B. Frankreich): Frühes Ausscheiden (Gruppenphase) bringt +30 Punkte bei Erfolg, bei Misserfolg gibt es -30 Punkte. Späteres Ausscheiden (Halbfinale) bringt/kostet +/-10 Punkte.'),
+                _buildBulletPoint('Gurkentruppen (z.B. Curaçao): Frühes Ausscheiden bringt/kostet +/-5 Punkte. Weites Kommen (Viertelfinale/Halbfinale) bringt/kostet +/-30 Punkte.'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Schließen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionTitle(BuildContext context, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4, top: 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+      ),
+    );
+  }
+
+  Widget _buildBulletPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(child: Text(text)),
         ],
       ),
     );
   }
 }
+
+Widget _buildTeamName(
+  BuildContext context,
+  String teamName,
+  VoleoUser? user, {
+  required bool isRightAligned,
+}) {
+  final List<Widget> markers = [];
+  if (user != null) {
+    if (user.favoriteTeam == teamName) {
+      markers.add(
+        const Icon(
+          Icons.star,
+          color: Colors.amber,
+          size: 14,
+        ),
+      );
+    }
+    if (user.predictedChampion == teamName) {
+      markers.add(
+        const Icon(
+          Icons.sports_soccer,
+          color: Colors.blue,
+          size: 14,
+        ),
+      );
+    }
+    if (user.riskTeam == teamName) {
+      markers.add(
+        const Icon(
+          Icons.close,
+          color: Colors.red,
+          size: 14,
+        ),
+      );
+    }
+  }
+
+  final textWidget = Text(
+    teamName,
+    textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+
+  if (markers.isEmpty) {
+    return textWidget;
+  }
+
+  final List<Widget> children = [];
+  if (isRightAligned) {
+    for (var i = 0; i < markers.length; i++) {
+      children.add(markers[i]);
+      children.add(const SizedBox(width: 2));
+    }
+    children.add(Flexible(child: textWidget));
+  } else {
+    children.add(Flexible(child: textWidget));
+    for (var i = 0; i < markers.length; i++) {
+      children.add(const SizedBox(width: 2));
+      children.add(markers[i]);
+    }
+  }
+
+  return Row(
+    mainAxisAlignment: isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: children,
+  );
+}
+

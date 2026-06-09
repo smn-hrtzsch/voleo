@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -52,6 +53,24 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Stream<List<League>> watchLeagues() {
+    Future.microtask(() => _league.add(_currentLeague));
+    return _league.stream.map((league) {
+      if (league == null) return const <League>[];
+      return [
+        League(
+          id: league.id,
+          name: league.name,
+          inviteCode: league.inviteCode,
+          ownerUid: league.ownerUid,
+          imageUrl: league.imageUrl,
+          isActive: true,
+        ),
+      ];
+    });
+  }
+
+  @override
   Stream<List<CupMatch>> watchMatches() {
     Future.microtask(() => _matches.add(List.unmodifiable(_currentMatches)));
     return _matches.stream;
@@ -59,6 +78,12 @@ class LocalFirstVoleoRepository implements VoleoRepository {
 
   @override
   Stream<List<Tip>> watchTips() {
+    Future.microtask(() => _tips.add(List.unmodifiable(_currentTips)));
+    return _tips.stream;
+  }
+
+  @override
+  Stream<List<Tip>> watchLeagueTips() {
     Future.microtask(() => _tips.add(List.unmodifiable(_currentTips)));
     return _tips.stream;
   }
@@ -75,16 +100,71 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     String? inviteCode,
   }) async {
     final uid = _currentUser?.uid ?? _uuid.v4();
-    _currentUser = VoleoUser(uid: uid, nickname: nickname);
+    _currentUser = VoleoUser(
+      uid: uid,
+      nickname: nickname,
+      isAnonymous: true,
+    );
     _upsertMember(uid: uid, displayName: nickname, role: MemberRole.owner);
     _currentLeague = League(
       id: 'league-${inviteCode ?? 'demo'}',
       name: inviteCode == null ? 'Meine WM-Runde' : 'WM-Runde $inviteCode',
-      inviteCode: inviteCode?.toUpperCase() ?? 'VOLEO26',
+      inviteCode: inviteCode?.toUpperCase() ?? _createInviteCode(),
       ownerUid: uid,
     );
     await _persist();
     _emitAll();
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {}
+
+  @override
+  Future<void> signInWithApple() async {}
+
+  @override
+  Future<void> linkWithGoogle() async {}
+
+  @override
+  Future<void> linkWithApple() async {}
+
+  @override
+  Future<void> updateProfile({
+    String? nickname,
+    String? photoUrl,
+  }) async {
+    final user = _requireUser();
+    if (nickname != null) {
+      final normalized = _normalizeName(nickname);
+      for (final member in _members) {
+        if (member.uid == user.uid) continue;
+        if (_normalizeName(member.displayName) == normalized) {
+          throw StateError('Dieser Name ist in der Liga bereits vergeben.');
+        }
+      }
+    }
+    _currentUser = VoleoUser(
+      uid: user.uid,
+      nickname: nickname ?? user.nickname,
+      isAnonymous: user.isAnonymous,
+      photoUrl: photoUrl ?? user.photoUrl,
+      email: user.email,
+      providerIds: user.providerIds,
+    );
+    if (nickname != null) {
+      _upsertMember(
+        uid: user.uid,
+        displayName: nickname,
+        role: MemberRole.owner,
+      );
+    }
+    await _persist();
+    _emitAll();
+  }
+
+  @override
+  Future<void> uploadProfileImage(String filePath) async {
+    await updateProfile(photoUrl: filePath);
   }
 
   @override
@@ -93,7 +173,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     _currentLeague = League(
       id: _uuid.v4(),
       name: name,
-      inviteCode: _createInviteCode(name),
+      inviteCode: _createInviteCode(),
       ownerUid: user.uid,
     );
     await _persist();
@@ -108,6 +188,35 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       name: 'WM-Runde ${inviteCode.toUpperCase()}',
       inviteCode: inviteCode.toUpperCase(),
       ownerUid: user.uid,
+    );
+    await _persist();
+    _emitAll();
+  }
+
+  @override
+  Future<void> switchLeague({required String leagueId}) async {
+    if (_currentLeague?.id != leagueId) {
+      throw StateError('Diese Tipprunde ist lokal nicht vorhanden.');
+    }
+    _emitAll();
+  }
+
+  @override
+  Future<void> leaveLeague({required String leagueId}) async {
+    _emitAll();
+  }
+
+  @override
+  Future<void> renameLeague({required String name}) async {
+    final league = _currentLeague;
+    if (league == null) throw StateError('Keine aktive Tipprunde.');
+    _currentLeague = League(
+      id: league.id,
+      name: name.trim(),
+      inviteCode: league.inviteCode,
+      ownerUid: league.ownerUid,
+      imageUrl: league.imageUrl,
+      isActive: true,
     );
     await _persist();
     _emitAll();
@@ -146,12 +255,29 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Future<void> deleteTip({required String matchId}) async {
+    final user = _requireUser();
+    final match = _currentMatches.firstWhere((match) => match.id == matchId);
+    if (!canEditTip(match, DateTime.now())) {
+      throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
+    }
+    _currentTips.removeWhere(
+      (tip) => tip.uid == user.uid && tip.matchId == matchId,
+    );
+    await _persist();
+    _emitAll();
+  }
+
+  @override
   Future<void> linkEmail(String email) async {
     final user = _requireUser();
     _currentUser = VoleoUser(
       uid: user.uid,
       nickname: user.nickname,
+      isAnonymous: user.isAnonymous,
+      photoUrl: user.photoUrl,
       email: email,
+      providerIds: user.providerIds,
     );
     await _persist();
     _emitAll();
@@ -159,6 +285,16 @@ class LocalFirstVoleoRepository implements VoleoRepository {
 
   @override
   Future<void> signOut() async {
+    _currentUser = null;
+    _currentLeague = null;
+    _currentTips.clear();
+    _members.clear();
+    await _persist();
+    _emitAll();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
     _currentUser = null;
     _currentLeague = null;
     _currentTips.clear();
@@ -233,6 +369,8 @@ class LocalFirstVoleoRepository implements VoleoRepository {
         if (result.isExact) exact++;
         if (result.isTendency) tendency++;
       }
+      final extraPoints = calculateExtraPoints(user, _currentMatches);
+      total += extraPoints;
       standingSeeds.add(
         Standing(
           uid: user.uid,
@@ -241,6 +379,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           exactCount: exact,
           tendencyCount: tendency,
           rank: 0,
+          photoUrl: user.photoUrl,
         ),
       );
     }
@@ -265,7 +404,17 @@ class LocalFirstVoleoRepository implements VoleoRepository {
         _currentUser = VoleoUser(
           uid: userJson['uid'] as String,
           nickname: userJson['nickname'] as String,
+          isAnonymous: userJson['isAnonymous'] as bool? ?? true,
+          photoUrl: userJson['photoUrl'] as String?,
           email: userJson['email'] as String?,
+          providerIds: (userJson['providerIds'] as List?)
+                  ?.whereType<String>()
+                  .toList() ??
+              const [],
+          favoriteTeam: userJson['favoriteTeam'] as String?,
+          predictedChampion: userJson['predictedChampion'] as String?,
+          riskTeam: userJson['riskTeam'] as String?,
+          riskStage: userJson['riskStage'] as String?,
         );
         _upsertMember(
           uid: _currentUser!.uid,
@@ -281,6 +430,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           name: leagueJson['name'] as String,
           inviteCode: leagueJson['inviteCode'] as String,
           ownerUid: leagueJson['ownerUid'] as String,
+          imageUrl: leagueJson['imageUrl'] as String?,
         );
       }
 
@@ -310,7 +460,14 @@ class LocalFirstVoleoRepository implements VoleoRepository {
             : {
                 'uid': _currentUser!.uid,
                 'nickname': _currentUser!.nickname,
+                'isAnonymous': _currentUser!.isAnonymous,
+                'photoUrl': _currentUser!.photoUrl,
                 'email': _currentUser!.email,
+                'providerIds': _currentUser!.providerIds,
+                'favoriteTeam': _currentUser!.favoriteTeam,
+                'predictedChampion': _currentUser!.predictedChampion,
+                'riskTeam': _currentUser!.riskTeam,
+                'riskStage': _currentUser!.riskStage,
               },
         'league': _currentLeague == null
             ? null
@@ -319,6 +476,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
                 'name': _currentLeague!.name,
                 'inviteCode': _currentLeague!.inviteCode,
                 'ownerUid': _currentLeague!.ownerUid,
+                'imageUrl': _currentLeague!.imageUrl,
               },
         'tips': _currentTips.map(_tipToJson).toList(),
       }),
@@ -481,10 +639,17 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     };
   }
 
-  String _createInviteCode(String name) {
-    final normalized =
-        name.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '').padRight(4, 'X');
-    return '${normalized.substring(0, 4)}26';
+  String _createInviteCode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final random = Random.secure();
+    return List.generate(
+      6,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    ).join();
+  }
+
+  String _normalizeName(String value) {
+    return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
   String _teamKey(String value) {
@@ -548,5 +713,37 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       'Uzbekistan': 'Usbekistan',
     };
     return names[value] ?? value;
+  }
+
+  @override
+  Future<void> updateExtraPicks({
+    String? favoriteTeam,
+    String? predictedChampion,
+    String? riskTeam,
+    String? riskStage,
+  }) async {
+    final user = _currentUser;
+    if (user == null) throw StateError('Kein aktiver Benutzer.');
+
+    final sortedMatches = [..._currentMatches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final tournamentStarted = sortedMatches.isNotEmpty && DateTime.now().isAfter(sortedMatches.first.kickoff);
+    if (tournamentStarted) {
+      throw StateError('Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
+    }
+
+    _currentUser = VoleoUser(
+      uid: user.uid,
+      nickname: user.nickname,
+      isAnonymous: user.isAnonymous,
+      photoUrl: user.photoUrl,
+      email: user.email,
+      providerIds: user.providerIds,
+      favoriteTeam: favoriteTeam ?? user.favoriteTeam,
+      predictedChampion: predictedChampion ?? user.predictedChampion,
+      riskTeam: riskTeam ?? user.riskTeam,
+      riskStage: riskStage ?? user.riskStage,
+    );
+    await _persist();
+    _emitAll();
   }
 }
