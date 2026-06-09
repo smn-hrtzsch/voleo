@@ -14,22 +14,14 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  final List<int> _history = [0];
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _history.length <= 1,
+      canPop: widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_history.length > 1) {
-          setState(() {
-            _history.removeLast();
-            widget.navigationShell.goBranch(
-              _history.last,
-              initialLocation: false,
-            );
-          });
+        if (widget.navigationShell.currentIndex != 0) {
+          widget.navigationShell.goBranch(0, initialLocation: false);
         }
       },
       child: Scaffold(
@@ -37,9 +29,6 @@ class _AppShellState extends State<AppShell> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: widget.navigationShell.currentIndex,
           onDestinationSelected: (index) {
-            if (_history.last != index) {
-              setState(() => _history.add(index));
-            }
             widget.navigationShell.goBranch(
               index,
               initialLocation: index == widget.navigationShell.currentIndex,
@@ -49,7 +38,7 @@ class _AppShellState extends State<AppShell> {
             NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),
               selectedIcon: Icon(Icons.dashboard),
-              label: 'Heute',
+              label: 'Home',
             ),
             NavigationDestination(
               icon: Icon(Icons.sports_soccer_outlined),

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -29,7 +30,8 @@ class HomeScreen extends ConsumerWidget {
         data: (items) {
           final now = DateTime.now();
           final upcomingMatches = items
-              .where((m) => m.kickoff.isAfter(now) || m.status == MatchStatus.live)
+              .where(
+                  (m) => m.kickoff.isAfter(now) || m.status == MatchStatus.live)
               .toList()
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
 
@@ -50,12 +52,11 @@ class HomeScreen extends ConsumerWidget {
           }
 
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(10, 14, 10, 16),
             children: [
               _LeagueHero(
                 title: leagueValue?.name ?? 'WM-Runde',
                 inviteCode: leagueValue?.inviteCode ?? 'VOLEO26',
-                imageUrl: leagueValue?.imageUrl,
                 onTap: () => context.go('/league'),
               ),
               const SizedBox(height: 16),
@@ -105,83 +106,92 @@ class _LeagueHero extends StatelessWidget {
     required this.title,
     required this.inviteCode,
     required this.onTap,
-    this.imageUrl,
   });
 
   final String title;
   final String inviteCode;
-  final String? imageUrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final image = imageUrl;
     return Card(
-      clipBehavior: Clip.antiAlias,
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.62),
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          height: 132,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (image != null && image.isNotEmpty)
-                Image.network(image, fit: BoxFit.cover)
-              else
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                  ),
+          height: 112,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: scheme.primaryContainer,
+                  foregroundColor: scheme.onPrimaryContainer,
+                  child: const Icon(Icons.groups_outlined),
                 ),
-              ColoredBox(color: Colors.black.withValues(alpha: 0.24)),
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Liga: $title',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(color: Colors.white),
+                          Flexible(
+                            child: Text(
+                              'Code: $inviteCode',
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Code $inviteCode',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: Colors.white),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Code kopieren',
+                            icon: const Icon(Icons.copy, size: 18),
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: inviteCode),
+                              );
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Code kopiert.'),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'zur Liga',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right, color: Colors.white, size: 30),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                TextButton.icon(
+                  onPressed: onTap,
+                  icon: const Icon(Icons.chevron_right),
+                  iconAlignment: IconAlignment.end,
+                  label: const Text('zur Liga'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -197,7 +207,9 @@ class _TopThreeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topThree = standings.take(3).toList();
+    final scheme = Theme.of(context).colorScheme;
     return Card(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.62),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -259,14 +271,16 @@ class _StandingAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               )
             : Image.file(
                 File(photoUrl),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildInitials(context),
               ),
       );
     } else {
@@ -371,7 +385,7 @@ class _NextMatchesCard extends StatelessWidget {
             Row(
               children: [
                 SizedBox(
-                  width: 80,
+                  width: 58,
                   child: Text(
                     'Datum',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -391,7 +405,7 @@ class _NextMatchesCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  width: 40,
+                  width: 48,
                   child: Align(
                     alignment: Alignment.center,
                     child: Text(
@@ -433,7 +447,8 @@ class _NextMatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateTimeStr = DateFormat('dd.MM. HH:mm').format(match.kickoff);
+    final date = DateFormat('dd.MM.').format(match.kickoff);
+    final time = DateFormat('HH:mm').format(match.kickoff);
     final homeFlag = CountryFlags.getFlag(match.homeTeam);
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
     final scheme = Theme.of(context).colorScheme;
@@ -445,58 +460,74 @@ class _NextMatchRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            // Kickoff time on the left
             SizedBox(
-              width: 80,
-              child: Text(
-                dateTimeStr,
+              width: 58,
+              child: DefaultTextStyle(
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ) ??
+                    const TextStyle(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(date),
+                    Text(time),
+                  ],
+                ),
               ),
             ),
             Expanded(
-              child: _buildTeamName(context, match.homeTeam, user, isRightAligned: true),
-            ),
-            const SizedBox(width: 8),
-            Text(homeFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            // Actual score in the middle
-            SizedBox(
-              width: 44,
-              child: Text(
-                match.status == MatchStatus.finalResult
-                    ? '${match.homeScore}:${match.awayScore}'
-                    : '-:-',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: match.status == MatchStatus.finalResult
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _TeamSlot(
+                      teamName: match.homeTeam,
+                      flag: homeFlag,
+                      user: user,
+                      isHome: true,
                     ),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      match.status == MatchStatus.finalResult
+                          ? '${match.homeScore}:${match.awayScore}'
+                          : '-:-',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: match.status == MatchStatus.finalResult
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
+                          ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _TeamSlot(
+                      teamName: match.awayTeam,
+                      flag: awayFlag,
+                      user: user,
+                      isHome: false,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            Text(awayFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildTeamName(context, match.awayTeam, user, isRightAligned: false),
-            ),
-            const SizedBox(width: 8),
-            // Tip prediction on the right
+            const SizedBox(width: 6),
             SizedBox(
-              width: 40,
+              width: 48,
               child: Align(
                 alignment: Alignment.center,
                 child: tip != null
                     ? Text(
                         '${tip!.predictedHome}:${tip!.predictedAway}',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: scheme.primary,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: scheme.primary,
+                                ),
                       )
                     : Icon(
                         Icons.chevron_right,
@@ -509,6 +540,39 @@ class _NextMatchRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _TeamSlot extends StatelessWidget {
+  const _TeamSlot({
+    required this.teamName,
+    required this.flag,
+    required this.user,
+    required this.isHome,
+  });
+
+  final String teamName;
+  final String flag;
+  final VoleoUser? user;
+  final bool isHome;
+
+  @override
+  Widget build(BuildContext context) {
+    final name =
+        _buildTeamName(context, teamName, user, isRightAligned: isHome);
+    final flagText = Text(flag, style: const TextStyle(fontSize: 21));
+    final children = isHome
+        ? <Widget>[
+            Expanded(child: name),
+            const SizedBox(width: 5),
+            flagText,
+          ]
+        : <Widget>[
+            flagText,
+            const SizedBox(width: 5),
+            Expanded(child: name),
+          ];
+    return Row(children: children);
   }
 }
 
@@ -556,21 +620,31 @@ class _InfoTippspielCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'Punktevergabe für Spiele'),
-                _buildBulletPoint('Exaktes Ergebnis: +4 Punkte (z.B. Tipp 2:1, Spiel endet 2:1)'),
-                _buildBulletPoint('Tordifferenz: +3 Punkte (z.B. Tipp 3:1, Spiel endet 2:0)'),
-                _buildBulletPoint('Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:1)'),
+                _buildBulletPoint(
+                    'Exaktes Ergebnis: +4 Punkte (z.B. Tipp 2:1, Spiel endet 2:1)'),
+                _buildBulletPoint(
+                    'Tordifferenz: +3 Punkte (z.B. Tipp 3:1, Spiel endet 2:0)'),
+                _buildBulletPoint(
+                    'Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:1)'),
                 _buildBulletPoint('Falscher Tipp: 0 Punkte'),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'Mannschafts-Booster'),
-                _buildBulletPoint('Lieblingsmannschaft: +10 Punkte für jeden Sieg deiner Lieblingsmannschaft!'),
-                _buildBulletPoint('Favorit (WM-Tipp): +10 Punkte für jeden Sieg deiner getippten Weltmeister-Mannschaft!'),
-                _buildBulletPoint('Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden.'),
+                _buildBulletPoint(
+                    'Lieblingsmannschaft: +10 Punkte für jeden Sieg deiner Lieblingsmannschaft!'),
+                _buildBulletPoint(
+                    'Favorit (WM-Tipp): +10 Punkte für jeden Sieg deiner getippten Weltmeister-Mannschaft!'),
+                _buildBulletPoint(
+                    'Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden.'),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'WM-Risiko-Tipp'),
-                _buildBulletPoint('Du tippst ein Team, von dem du hoffst, dass es die WM nicht gewinnt, und sagst dessen Ausscheiden (z.B. Gruppenphase, Achtelfinale, etc.) voraus.'),
-                _buildBulletPoint('Punkte und Risiko berechnen sich nach den Stärke-Tiers der Mannschaften:'),
-                _buildBulletPoint('Favoriten (z.B. Frankreich): Frühes Ausscheiden (Gruppenphase) bringt +30 Punkte bei Erfolg, bei Misserfolg gibt es -30 Punkte. Späteres Ausscheiden (Halbfinale) bringt/kostet +/-10 Punkte.'),
-                _buildBulletPoint('Gurkentruppen (z.B. Curaçao): Frühes Ausscheiden bringt/kostet +/-5 Punkte. Weites Kommen (Viertelfinale/Halbfinale) bringt/kostet +/-30 Punkte.'),
+                _buildBulletPoint(
+                    'Du tippst ein Team, von dem du hoffst, dass es die WM nicht gewinnt, und sagst dessen Ausscheiden (z.B. Gruppenphase, Achtelfinale, etc.) voraus.'),
+                _buildBulletPoint(
+                    'Punkte und Risiko berechnen sich nach den Stärke-Tiers der Mannschaften:'),
+                _buildBulletPoint(
+                    'Favoriten (z.B. Frankreich): Frühes Ausscheiden (Gruppenphase) bringt +30 Punkte bei Erfolg, bei Misserfolg gibt es -30 Punkte. Späteres Ausscheiden (Halbfinale) bringt/kostet +/-10 Punkte.'),
+                _buildBulletPoint(
+                    'Gurkentruppen (z.B. Curaçao): Frühes Ausscheiden bringt/kostet +/-5 Punkte. Weites Kommen (Viertelfinale/Halbfinale) bringt/kostet +/-30 Punkte.'),
               ],
             ),
           ),
@@ -652,7 +726,8 @@ Widget _buildTeamName(
   final textWidget = Text(
     teamName,
     textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
-    maxLines: 1,
+    maxLines: 2,
+    softWrap: true,
     overflow: TextOverflow.ellipsis,
   );
 
@@ -676,9 +751,9 @@ Widget _buildTeamName(
   }
 
   return Row(
-    mainAxisAlignment: isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
+    mainAxisAlignment:
+        isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: children,
   );
 }
-

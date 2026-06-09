@@ -24,6 +24,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
   final FirebaseFirestore _firestore;
   final auth.FirebaseAuth _auth;
   final FirebaseStorage _storage;
+  Future<void>? _googleSignInInitialization;
 
   @override
   Stream<VoleoUser?> watchUser() {
@@ -57,6 +58,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
           predictedChampion: data['predictedChampion'] as String?,
           riskTeam: data['riskTeam'] as String?,
           riskStage: data['riskStage'] as String?,
+          themeModeName: data['themeMode'] as String?,
         );
       });
     });
@@ -199,7 +201,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
           .snapshots()
           .asyncExpand((snapshot) {
         if (snapshot.docs.isNotEmpty) {
-          return Stream.value(snapshot.docs.map(_standingFromDoc).toList());
+          return Stream.fromFuture(
+            _standingsWithMemberPhotos(leagueRef, snapshot.docs),
+          );
         }
         return leagueRef.collection('members').snapshots().map((members) {
           final standings = members.docs.map((doc) {
@@ -243,14 +247,11 @@ class FirestoreVoleoRepository implements VoleoRepository {
   @override
   Future<void> signInWithGoogle() async {
     final googleSignIn = GoogleSignIn.instance;
-    await googleSignIn.initialize(
-      serverClientId: const String.fromEnvironment(
-        'WEB_CLIENT_ID',
-        defaultValue:
-            '506754202518-7og1f456io4vbp7ib7ij6hjdsiirpvbd.apps.googleusercontent.com',
-      ),
+    await _initializeGoogleSignIn(googleSignIn);
+    final googleUser = await _authenticateGoogle(
+      googleSignIn,
+      preferLightweight: true,
     );
-    final googleUser = await googleSignIn.authenticate();
 
     final googleAuth = googleUser.authentication;
     final credential = auth.GoogleAuthProvider.credential(
@@ -259,7 +260,11 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final userCredential = await _auth.signInWithCredential(credential);
     final user = userCredential.user;
     if (user != null) {
-      await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
+      await _ensureUserDocument(
+        user,
+        nickname: user.displayName ?? googleUser.displayName ?? 'Spieler',
+        providerPhotoUrl: googleUser.photoUrl,
+      );
       await _ensureActiveLeague(user);
     }
   }
@@ -285,17 +290,21 @@ class FirestoreVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Future<void> signInWithCredential(auth.AuthCredential credential) async {
+    final userCredential = await _auth.signInWithCredential(credential);
+    final user = userCredential.user;
+    if (user != null) {
+      await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
+      await _ensureActiveLeague(user);
+    }
+  }
+
+  @override
   Future<void> linkWithGoogle() async {
     final user = _requireFirebaseUser();
     final googleSignIn = GoogleSignIn.instance;
-    await googleSignIn.initialize(
-      serverClientId: const String.fromEnvironment(
-        'WEB_CLIENT_ID',
-        defaultValue:
-            '506754202518-7og1f456io4vbp7ib7ij6hjdsiirpvbd.apps.googleusercontent.com',
-      ),
-    );
-    final googleUser = await googleSignIn.authenticate();
+    await _initializeGoogleSignIn(googleSignIn);
+    final googleUser = await _authenticateGoogle(googleSignIn);
 
     final googleAuth = googleUser.authentication;
     final credential = auth.GoogleAuthProvider.credential(
@@ -306,11 +315,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final updatedUser = _auth.currentUser ?? user;
     await _ensureUserDocument(
       updatedUser,
-      nickname: updatedUser.displayName ?? 'Spieler',
+      nickname: updatedUser.displayName ?? googleUser.displayName ?? 'Spieler',
+      providerPhotoUrl: googleUser.photoUrl,
     );
-    if (updatedUser.photoURL != null) {
-      await updateProfile(photoUrl: updatedUser.photoURL);
-    }
   }
 
   @override
@@ -333,9 +340,53 @@ class FirestoreVoleoRepository implements VoleoRepository {
       updatedUser,
       nickname: updatedUser.displayName ?? 'Spieler',
     );
-    if (updatedUser.photoURL != null) {
-      await updateProfile(photoUrl: updatedUser.photoURL);
+  }
+
+  @override
+  Future<void> unlinkProvider(String providerId) async {
+    final user = _requireFirebaseUser();
+    auth.User unlinkedUser;
+    try {
+      unlinkedUser = await user.unlink(providerId);
+    } on auth.FirebaseAuthException catch (error) {
+      if (error.code != 'requires-recent-login' || providerId != 'google.com') {
+        rethrow;
+      }
+      final googleSignIn = GoogleSignIn.instance;
+      await _initializeGoogleSignIn(googleSignIn);
+      final googleUser = await _authenticateGoogle(googleSignIn);
+      final googleAuth = googleUser.authentication;
+      final credential = auth.GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+      await user.reauthenticateWithCredential(credential);
+      unlinkedUser = await user.unlink(providerId);
     }
+    if (providerId == 'google.com') {
+      await GoogleSignIn.instance.signOut();
+    }
+    await unlinkedUser.reload();
+    final updatedUser = _auth.currentUser ?? unlinkedUser;
+    final providerIds = _providerIds(updatedUser);
+    if (providerIds.contains(providerId)) {
+      throw StateError(
+        'Die Verknüpfung konnte in Firebase Auth nicht entfernt werden.',
+      );
+    }
+    await _firestore.collection('users').doc(updatedUser.uid).set({
+      'providerIds': providerIds,
+      'email': updatedUser.email,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> updateThemeMode(String modeName) async {
+    final user = _requireFirebaseUser();
+    await _firestore.collection('users').doc(user.uid).set({
+      'themeMode': modeName,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   @override
@@ -344,7 +395,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
     String? photoUrl,
   }) async {
     final user = _requireFirebaseUser();
-    
+
     final leaguesSnapshot = await _firestore
         .collection('leagues')
         .where('memberIds', arrayContains: user.uid)
@@ -372,11 +423,14 @@ class FirestoreVoleoRepository implements VoleoRepository {
 
     for (final doc in leaguesSnapshot.docs) {
       final memberRef = doc.reference.collection('members').doc(user.uid);
-      batch.set(memberRef, {
-        if (nickname != null) 'displayName': nickname,
-        if (photoUrl != null) 'photoUrl': photoUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      batch.set(
+          memberRef,
+          {
+            if (nickname != null) 'displayName': nickname,
+            if (photoUrl != null) 'photoUrl': photoUrl,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
     }
 
     await batch.commit();
@@ -527,7 +581,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
       memberUpdates['frozenTendencyCount'] = 0;
     }
 
-    await league.collection('members').doc(user.uid).set(memberUpdates, SetOptions(merge: true));
+    await league
+        .collection('members')
+        .doc(user.uid)
+        .set(memberUpdates, SetOptions(merge: true));
 
     await league.set({
       'memberIds': FieldValue.arrayUnion([user.uid]),
@@ -604,7 +661,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final userDoc = await userDocRef.get();
     final activeId = userDoc.data()?['activeLeagueId'] as String?;
     if (activeId == leagueId) {
-      final leagueIds = List<String>.from(userDoc.data()?['leagueIds'] as List? ?? []);
+      final leagueIds =
+          List<String>.from(userDoc.data()?['leagueIds'] as List? ?? []);
       final nextActive = leagueIds.isNotEmpty ? leagueIds.first : '';
       await userDocRef.set({
         'activeLeagueId': nextActive,
@@ -664,23 +722,26 @@ class FirestoreVoleoRepository implements VoleoRepository {
         .collection('leagues')
         .where('memberIds', arrayContains: user.uid)
         .get();
-
     if (leaguesSnapshot.docs.isEmpty) {
       throw StateError('Du bist in keiner Tipprunde Mitglied.');
     }
 
     final batch = _firestore.batch();
-    for (final doc in leaguesSnapshot.docs) {
-      final tipRef = doc.reference.collection('tips').doc('${user.uid}_$matchId');
-      batch.set(tipRef, {
-        'uid': user.uid,
-        'matchId': matchId,
-        'predictedHome': home,
-        'predictedAway': away,
-        'lockedAt': Timestamp.fromDate(match.kickoff),
-        'points': 0,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+    for (final league in leaguesSnapshot.docs) {
+      final tipRef =
+          league.reference.collection('tips').doc('${user.uid}_$matchId');
+      batch.set(
+          tipRef,
+          {
+            'uid': user.uid,
+            'matchId': matchId,
+            'predictedHome': home,
+            'predictedAway': away,
+            'lockedAt': Timestamp.fromDate(match.kickoff),
+            'points': 0,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
     }
     await batch.commit();
   }
@@ -698,10 +759,14 @@ class FirestoreVoleoRepository implements VoleoRepository {
         .collection('leagues')
         .where('memberIds', arrayContains: user.uid)
         .get();
+    if (leaguesSnapshot.docs.isEmpty) {
+      throw StateError('Du bist in keiner Tipprunde Mitglied.');
+    }
 
     final batch = _firestore.batch();
-    for (final doc in leaguesSnapshot.docs) {
-      final tipRef = doc.reference.collection('tips').doc('${user.uid}_$matchId');
+    for (final league in leaguesSnapshot.docs) {
+      final tipRef =
+          league.reference.collection('tips').doc('${user.uid}_$matchId');
       batch.delete(tipRef);
     }
     await batch.commit();
@@ -715,11 +780,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
     }, SetOptions(merge: true));
   }
 
-  @override
-  Future<void> signOut() => _auth.signOut();
-
-  @override
-  Future<void> deleteAccount() async {
+  Future<void> _deleteCurrentUserData() async {
     final user = _requireFirebaseUser();
     final uid = user.uid;
 
@@ -737,10 +798,13 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final standingRef = leagueDoc.reference.collection('standings').doc(uid);
       batch.delete(standingRef);
 
-      batch.set(leagueDoc.reference, {
-        'memberIds': FieldValue.arrayRemove([uid]),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      batch.set(
+          leagueDoc.reference,
+          {
+            'memberIds': FieldValue.arrayRemove([uid]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
 
       final tipsSnapshot = await leagueDoc.reference
           .collection('tips')
@@ -755,7 +819,36 @@ class FirestoreVoleoRepository implements VoleoRepository {
     batch.delete(userRef);
 
     await batch.commit();
-    await user.delete();
+  }
+
+  @override
+  Future<void> signOut() async {
+    final user = _requireFirebaseUser();
+    await user.reload();
+    final currentUser = _auth.currentUser ?? user;
+    if (currentUser.isAnonymous || _providerIds(currentUser).isEmpty) {
+      await _deleteCurrentUserData();
+      try {
+        await currentUser.delete();
+      } on auth.FirebaseAuthException catch (error) {
+        if (error.code != 'requires-recent-login') rethrow;
+      }
+      await _auth.signOut();
+      return;
+    }
+    await _auth.signOut();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    final user = _requireFirebaseUser();
+    await _deleteCurrentUserData();
+    try {
+      await user.delete();
+    } on auth.FirebaseAuthException catch (error) {
+      if (error.code != 'requires-recent-login') rethrow;
+    }
+    await _auth.signOut();
   }
 
   auth.User _requireFirebaseUser() {
@@ -767,14 +860,97 @@ class FirestoreVoleoRepository implements VoleoRepository {
   Future<void> _ensureUserDocument(
     auth.User user, {
     required String nickname,
+    String? providerPhotoUrl,
   }) async {
-    await _firestore.collection('users').doc(user.uid).set({
-      'nickname': nickname,
+    final userRef = _firestore.collection('users').doc(user.uid);
+    final existing = await userRef.get();
+    final existingData = existing.data();
+    final existingNickname = existingData?['nickname'] as String?;
+    final existingPhotoUrl = existingData?['photoUrl'] as String?;
+    final shouldUseProviderPhoto =
+        (existingPhotoUrl == null || existingPhotoUrl.isEmpty) &&
+            ((providerPhotoUrl != null && providerPhotoUrl.isNotEmpty) ||
+                (user.photoURL != null && user.photoURL!.isNotEmpty));
+    final photoUrl = shouldUseProviderPhoto
+        ? providerPhotoUrl ?? user.photoURL
+        : existingPhotoUrl;
+    await userRef.set({
+      'nickname': existingNickname ?? nickname,
       'email': user.email,
-      'photoUrl': user.photoURL,
+      'photoUrl': photoUrl,
       'providerIds': _providerIds(user),
+      if (existingData?['themeMode'] == null) 'themeMode': 'system',
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      await _updateLeagueProfilePhoto(user.uid, photoUrl);
+    }
+  }
+
+  Future<void> _initializeGoogleSignIn(GoogleSignIn googleSignIn) async {
+    _googleSignInInitialization ??= googleSignIn.initialize(
+      serverClientId: const String.fromEnvironment(
+        'WEB_CLIENT_ID',
+        defaultValue:
+            '506754202518-7og1f456io4vbp7ib7ij6hjdsiirpvbd.apps.googleusercontent.com',
+      ),
+    );
+    await _googleSignInInitialization;
+  }
+
+  Future<GoogleSignInAccount> _authenticateGoogle(
+    GoogleSignIn googleSignIn, {
+    bool preferLightweight = false,
+  }) async {
+    if (preferLightweight) {
+      final lightweightAttempt =
+          googleSignIn.attemptLightweightAuthentication();
+      if (lightweightAttempt != null) {
+        final account = await lightweightAttempt;
+        if (account != null) return account;
+      }
+    }
+    return googleSignIn.authenticate();
+  }
+
+  Future<void> _updateLeagueProfilePhoto(String uid, String photoUrl) async {
+    final leaguesSnapshot = await _firestore
+        .collection('leagues')
+        .where('memberIds', arrayContains: uid)
+        .get();
+    if (leaguesSnapshot.docs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final league in leaguesSnapshot.docs) {
+      batch.set(
+        league.reference.collection('members').doc(uid),
+        {'photoUrl': photoUrl, 'updatedAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+  }
+
+  Future<List<Standing>> _standingsWithMemberPhotos(
+    DocumentReference<Map<String, dynamic>> leagueRef,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final members = await leagueRef.collection('members').get();
+    final memberPhotos = {
+      for (final member in members.docs)
+        member.id: member.data()['photoUrl'] as String?,
+    };
+    return docs.map((doc) {
+      final standing = _standingFromDoc(doc);
+      return Standing(
+        uid: standing.uid,
+        displayName: standing.displayName,
+        totalPoints: standing.totalPoints,
+        exactCount: standing.exactCount,
+        tendencyCount: standing.tendencyCount,
+        rank: standing.rank,
+        photoUrl: memberPhotos[standing.uid] ?? standing.photoUrl,
+      );
+    }).toList();
   }
 
   Future<void> _ensureActiveLeague(auth.User user) async {

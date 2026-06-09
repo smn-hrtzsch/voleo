@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart' as auth;
+
 import '../domain/voleo_models.dart';
 
 abstract class VoleoRepository {
@@ -16,12 +18,15 @@ abstract class VoleoRepository {
 
   Future<void> signInWithGoogle();
   Future<void> signInWithApple();
+  Future<void> signInWithCredential(auth.AuthCredential credential);
   Future<void> linkWithGoogle();
   Future<void> linkWithApple();
+  Future<void> unlinkProvider(String providerId);
   Future<void> updateProfile({
     String? nickname,
     String? photoUrl,
   });
+  Future<void> updateThemeMode(String modeName);
   Future<void> uploadProfileImage(String filePath);
 
   Future<void> createLeague({required String name});

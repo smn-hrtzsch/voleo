@@ -273,7 +273,8 @@ class _MenuChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (showFlags && value != 'Alle') ...[
-                  Text(CountryFlags.getFlag(value), style: const TextStyle(fontSize: 20)),
+                  Text(CountryFlags.getFlag(value),
+                      style: const TextStyle(fontSize: 20)),
                   const SizedBox(width: 8),
                 ],
                 Text(_labelFor(value)),
@@ -286,7 +287,8 @@ class _MenuChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (showFlags && label != 'Mannschaft' && label != 'Alle') ...[
-              Text(CountryFlags.getFlag(label), style: const TextStyle(fontSize: 18)),
+              Text(CountryFlags.getFlag(label),
+                  style: const TextStyle(fontSize: 18)),
               const SizedBox(width: 6),
             ],
             Text(label),
@@ -387,7 +389,7 @@ class _DayMatchCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  width: 40,
+                  width: 48,
                   child: Align(
                     alignment: Alignment.center,
                     child: Text(
@@ -438,9 +440,8 @@ class _MatchRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            // Kickoff time on the left
             SizedBox(
-              width: 42,
+              width: 44,
               child: Text(
                 time,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -450,46 +451,56 @@ class _MatchRow extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: _buildTeamName(context, match.homeTeam, user, isRightAligned: true),
-            ),
-            const SizedBox(width: 8),
-            Text(homeFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            // Actual score in the middle
-            SizedBox(
-              width: 44,
-              child: Text(
-                match.status == MatchStatus.finalResult
-                    ? '${match.homeScore}:${match.awayScore}'
-                    : '-:-',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: match.status == MatchStatus.finalResult
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _TeamSlot(
+                      teamName: match.homeTeam,
+                      flag: homeFlag,
+                      user: user,
+                      isHome: true,
                     ),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      match.status == MatchStatus.finalResult
+                          ? '${match.homeScore}:${match.awayScore}'
+                          : '-:-',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: match.status == MatchStatus.finalResult
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
+                          ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _TeamSlot(
+                      teamName: match.awayTeam,
+                      flag: awayFlag,
+                      user: user,
+                      isHome: false,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            Text(awayFlag, style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildTeamName(context, match.awayTeam, user, isRightAligned: false),
-            ),
-            const SizedBox(width: 8),
-            // Tip prediction on the right
+            const SizedBox(width: 6),
             SizedBox(
-              width: 40,
+              width: 48,
               child: Align(
                 alignment: Alignment.center,
                 child: tip != null
                     ? Text(
                         '${tip!.predictedHome}:${tip!.predictedAway}',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: scheme.primary,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: scheme.primary,
+                                ),
                       )
                     : Icon(
                         Icons.chevron_right,
@@ -502,6 +513,39 @@ class _MatchRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _TeamSlot extends StatelessWidget {
+  const _TeamSlot({
+    required this.teamName,
+    required this.flag,
+    required this.user,
+    required this.isHome,
+  });
+
+  final String teamName;
+  final String flag;
+  final VoleoUser? user;
+  final bool isHome;
+
+  @override
+  Widget build(BuildContext context) {
+    final name =
+        _buildTeamName(context, teamName, user, isRightAligned: isHome);
+    final flagText = Text(flag, style: const TextStyle(fontSize: 21));
+    final children = isHome
+        ? <Widget>[
+            Expanded(child: name),
+            const SizedBox(width: 5),
+            flagText,
+          ]
+        : <Widget>[
+            flagText,
+            const SizedBox(width: 5),
+            Expanded(child: name),
+          ];
+    return Row(children: children);
   }
 }
 
@@ -647,7 +691,8 @@ Widget _buildTeamName(
   final textWidget = Text(
     teamName,
     textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
-    maxLines: 1,
+    maxLines: 2,
+    softWrap: true,
     overflow: TextOverflow.ellipsis,
   );
 
@@ -671,9 +716,9 @@ Widget _buildTeamName(
   }
 
   return Row(
-    mainAxisAlignment: isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
+    mainAxisAlignment:
+        isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: children,
   );
 }
-

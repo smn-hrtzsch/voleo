@@ -80,7 +80,12 @@ const GROUP_BY_FIXTURE = new Map(
 );
 const args = new Set(process.argv.slice(2));
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-const dryRun = args.has('--dry-run') || !serviceAccountJson;
+const dryRun = args.has('--dry-run');
+if (!dryRun && !serviceAccountJson) {
+  throw new Error(
+    'Missing FIREBASE_SERVICE_ACCOUNT_JSON. Configure the GitHub Actions secret or run with --dry-run.',
+  );
+}
 
 const response = await fetch(OPENLIGADB_URL);
 if (!response.ok) {
@@ -186,13 +191,6 @@ async function recalculateScores(firestore, allMatches, finalMatches) {
   for (const league of leagues) {
     const leagueId = idFromName(league.name);
     const members = await firestore.listDocuments('leagues', leagueId, 'members');
-    const displayNames = new Map(
-      members.map((member) => [
-        idFromName(member.name),
-        readString(member.fields.displayName) ?? 'Spieler',
-      ]),
-    );
-
     // Fetch user documents for extra points and photoUrls
     const userFieldsMap = new Map();
     for (const member of members) {
@@ -535,15 +533,13 @@ function getTier(team) {
   const tops = [
     'Belgien',
     'Japan',
-    'Kolumbien',
     'Kroatien',
     'Marokko',
-    'Mexiko',
     'Niederlande',
+    'Norwegen',
     'Schweiz',
     'Senegal',
-    'Uruguay',
-    'USA'
+    'Uruguay'
   ];
   const mids = [
     'Algerien',
@@ -552,18 +548,17 @@ function getTier(team) {
     'Bosnien-Herzegowina',
     'Bosnien Herzegowina',
     'Bosnia and Herzegovina',
+    'Kolumbien',
     'Ecuador',
     'Elfenbeinküste',
     'Ghana',
-    'Iran',
-    'Kanada',
-    'Norwegen',
+    'Mexiko',
     'Österreich',
     'Schweden',
     'Südkorea',
     'Tschechien',
     'Türkei',
-    'Ägypten'
+    'USA'
   ];
   if (favorites.includes(team)) return 'Absolute Titelfavoriten';
   if (tops.includes(team)) return 'Top Team';

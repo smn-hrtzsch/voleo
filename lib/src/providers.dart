@@ -55,18 +55,55 @@ class CachedInviteCode extends Notifier<String?> {
 final cachedInviteCodeProvider =
     NotifierProvider<CachedInviteCode, String?>(CachedInviteCode.new);
 
+class SessionTransitionController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  set value(bool next) => state = next;
+}
+
+final sessionTransitionProvider =
+    NotifierProvider<SessionTransitionController, bool>(
+        SessionTransitionController.new);
+
+class ForceOnboardingController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  set value(bool next) => state = next;
+}
+
+final forceOnboardingProvider =
+    NotifierProvider<ForceOnboardingController, bool>(
+        ForceOnboardingController.new);
+
 final themeModeProvider =
     NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
 class ThemeModeController extends Notifier<ThemeMode> {
   @override
   ThemeMode build() {
+    ref.listen(userProvider, (_, next) {
+      final modeName = next.value?.themeModeName;
+      if (modeName == null || modeName.isEmpty) return;
+      final mode = _themeModeFromName(modeName);
+      if (mode == state) return;
+      state = mode;
+      unawaited(_saveLocal(mode));
+    });
     unawaited(_load());
     return ThemeMode.system;
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     state = mode;
+    await _saveLocal(mode);
+    if (ref.read(userProvider).value != null) {
+      await ref.read(repositoryProvider).updateThemeMode(mode.name);
+    }
+  }
+
+  Future<void> _saveLocal(ThemeMode mode) async {
     final file = await _settingsFile();
     await file.parent.create(recursive: true);
     await file.writeAsString(mode.name);
@@ -77,10 +114,7 @@ class ThemeModeController extends Notifier<ThemeMode> {
       final file = await _settingsFile();
       if (!await file.exists()) return;
       final raw = (await file.readAsString()).trim();
-      final mode = ThemeMode.values.firstWhere(
-        (mode) => mode.name == raw,
-        orElse: () => ThemeMode.system,
-      );
+      final mode = _themeModeFromName(raw);
       state = mode;
     } catch (_) {
       state = ThemeMode.system;
@@ -90,5 +124,12 @@ class ThemeModeController extends Notifier<ThemeMode> {
   Future<File> _settingsFile() async {
     final directory = await getApplicationSupportDirectory();
     return File('${directory.path}/voleo_settings/theme_mode.txt');
+  }
+
+  ThemeMode _themeModeFromName(String value) {
+    return ThemeMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => ThemeMode.system,
+    );
   }
 }
