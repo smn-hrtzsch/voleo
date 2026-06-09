@@ -62,8 +62,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '506754202518',
     projectId: 'voleo-sho2303',
     storageBucket: 'voleo-sho2303.firebasestorage.app',
-    androidClientId: '506754202518-uhiakrmn74lp2advmsl3k8tl3hpkeq49.apps.googleusercontent.com',
-    iosClientId: '506754202518-7r63go6pe02p5t2eko52e8hffckehqdp.apps.googleusercontent.com',
+    androidClientId:
+        '506754202518-uhiakrmn74lp2advmsl3k8tl3hpkeq49.apps.googleusercontent.com',
+    iosClientId:
+        '506754202518-7r63go6pe02p5t2eko52e8hffckehqdp.apps.googleusercontent.com',
     iosBundleId: 'de.capycode.voleo',
   );
 }
