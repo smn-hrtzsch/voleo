@@ -5,11 +5,10 @@ ThemeData buildVoleoTheme({Brightness brightness = Brightness.light}) {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed,
     brightness: brightness,
-    primary: seed,
     secondary: const Color(0xff355c7d),
     tertiary: const Color(0xffd98c3a),
     surface: brightness == Brightness.dark
-        ? const Color(0xff101412)
+        ? const Color(0xff12141a) // very dark gray/slate
         : const Color(0xfffbfcfb),
   );
   final isDark = brightness == Brightness.dark;
@@ -17,14 +16,20 @@ ThemeData buildVoleoTheme({Brightness brightness = Brightness.light}) {
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: scheme.surface,
-    appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
+    scaffoldBackgroundColor: isDark ? const Color(0xff181b22) : scheme.surface,
+    appBarTheme: AppBarTheme(
+      centerTitle: false,
+      elevation: 0,
+      backgroundColor: isDark ? const Color(0xff181b22) : null,
+    ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: isDark ? const Color(0xff171c19) : Colors.white,
+      color: isDark ? const Color(0xff222733) : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: scheme.outlineVariant),
+        side: BorderSide(
+          color: isDark ? const Color(0xff2f3545) : scheme.outlineVariant,
+        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
@@ -68,6 +68,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                             leagueId: leagueId,
                           ),
                   onRenameLeague: () => _renameLeague(league),
+                  onLeaveLeague: () => _confirmLeaveLeague(context, ref, league),
                 ),
                 const SizedBox(height: 16),
               ],
@@ -187,6 +188,50 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
       }
     }
   }
+
+  Future<void> _confirmLeaveLeague(BuildContext context, WidgetRef ref, League league) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Tipprunde verlassen?'),
+          content: Text(
+            'Möchtest du die Tipprunde "${league.name}" wirklich verlassen? '
+            'Dein Punktestand bleibt eingefroren, bis du der Tipprunde wieder beitrittst.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Verlassen'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(repositoryProvider).leaveLeague(leagueId: league.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Du hast die Tipprunde "${league.name}" verlassen.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Verlassen der Tipprunde: $e')),
+        );
+      }
+    }
+  }
 }
 
 class _LeagueControlCard extends StatelessWidget {
@@ -196,6 +241,7 @@ class _LeagueControlCard extends StatelessWidget {
     required this.isOwner,
     required this.onSwitchLeague,
     required this.onRenameLeague,
+    required this.onLeaveLeague,
   });
 
   final League league;
@@ -203,73 +249,196 @@ class _LeagueControlCard extends StatelessWidget {
   final bool isOwner;
   final ValueChanged<String> onSwitchLeague;
   final VoidCallback onRenameLeague;
+  final VoidCallback onLeaveLeague;
+
+  void _showLeaguePicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Text(
+                    'Tipprunde wechseln',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                const Divider(),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final item in leagues)
+                        ListTile(
+                          title: Text(
+                            item.name,
+                            style: TextStyle(
+                              fontWeight: item.id == league.id
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                          leading: Icon(
+                            item.id == league.id
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_off,
+                            color: item.id == league.id ? scheme.primary : null,
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.inviteCode,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            if (item.id != league.id) {
+                              onSwitchLeague(item.id);
+                            }
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final link = 'https://voleo.capycode.de/join/${league.inviteCode}';
+    final appLink = 'voleo://voleo-sho2303.web.app/join/${league.inviteCode}';
+    final webLink = 'https://voleo-sho2303.web.app/join/${league.inviteCode}';
+    final shareMessage = 'Tritt meiner Voleo-Tipprunde bei! 🏆\n\n'
+        'Direkt in der App öffnen: $appLink\n'
+        'Oder über Web: $webLink\n'
+        'Alternativer Einladungscode: ${league.inviteCode}';
+    final scheme = Theme.of(context).colorScheme;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: league.id,
-                      isExpanded: true,
-                      icon: const Icon(Icons.expand_more),
-                      items: [
-                        for (final item in leagues)
-                          DropdownMenuItem(
-                            value: item.id,
-                            child: Text(
-                              item.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+            InkWell(
+              onTap: leagues.length > 1 ? () => _showLeaguePicker(context) : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tipprunde',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null && value != league.id) {
-                          onSwitchLeague(value);
-                        }
-                      },
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  league.name,
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (leagues.length > 1) ...[
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.keyboard_arrow_down,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    if (isOwner)
+                      IconButton(
+                        onPressed: onRenameLeague,
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Tipprunde umbenennen',
+                      ),
+                  ],
                 ),
-                if (isOwner)
-                  IconButton(
-                    onPressed: onRenameLeague,
-                    icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Tipprunde umbenennen',
-                  ),
-              ],
+              ),
             ),
-            const SizedBox(height: 8),
+            const Divider(),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    'Einladungscode ${league.inviteCode}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Einladungscode',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                      Text(
+                        league.inviteCode,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.1,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton.filledTonal(
                   onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: link));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Einladungslink kopiert.'),
-                        ),
-                      );
-                    }
+                    await SharePlus.instance.share(
+                      ShareParams(text: shareMessage),
+                    );
                   },
-                  icon: const Icon(Icons.copy),
-                  tooltip: 'Einladungslink kopieren',
+                  icon: const Icon(Icons.share),
+                  tooltip: 'Einladung teilen',
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: onLeaveLeague,
+                  icon: const Icon(Icons.exit_to_app),
+                  style: IconButton.styleFrom(
+                    foregroundColor: scheme.error,
+                    backgroundColor: scheme.errorContainer,
+                  ),
+                  tooltip: 'Tipprunde verlassen',
                 ),
               ],
             ),
@@ -287,26 +456,95 @@ class _RankAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final photoUrl = standing.photoUrl;
+    final hasImage = photoUrl != null && photoUrl.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget avatarChild;
+    if (hasImage) {
+      avatarChild = ClipOval(
+        child: photoUrl.startsWith('http')
+            ? Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              )
+            : Image.file(
+                File(photoUrl),
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              ),
+      );
+    } else {
+      avatarChild = _buildInitials(context);
+    }
+
+    final rank = standing.rank;
+    final Color badgeBg;
+    final Color badgeFg;
+    if (rank == 1) {
+      badgeBg = const Color(0xffffd700); // Gold
+      badgeFg = Colors.black87;
+    } else if (rank == 2) {
+      badgeBg = const Color(0xffc0c0c0); // Silver
+      badgeFg = Colors.black87;
+    } else if (rank == 3) {
+      badgeBg = const Color(0xffcd7f32); // Bronze
+      badgeFg = Colors.white;
+    } else {
+      badgeBg = scheme.primary;
+      badgeFg = scheme.onPrimary;
+    }
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        _MemberAvatar(photoUrl: standing.photoUrl, label: standing.displayName),
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: scheme.surfaceContainerHighest,
+          ),
+          child: avatarChild,
+        ),
         Positioned(
           right: -3,
           bottom: -3,
           child: CircleAvatar(
             radius: 10,
-            backgroundColor: Theme.of(context).colorScheme.primary,
+            backgroundColor: badgeBg,
             child: Text(
-              '${standing.rank}',
+              '$rank',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimary,
+                    color: badgeFg,
                     fontSize: 10,
+                    fontWeight: FontWeight.bold,
                   ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInitials(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initial = standing.displayName.isEmpty
+        ? 'S'
+        : standing.displayName.characters.first.toUpperCase();
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
@@ -319,18 +557,56 @@ class _MemberAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = _imageProvider(photoUrl);
-    return CircleAvatar(
-      backgroundImage: image,
-      child: image == null ? Text(label.characters.first.toUpperCase()) : null,
+    final hasImage = photoUrl != null && photoUrl!.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget avatarChild;
+    if (hasImage) {
+      avatarChild = ClipOval(
+        child: photoUrl!.startsWith('http')
+            ? Image.network(
+                photoUrl!,
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              )
+            : Image.file(
+                File(photoUrl!),
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => _buildInitials(context),
+              ),
+      );
+    } else {
+      avatarChild = _buildInitials(context);
+    }
+
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: scheme.surfaceContainerHighest,
+      ),
+      child: avatarChild,
     );
   }
-}
 
-ImageProvider? _imageProvider(String? value) {
-  if (value == null || value.isEmpty) return null;
-  if (value.startsWith('http')) return NetworkImage(value);
-  return FileImage(File(value));
+  Widget _buildInitials(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initial = label.isEmpty ? 'S' : label.characters.first.toUpperCase();
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
 }
 
 List<String> _phasesFor(List<CupMatch> matches) {
