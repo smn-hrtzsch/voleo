@@ -6,12 +6,21 @@ class VoleoUser {
   const VoleoUser({
     required this.uid,
     required this.nickname,
+    required this.isAnonymous,
+    this.photoUrl,
     this.email,
+    this.providerIds = const [],
   });
 
   final String uid;
   final String nickname;
+  final bool isAnonymous;
+  final String? photoUrl;
   final String? email;
+  final List<String> providerIds;
+
+  bool get hasGoogleProvider => providerIds.contains('google.com');
+  bool get hasAppleProvider => providerIds.contains('apple.com');
 }
 
 class League {
@@ -20,12 +29,16 @@ class League {
     required this.name,
     required this.inviteCode,
     required this.ownerUid,
+    this.imageUrl,
+    this.isActive = false,
   });
 
   final String id;
   final String name;
   final String inviteCode;
   final String ownerUid;
+  final String? imageUrl;
+  final bool isActive;
 }
 
 class LeagueMember {
@@ -126,6 +139,7 @@ class Standing {
     required this.exactCount,
     required this.tendencyCount,
     required this.rank,
+    this.photoUrl,
   });
 
   final String uid;
@@ -134,4 +148,5 @@ class Standing {
   final int exactCount;
   final int tendencyCount;
   final int rank;
+  final String? photoUrl;
 }
