@@ -28,22 +28,23 @@
 - [ ] Add Bosnia and Herzegovina flag aliases.
 - [ ] Restructure Heute tab to show only today's matches plus league shortcut and top 3 standings.
 - [ ] Generate league invite codes randomly instead of deriving them from user input.
-- [ ] Add league invite link/code handling for sharing and joining rounds.
+- [x] Add league invite link/code handling for sharing and joining rounds.
 - [ ] Limit Liga day sections to tournament days that have already started.
 - [ ] Add an automatic tournament-phase filter that resets to the current phase on app restart.
-- [ ] Refresh profile name and profile image immediately after edits.
-- [ ] Enforce unique display names within a league.
+- [x] Refresh profile name and profile image immediately after edits.
+- [x] Enforce unique display names within a league.
 - [ ] Default new score wheels to 0:0.
-- [ ] Always confirm sign-out, with stronger warning for anonymous accounts.
+- [x] Always confirm sign-out, with stronger warning for anonymous accounts.
 - [ ] Add a debug/test path for fake league members, fake tips, and synthetic match results.
 - [ ] Explain and harden Firestore network/DNS error handling while connected to Wi-Fi.
 - [ ] Replace old deterministic league codes like MEIN26 with migrated random invite codes.
-- [ ] Use real web invitation links that are linkified in messengers and route into the app.
-- [ ] Add invite-link handling for users who are already inside another league.
-- [ ] Allow users to join multiple leagues and switch the active league from Liga.
-- [ ] Give league owners admin controls such as renaming the league.
-- [ ] Show member profile images in league standings and tip views.
-- [ ] Add app theme settings for system, light, and dark mode.
+- [x] Use real web invitation links that are linkified in messengers and route into the app.
+- [x] Add invite-link handling for users who are already inside another league.
+- [x] Allow users to join multiple leagues and switch the active league from Liga.
+- [x] Give league owners admin controls such as renaming the league.
+- [x] Show member profile images in league standings and tip views.
+- [x] Add app theme settings for system, light, and dark mode.
+- [x] Add Lieblingsmannschaft, Favorit, and Risiko-Tipp tournament picks and points scoring dynamics.
 - [ ] Show flags consistently in the tip screen.
 - [ ] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
 - [ ] Add a date-mode switch for games with swipe navigation and current-day initial focus.
