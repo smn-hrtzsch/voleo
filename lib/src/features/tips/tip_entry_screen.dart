@@ -107,7 +107,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                 IconButton(
                                   onPressed: _isSaving ? null : () => _deleteTip(match),
                                   icon: Icon(
-                                    Icons.cancel_outlined,
+                                    Icons.delete_outline,
                                     color: Theme.of(context).colorScheme.error,
                                   ),
                                   tooltip: 'Tipp löschen',
