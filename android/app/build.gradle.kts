@@ -7,6 +7,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystoreFile = System.getenv("VOLEO_KEYSTORE_PATH")
+val keystoreAlias = System.getenv("VOLEO_KEY_ALIAS")
+val keystorePassword = System.getenv("VOLEO_STORE_PASSWORD")
+val keyPassword = System.getenv("VOLEO_KEY_PASSWORD")
+
+val hasSigningConfig = keystoreFile != null && keystoreAlias != null &&
+        keystorePassword != null && keyPassword != null
+
 android {
     namespace = "de.capycode.voleo"
     compileSdk = flutter.compileSdkVersion
@@ -17,11 +25,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystoreFile!!)
+                storePassword = keystorePassword
+                keyAlias = keystoreAlias
+                keyPassword = keyPassword
+            }
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "de.capycode.voleo"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -30,9 +46,11 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

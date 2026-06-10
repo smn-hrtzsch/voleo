@@ -79,7 +79,16 @@ jobs:
       - name: Restore google-services.json
         run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
 
+      - name: Restore keystore
+        run: |
+          echo "${{ secrets.VOLEO_KEYSTORE }}" | base64 --decode > /tmp/voleo.keystore
+
       - name: Build Android Release APK
+        env:
+          VOLEO_KEYSTORE_PATH: /tmp/voleo.keystore
+          VOLEO_KEY_ALIAS: ${{ secrets.VOLEO_KEY_ALIAS }}
+          VOLEO_STORE_PASSWORD: ${{ secrets.VOLEO_STORE_PASSWORD }}
+          VOLEO_KEY_PASSWORD: ${{ secrets.VOLEO_KEY_PASSWORD }}
         run: |
           flutter build apk --release
 
