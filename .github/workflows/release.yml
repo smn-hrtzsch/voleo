@@ -73,6 +73,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Restore firebase_options.dart
+        run: echo "${{ secrets.FIREBASE_OPTIONS_DART }}" | base64 --decode > lib/firebase_options.dart
+
       - name: Get Flutter dependencies
         run: flutter pub get
 
