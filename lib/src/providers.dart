@@ -133,3 +133,13 @@ class ThemeModeController extends Notifier<ThemeMode> {
     );
   }
 }
+
+class PendingLoginError extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  set value(String? val) => state = val;
+}
+
+final pendingLoginErrorProvider =
+    NotifierProvider<PendingLoginError, String?>(PendingLoginError.new);

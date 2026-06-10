@@ -90,12 +90,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/',
-        builder: (context, state) {
-          final user = ref.watch(userProvider).value;
-          return OnboardingScreen(
-            key: ValueKey(user?.uid ?? 'signed-out'),
-          );
-        },
+        builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
         path: '/join/:inviteCode',
