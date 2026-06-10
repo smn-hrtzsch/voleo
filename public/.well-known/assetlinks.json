@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "de.capycode.voleo",
+      "sha256_cert_fingerprints": [
+        "D5:7F:E4:C7:CD:FE:09:80:78:FB:5F:D5:54:F1:0A:56:91:BC:F1:8A:E8:E0:BD:87:A6:46:4A:24:9D:A3:1F:C1"
+      ]
+    }
+  }
+]
