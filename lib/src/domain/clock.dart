@@ -4,7 +4,7 @@ class VoleoClock {
   // Simulation aktiv wenn FLUTTER_ENV=test oder ENVIRONMENT=test übergeben wurde
   static const bool useSimulation =
       String.fromEnvironment('FLUTTER_ENV', defaultValue: 'prod') == 'test' ||
-      String.fromEnvironment('ENVIRONMENT', defaultValue: 'prod') == 'test';
+          String.fromEnvironment('ENVIRONMENT', defaultValue: 'prod') == 'test';
 
   static DateTime get now {
     if (useSimulation) {

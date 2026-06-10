@@ -98,7 +98,6 @@ bool isSameTeam(String a, String b) {
       normB.replaceAll('-', '').replaceAll(' ', '');
 }
 
-
 String getTier(String team) {
   final favorites = [
     'Argentinien',
@@ -151,12 +150,12 @@ bool _isGroupStage(String stage) {
 
 String? getEliminationStage(String team, List<CupMatch> matches) {
   final teamMatches = matches
-      .where((m) => isSameTeam(m.homeTeam, team) || isSameTeam(m.awayTeam, team))
+      .where(
+          (m) => isSameTeam(m.homeTeam, team) || isSameTeam(m.awayTeam, team))
       .toList();
   if (teamMatches.isEmpty) return null;
 
-  final knockouts =
-      teamMatches.where((m) => !_isGroupStage(m.stage)).toList();
+  final knockouts = teamMatches.where((m) => !_isGroupStage(m.stage)).toList();
 
   for (final m in knockouts) {
     if (m.status == MatchStatus.finalResult) {
@@ -193,29 +192,29 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
     return 'Champion';
   }
 
-  final groupMatches =
-      matches.where((m) => _isGroupStage(m.stage)).toList();
-  final teamGroupMatches = teamMatches.where((m) => _isGroupStage(m.stage)).toList();
+  final groupMatches = matches.where((m) => _isGroupStage(m.stage)).toList();
+  final teamGroupMatches =
+      teamMatches.where((m) => _isGroupStage(m.stage)).toList();
   final teamGroupFinished = teamGroupMatches.isNotEmpty &&
       teamGroupMatches.every((m) => m.status == MatchStatus.finalResult);
 
   if (teamGroupFinished && knockouts.isEmpty) {
-    // If the team finished its group matches and has no knockout matches, 
-    // it's either out or not yet assigned. 
+    // If the team finished its group matches and has no knockout matches,
+    // it's either out or not yet assigned.
     // If all group matches of the tournament are finished, it's definitely out.
     final allGroupsFinished = groupMatches.isNotEmpty &&
         groupMatches.every((m) => m.status == MatchStatus.finalResult);
     if (allGroupsFinished) {
       return 'Gruppenphase';
     }
-    
+
     // Or if some knockout matches are already scheduled with real teams (not placeholders),
     // and this team is not among them, it's likely out.
-    final hasDeterminedKnockouts = matches.any((m) => 
-      !_isGroupStage(m.stage) && 
-      !_isPlaceholder(m.homeTeam) && 
-      !_isPlaceholder(m.awayTeam));
-    
+    final hasDeterminedKnockouts = matches.any((m) =>
+        !_isGroupStage(m.stage) &&
+        !_isPlaceholder(m.homeTeam) &&
+        !_isPlaceholder(m.awayTeam));
+
     if (hasDeterminedKnockouts) {
       return 'Gruppenphase';
     }
@@ -371,8 +370,16 @@ int getMatchTotalPoints({
 }) {
   final winner = getMatchWinner(match);
   var total = tipPoints;
-  if (winner != null && favoriteTeam != null && isSameTeam(favoriteTeam, winner)) total += 10;
-  if (winner != null && predictedChampion != null && isSameTeam(predictedChampion, winner)) total += 10;
+  if (winner != null &&
+      favoriteTeam != null &&
+      isSameTeam(favoriteTeam, winner)) {
+    total += 10;
+  }
+  if (winner != null &&
+      predictedChampion != null &&
+      isSameTeam(predictedChampion, winner)) {
+    total += 10;
+  }
   return total;
 }
 
@@ -383,8 +390,12 @@ String getEvaluationLabel({
   required CupMatch match,
 }) {
   final winner = getMatchWinner(match);
-  final isFavWin = winner != null && favoriteTeam != null && isSameTeam(favoriteTeam, winner);
-  final isChampWin = winner != null && predictedChampion != null && isSameTeam(predictedChampion, winner);
+  final isFavWin = winner != null &&
+      favoriteTeam != null &&
+      isSameTeam(favoriteTeam, winner);
+  final isChampWin = winner != null &&
+      predictedChampion != null &&
+      isSameTeam(predictedChampion, winner);
 
   final baseLabel = tipPoints == 4
       ? 'exakt'

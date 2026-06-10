@@ -45,16 +45,19 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
     }
 
     // 2. Find next upcoming match (scheduled matches)
-    final upcoming = matches.where((m) => m.status == MatchStatus.scheduled).toList()
+    final upcoming = matches
+        .where((m) => m.status == MatchStatus.scheduled)
+        .toList()
       ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     if (upcoming.isNotEmpty) {
       return _roundFor(upcoming.first);
     }
 
     // 3. Fallback to last finished match
-    final finished =
-        matches.where((m) => m.status == MatchStatus.finalResult).toList()
-          ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final finished = matches
+        .where((m) => m.status == MatchStatus.finalResult)
+        .toList()
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     if (finished.isNotEmpty) {
       return _roundFor(finished.last);
     }
@@ -471,13 +474,15 @@ class _MatchRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isLive = match.status == MatchStatus.live;
 
-    final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+    final hasProgression =
+        match.otHomeScore != null || match.penaltyHomeScore != null;
     final progressionParts = <String>[];
     if (match.otHomeScore != null) {
       progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
     }
     if (match.penaltyHomeScore != null) {
-      progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+      progressionParts
+          .add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
     }
     final progressionText = progressionParts.join(' • ');
 
@@ -532,7 +537,8 @@ class _MatchRow extends StatelessWidget {
                       ),
                       SizedBox(
                         width: 44,
-                        child: _buildScoreProgression(context, match, scheme, isLive),
+                        child: _buildScoreProgression(
+                            context, match, scheme, isLive),
                       ),
                       Expanded(
                         child: _TeamSlot(
@@ -607,8 +613,8 @@ class _TeamSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name =
-        _buildTeamName(context, teamName, user, isRightAligned: isHome, isWinner: isWinner, isLoser: isLoser);
+    final name = _buildTeamName(context, teamName, user,
+        isRightAligned: isHome, isWinner: isWinner, isLoser: isLoser);
     final flagText = Text(flag, style: const TextStyle(fontSize: 21));
     final children = isHome
         ? <Widget>[
@@ -703,7 +709,9 @@ bool isPlaceholderTeam(String name) {
 }
 
 String _roundFor(CupMatch match) {
-  if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde')) return 'Gruppenphase';
+  if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde')) {
+    return 'Gruppenphase';
+  }
   return match.stage.isEmpty ? 'Gruppenphase' : match.stage;
 }
 
@@ -746,7 +754,8 @@ Widget _buildTeamName(
         ),
       );
     }
-    if (user.predictedChampion != null && isSameTeam(user.predictedChampion!, teamName)) {
+    if (user.predictedChampion != null &&
+        isSameTeam(user.predictedChampion!, teamName)) {
       markers.add(
         const Icon(
           Icons.sports_soccer,
@@ -804,8 +813,10 @@ Widget _buildTeamName(
   );
 }
 
-Widget _buildScoreProgression(BuildContext context, CupMatch match, ColorScheme scheme, bool isLive) {
-  if (match.status != MatchStatus.finalResult && match.status != MatchStatus.live) {
+Widget _buildScoreProgression(
+    BuildContext context, CupMatch match, ColorScheme scheme, bool isLive) {
+  if (match.status != MatchStatus.finalResult &&
+      match.status != MatchStatus.live) {
     return Text(
       '-:-',
       textAlign: TextAlign.center,

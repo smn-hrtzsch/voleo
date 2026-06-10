@@ -98,13 +98,16 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
             }
             final scoreResult = _scoreResult(match, existingTip);
 
-            final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+            final hasProgression =
+                match.otHomeScore != null || match.penaltyHomeScore != null;
             final progressionParts = <String>[];
             if (match.otHomeScore != null) {
-              progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+              progressionParts
+                  .add('${match.otHomeScore}:${match.otAwayScore} n.V.');
             }
             if (match.penaltyHomeScore != null) {
-              progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+              progressionParts.add(
+                  '${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
             }
             final progressionText = progressionParts.join(' • ');
 
@@ -113,7 +116,8 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               children: [
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -140,9 +144,14 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             Expanded(
                               child: () {
                                 final winner = getMatchWinner(match);
-                                final isFinished = match.status == MatchStatus.finalResult;
-                                final isHomeWinner = isFinished && winner != null && isSameTeam(winner, match.homeTeam);
-                                final isHomeLoser = isFinished && winner != null && !isSameTeam(winner, match.homeTeam);
+                                final isFinished =
+                                    match.status == MatchStatus.finalResult;
+                                final isHomeWinner = isFinished &&
+                                    winner != null &&
+                                    isSameTeam(winner, match.homeTeam);
+                                final isHomeLoser = isFinished &&
+                                    winner != null &&
+                                    !isSameTeam(winner, match.homeTeam);
                                 return _MatchupTeamLabel(
                                   teamName: match.homeTeam,
                                   isHome: true,
@@ -173,9 +182,14 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             Expanded(
                               child: () {
                                 final winner = getMatchWinner(match);
-                                final isFinished = match.status == MatchStatus.finalResult;
-                                final isAwayWinner = isFinished && winner != null && isSameTeam(winner, match.awayTeam);
-                                final isAwayLoser = isFinished && winner != null && !isSameTeam(winner, match.awayTeam);
+                                final isFinished =
+                                    match.status == MatchStatus.finalResult;
+                                final isAwayWinner = isFinished &&
+                                    winner != null &&
+                                    isSameTeam(winner, match.awayTeam);
+                                final isAwayLoser = isFinished &&
+                                    winner != null &&
+                                    !isSameTeam(winner, match.awayTeam);
                                 return _MatchupTeamLabel(
                                   teamName: match.awayTeam,
                                   isHome: false,
@@ -218,9 +232,12 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           const SizedBox(height: 12),
                           Center(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Row(
@@ -229,24 +246,31 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                   Icon(
                                     Icons.check,
                                     size: 18,
-                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
                                     'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimaryContainer,
                                     ),
                                   ),
                                   if (!match.isLocked) ...[
                                     const SizedBox(width: 6),
                                     GestureDetector(
-                                      onTap: _isSaving ? null : () => _deleteTip(match),
+                                      onTap: _isSaving
+                                          ? null
+                                          : () => _deleteTip(match),
                                       child: Icon(
                                         Icons.cancel,
                                         size: 18,
-                                        color: Theme.of(context).colorScheme.error,
+                                        color:
+                                            Theme.of(context).colorScheme.error,
                                       ),
                                     ),
                                   ],
@@ -324,21 +348,27 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                   const SizedBox(height: 8),
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                       child: Column(
                         children: [
                           (() {
-                            final matchTips = allTips.where((tip) => tip.matchId == match.id).toList();
+                            final matchTips = allTips
+                                .where((tip) => tip.matchId == match.id)
+                                .toList();
                             if (matchTips.isEmpty) {
                               return const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 8),
-                                child: Center(child: Text('Keine Tipps von anderen Spielern.')),
+                                child: Center(
+                                    child: Text(
+                                        'Keine Tipps von anderen Spielern.')),
                               );
                             }
                             return Column(
                               children: [
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                  padding:
+                                      const EdgeInsets.only(top: 4, bottom: 8),
                                   child: Row(
                                     children: [
                                       Expanded(
@@ -348,7 +378,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
-                                            color: Theme.of(context).colorScheme.primary,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
                                         ),
                                       ),
@@ -360,7 +392,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
-                                            color: Theme.of(context).colorScheme.primary,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
                                         ),
                                       ),
@@ -372,7 +406,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
-                                            color: Theme.of(context).colorScheme.primary,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
                                         ),
                                       ),
@@ -384,7 +420,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
-                                            color: Theme.of(context).colorScheme.primary,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
                                         ),
                                       ),
@@ -396,30 +434,41 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                   (() {
                                     _loadUserIfNeeded(tip.uid);
                                     final userProfile = _loadedUsers[tip.uid];
-                                    final isPlaceholder = userProfile?.nickname.isEmpty ?? true;
+                                    final isPlaceholder =
+                                        userProfile?.nickname.isEmpty ?? true;
 
                                     final totalPts = getMatchTotalPoints(
                                       tipPoints: tip.points,
-                                      favoriteTeam: isPlaceholder ? null : userProfile?.favoriteTeam,
-                                      predictedChampion: isPlaceholder ? null : userProfile?.predictedChampion,
+                                      favoriteTeam: isPlaceholder
+                                          ? null
+                                          : userProfile?.favoriteTeam,
+                                      predictedChampion: isPlaceholder
+                                          ? null
+                                          : userProfile?.predictedChampion,
                                       match: match,
                                     );
 
                                     final evalStr = getEvaluationLabel(
                                       tipPoints: tip.points,
-                                      favoriteTeam: isPlaceholder ? null : userProfile?.favoriteTeam,
-                                      predictedChampion: isPlaceholder ? null : userProfile?.predictedChampion,
+                                      favoriteTeam: isPlaceholder
+                                          ? null
+                                          : userProfile?.favoriteTeam,
+                                      predictedChampion: isPlaceholder
+                                          ? null
+                                          : userProfile?.predictedChampion,
                                       match: match,
                                     );
 
                                     return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
                                       child: Row(
                                         children: [
                                           Expanded(
                                             flex: 4,
                                             child: Text(
-                                              displayNames[tip.uid] ?? 'Spieler',
+                                              displayNames[tip.uid] ??
+                                                  'Spieler',
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.w500,
                                                 fontSize: 13,
@@ -444,24 +493,39 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                             child: Align(
                                               alignment: Alignment.center,
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: match.status == MatchStatus.finalResult
+                                                  color: match.status ==
+                                                          MatchStatus
+                                                              .finalResult
                                                       ? (totalPts > 0
-                                                          ? Colors.green.withAlpha(38)
-                                                          : Colors.grey.withAlpha(38))
-                                                      : Colors.blue.withAlpha(38),
-                                                  borderRadius: BorderRadius.circular(6),
+                                                          ? Colors.green
+                                                              .withAlpha(38)
+                                                          : Colors.grey
+                                                              .withAlpha(38))
+                                                      : Colors.blue
+                                                          .withAlpha(38),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
-                                                  match.status == MatchStatus.finalResult
+                                                  match.status ==
+                                                          MatchStatus
+                                                              .finalResult
                                                       ? '+$totalPts'
                                                       : '-',
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.bold,
-                                                    color: match.status == MatchStatus.finalResult
-                                                        ? (totalPts > 0 ? Colors.green : Colors.grey)
+                                                    color: match.status ==
+                                                            MatchStatus
+                                                                .finalResult
+                                                        ? (totalPts > 0
+                                                            ? Colors.green
+                                                            : Colors.grey)
                                                         : Colors.blue,
                                                   ),
                                                 ),
@@ -471,7 +535,8 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           Expanded(
                                             flex: 6,
                                             child: Text(
-                                              match.status == MatchStatus.finalResult
+                                              match.status ==
+                                                      MatchStatus.finalResult
                                                   ? evalStr
                                                   : '-',
                                               textAlign: TextAlign.right,
@@ -480,7 +545,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                                 color: totalPts > 0
                                                     ? Colors.green
                                                     : Colors.grey,
-                                                fontWeight: totalPts > 0 ? FontWeight.w500 : FontWeight.normal,
+                                                fontWeight: totalPts > 0
+                                                    ? FontWeight.w500
+                                                    : FontWeight.normal,
                                               ),
                                             ),
                                           ),
@@ -701,7 +768,9 @@ class _ScoreWheelState extends State<_ScoreWheel> {
     if (widget.value != oldWidget.value) {
       if (_controller.hasClients && _controller.selectedItem != widget.value) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _controller.hasClients && _controller.selectedItem != widget.value) {
+          if (mounted &&
+              _controller.hasClients &&
+              _controller.selectedItem != widget.value) {
             _controller.jumpToItem(widget.value);
           }
         });

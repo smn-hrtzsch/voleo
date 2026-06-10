@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../providers.dart';
 import '../shared/app_toast.dart';
@@ -83,6 +84,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
     });
 
+    ref.listen(pendingLoginErrorProvider, (prev, next) {
+      if (next != null) {
+        showAppToast(context, next, type: AppToastType.error);
+        Future.microtask(() {
+          ref.read(pendingLoginErrorProvider.notifier).value = null;
+        });
+      }
+    });
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -153,7 +163,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _buildNicknameStep(ColorScheme colorScheme) {
     final user = ref.watch(userProvider).value;
-    final showAlreadyRegistered = user == null || (user.isAnonymous && !user.hasLinkedProvider);
+    final showAlreadyRegistered =
+        user == null || (user.isAnonymous && !user.hasLinkedProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,8 +215,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _isLoading ? null : _signInWithGoogle,
-            icon:
-                SvgPicture.asset('assets/google_logo.svg', width: 18, height: 18),
+            icon: SvgPicture.asset('assets/google_logo.svg',
+                width: 18, height: 18),
             label: const Text('Mit Google anmelden'),
           ),
           const SizedBox(height: 12),
@@ -267,11 +278,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isGoogle ? 'Mit Google verknüpft' : 'Mit Apple verknüpft',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: colorScheme.primary,
-                            ),
+                        isGoogle
+                            ? 'Mit Google verknüpft'
+                            : 'Mit Apple verknüpft',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
                       ),
                     ],
                   ),
@@ -313,8 +327,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ] else ...[
           OutlinedButton.icon(
             onPressed: _isLoading ? null : _linkGoogle,
-            icon:
-                SvgPicture.asset('assets/google_logo.svg', width: 20, height: 20),
+            icon: SvgPicture.asset('assets/google_logo.svg',
+                width: 20, height: 20),
             label: const Text('Mit Google verknüpfen'),
           ),
           const SizedBox(height: 12),
@@ -577,38 +591,82 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
+    final transitionNotifier = ref.read(sessionTransitionProvider.notifier);
     try {
+      transitionNotifier.value = true;
       ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithGoogle();
+      
+      final currentUser = auth.FirebaseAuth.instance.currentUser;
+      String? activeLeagueId;
+      if (currentUser != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+        activeLeagueId = doc.data()?['activeLeagueId'] as String?;
+      }
+      
+      transitionNotifier.value = false;
       if (mounted) {
-        setState(() => _currentStep = 2);
+        if (activeLeagueId == null || activeLeagueId.isEmpty) {
+          setState(() => _currentStep = 2);
+        }
       }
     } catch (e) {
-      if (_isUserCanceledAuth(e)) return;
+      transitionNotifier.value = false;
+      if (_isUserCanceledAuth(e)) {
+        return;
+      }
+      final errorMsg = _formatError('Login fehlgeschlagen', e);
+      ref.read(pendingLoginErrorProvider.notifier).value = errorMsg;
       if (mounted) {
-        showAppToast(context, _formatError('Login fehlgeschlagen', e),
-            type: AppToastType.error);
+        showAppToast(context, errorMsg, type: AppToastType.error);
+        ref.read(pendingLoginErrorProvider.notifier).value = null;
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _signInWithApple() async {
     setState(() => _isLoading = true);
+    final transitionNotifier = ref.read(sessionTransitionProvider.notifier);
     try {
+      transitionNotifier.value = true;
       ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithApple();
+      
+      final currentUser = auth.FirebaseAuth.instance.currentUser;
+      String? activeLeagueId;
+      if (currentUser != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+        activeLeagueId = doc.data()?['activeLeagueId'] as String?;
+      }
+      
+      transitionNotifier.value = false;
       if (mounted) {
-        setState(() => _currentStep = 2);
+        if (activeLeagueId == null || activeLeagueId.isEmpty) {
+          setState(() => _currentStep = 2);
+        }
       }
     } catch (e) {
+      transitionNotifier.value = false;
+      final errorMsg = _formatError('Login fehlgeschlagen', e);
+      ref.read(pendingLoginErrorProvider.notifier).value = errorMsg;
       if (mounted) {
-        showAppToast(context, _formatError('Login fehlgeschlagen', e),
-            type: AppToastType.error);
+        showAppToast(context, errorMsg, type: AppToastType.error);
+        ref.read(pendingLoginErrorProvider.notifier).value = null;
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -769,7 +827,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Future<void> _unlinkActiveProvider() async {
     final user = ref.read(userProvider).value;
     if (user == null) return;
-    final providerId = user.hasGoogleProvider ? 'google.com' : (user.hasAppleProvider ? 'apple.com' : null);
+    final providerId = user.hasGoogleProvider
+        ? 'google.com'
+        : (user.hasAppleProvider ? 'apple.com' : null);
     if (providerId == null) return;
 
     setState(() => _isLoading = true);
@@ -799,16 +859,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     auth.AuthCredential credential,
   ) async {
     setState(() => _isLoading = true);
+    final transitionNotifier = ref.read(sessionTransitionProvider.notifier);
     try {
+      transitionNotifier.value = true;
+      ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithCredential(credential);
-      if (mounted) setState(() => _currentStep = 2);
-    } catch (e) {
+      
+      final currentUser = auth.FirebaseAuth.instance.currentUser;
+      String? activeLeagueId;
+      if (currentUser != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+        activeLeagueId = doc.data()?['activeLeagueId'] as String?;
+      }
+      
+      transitionNotifier.value = false;
       if (mounted) {
-        showAppToast(context, _formatError('Konto-Wechsel fehlgeschlagen', e),
-            type: AppToastType.error);
+        if (activeLeagueId == null || activeLeagueId.isEmpty) {
+          setState(() => _currentStep = 2);
+        }
+      }
+    } catch (e) {
+      transitionNotifier.value = false;
+      final errorMsg = _formatError('Konto-Wechsel fehlgeschlagen', e);
+      ref.read(pendingLoginErrorProvider.notifier).value = errorMsg;
+      if (mounted) {
+        showAppToast(context, errorMsg, type: AppToastType.error);
+        ref.read(pendingLoginErrorProvider.notifier).value = null;
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
