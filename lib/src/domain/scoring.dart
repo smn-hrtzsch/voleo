@@ -372,10 +372,14 @@ int getMatchTotalPoints({
   var total = tipPoints;
   if (winner != null &&
       favoriteTeam != null &&
-      isSameTeam(favoriteTeam, winner)) total += 10;
+      isSameTeam(favoriteTeam, winner)) {
+    total += 10;
+  }
   if (winner != null &&
       predictedChampion != null &&
-      isSameTeam(predictedChampion, winner)) total += 10;
+      isSameTeam(predictedChampion, winner)) {
+    total += 10;
+  }
   return total;
 }
 
