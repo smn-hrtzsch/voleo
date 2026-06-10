@@ -7,13 +7,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val keystoreFile = System.getenv("VOLEO_KEYSTORE_PATH")
-val keystoreAlias = System.getenv("VOLEO_KEY_ALIAS")
-val keystorePassword = System.getenv("VOLEO_STORE_PASSWORD")
-val keyPassword = System.getenv("VOLEO_KEY_PASSWORD")
+val envKeystoreFile = System.getenv("VOLEO_KEYSTORE_PATH")
+val envKeyAlias = System.getenv("VOLEO_KEY_ALIAS")
+val envStorePassword = System.getenv("VOLEO_STORE_PASSWORD")
+val envKeyPassword = System.getenv("VOLEO_KEY_PASSWORD")
 
-val hasSigningConfig = keystoreFile != null && keystoreAlias != null &&
-        keystorePassword != null && keyPassword != null
+val hasSigningConfig = envKeystoreFile != null && envKeyAlias != null &&
+        envStorePassword != null && envKeyPassword != null
 
 android {
     namespace = "de.capycode.voleo"
@@ -25,13 +25,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    if (hasSigningConfig) {
-        signingConfigs {
+    signingConfigs {
+        if (hasSigningConfig) {
             create("release") {
-                storeFile = file(keystoreFile!!)
-                storePassword = keystorePassword
-                keyAlias = keystoreAlias
-                keyPassword = keyPassword
+                storeFile = file(envKeystoreFile!!)
+                storePassword = envStorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
             }
         }
     }
