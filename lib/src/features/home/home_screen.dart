@@ -7,9 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain/flags.dart';
+import '../../domain/clock.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
+import '../shared/live_pulse_dot.dart';
+import '../shared/user_tips_bottom_sheet.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -20,6 +23,7 @@ class HomeScreen extends ConsumerWidget {
     final league = ref.watch(leagueProvider);
     final leagueValue = league.value;
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
+    final leagueTips = ref.watch(leagueTipsProvider).value ?? const <Tip>[];
     final standings = ref.watch(standingsProvider).value ?? const <Standing>[];
     final user = ref.watch(userProvider).value;
 
@@ -28,7 +32,7 @@ class HomeScreen extends ConsumerWidget {
       body: AsyncValueView<List<CupMatch>>(
         value: matches,
         data: (items) {
-          final now = DateTime.now();
+          final now = VoleoClock.now;
           final upcomingMatches = items
               .where(
                   (m) => m.kickoff.isAfter(now) || m.status == MatchStatus.live)
@@ -52,7 +56,7 @@ class HomeScreen extends ConsumerWidget {
           }
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(10, 14, 10, 16),
+            padding: const EdgeInsets.fromLTRB(6, 14, 6, 16),
             children: [
               _LeagueHero(
                 title: leagueValue?.name ?? 'WM-Runde',
@@ -60,7 +64,11 @@ class HomeScreen extends ConsumerWidget {
                 onTap: () => context.go('/league'),
               ),
               const SizedBox(height: 16),
-              _TopThreeCard(standings: standings),
+              _TopThreeCard(
+                standings: standings,
+                matches: items,
+                tips: leagueTips,
+              ),
               const SizedBox(height: 12),
               const _InfoTippspielCard(),
               const SizedBox(height: 20),
@@ -199,13 +207,20 @@ class _LeagueHero extends StatelessWidget {
   }
 }
 
-class _TopThreeCard extends StatelessWidget {
-  const _TopThreeCard({required this.standings});
+class _TopThreeCard extends ConsumerWidget {
+  const _TopThreeCard({
+    required this.standings,
+    required this.matches,
+    required this.tips,
+    super.key,
+  });
 
   final List<Standing> standings;
+  final List<CupMatch> matches;
+  final List<Tip> tips;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final topThree = standings.take(3).toList();
     final scheme = Theme.of(context).colorScheme;
     return Card(
@@ -243,6 +258,17 @@ class _TopThreeCard extends StatelessWidget {
                     '${standing.totalPoints} Pkt.',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  onTap: () {
+                    final userTips = tips.where((tip) => tip.uid == standing.uid).toList();
+                    showUserTipsBottomSheet(
+                      context: context,
+                      ref: ref,
+                      displayName: standing.displayName,
+                      matches: matches,
+                      userTips: userTips,
+                      standing: standing,
+                    );
+                  },
                 ),
           ],
         ),
@@ -378,7 +404,7 @@ class _NextMatchesCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+        padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -452,6 +478,7 @@ class _NextMatchRow extends StatelessWidget {
     final homeFlag = CountryFlags.getFlag(match.homeTeam);
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
     final scheme = Theme.of(context).colorScheme;
+    final isLive = match.status == MatchStatus.live;
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
@@ -462,20 +489,36 @@ class _NextMatchRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 58,
-              child: DefaultTextStyle(
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
-                        ) ??
-                    const TextStyle(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(date),
-                    Text(time),
-                  ],
-                ),
-              ),
+              child: isLive
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LivePulseDot(),
+                        SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                  : DefaultTextStyle(
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ) ??
+                          const TextStyle(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(date),
+                          Text(time),
+                        ],
+                      ),
+                    ),
             ),
             Expanded(
               child: Row(
@@ -491,16 +534,18 @@ class _NextMatchRow extends StatelessWidget {
                   SizedBox(
                     width: 34,
                     child: Text(
-                      match.status == MatchStatus.finalResult
+                      (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
                           ? '${match.homeScore}:${match.awayScore}'
                           : '-:-',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: match.status == MatchStatus.finalResult
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant
-                                    .withValues(alpha: 0.5),
+                            color: isLive
+                                ? Colors.green
+                                : match.status == MatchStatus.finalResult
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant
+                                        .withValues(alpha: 0.5),
                           ),
                     ),
                   ),
@@ -542,6 +587,8 @@ class _NextMatchRow extends StatelessWidget {
     );
   }
 }
+
+
 
 class _TeamSlot extends StatelessWidget {
   const _TeamSlot({
@@ -735,25 +782,20 @@ Widget _buildTeamName(
     return textWidget;
   }
 
-  final List<Widget> children = [];
-  if (isRightAligned) {
-    for (var i = 0; i < markers.length; i++) {
-      children.add(markers[i]);
-      children.add(const SizedBox(width: 2));
-    }
-    children.add(Flexible(child: textWidget));
-  } else {
-    children.add(Flexible(child: textWidget));
-    for (var i = 0; i < markers.length; i++) {
-      children.add(const SizedBox(width: 2));
-      children.add(markers[i]);
-    }
-  }
-
   return Row(
     mainAxisAlignment:
         isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
-    children: children,
+    children: [
+      if (isRightAligned) ...[
+        for (final m in markers) m,
+        const SizedBox(width: 4),
+      ],
+      Flexible(child: textWidget),
+      if (!isRightAligned) ...[
+        const SizedBox(width: 4),
+        for (final m in markers) m,
+      ],
+    ],
   );
 }

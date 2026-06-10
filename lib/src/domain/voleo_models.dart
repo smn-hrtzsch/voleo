@@ -1,3 +1,5 @@
+import 'clock.dart';
+
 enum MatchStatus { scheduled, live, finalResult }
 
 enum MemberRole { owner, member }
@@ -91,7 +93,7 @@ class CupMatch {
   final int? awayScore;
   final String source;
 
-  bool get isLocked => DateTime.now().isAfter(kickoff);
+  bool get isLocked => VoleoClock.now.isAfter(kickoff);
 
   CupMatch copyWith({
     MatchStatus? status,

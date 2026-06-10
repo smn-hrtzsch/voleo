@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../providers.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({
     required this.navigationShell,
     super.key,
@@ -10,14 +12,25 @@ class AppShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
+    final matches = ref.watch(matchesProvider);
+    final tips = ref.watch(tipsProvider);
+    final leagueTips = ref.watch(leagueTipsProvider);
+    final standings = ref.watch(standingsProvider);
+
+    final isSyncing = matches.isRefreshing || matches.isLoading ||
+        tips.isRefreshing || tips.isLoading ||
+        leagueTips.isRefreshing || leagueTips.isLoading ||
+        standings.isRefreshing || standings.isLoading;
+
+    final canPopNavigator = Navigator.of(context, rootNavigator: true).canPop();
     return PopScope(
-      canPop: widget.navigationShell.currentIndex == 0,
+      canPop: canPopNavigator || widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (widget.navigationShell.currentIndex != 0) {
@@ -25,7 +38,20 @@ class _AppShellState extends State<AppShell> {
         }
       },
       child: Scaffold(
-        body: SafeArea(child: widget.navigationShell),
+        body: Column(
+          children: [
+            if (isSyncing)
+              const SizedBox(
+                height: 2.0,
+                child: LinearProgressIndicator(),
+              )
+            else
+              const SizedBox(height: 2.0),
+            Expanded(
+              child: SafeArea(child: widget.navigationShell),
+            ),
+          ],
+        ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: widget.navigationShell.currentIndex,
           onDestinationSelected: (index) {

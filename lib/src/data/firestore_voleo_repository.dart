@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,6 +10,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../domain/scoring.dart';
 import '../domain/voleo_models.dart';
+import '../domain/clock.dart';
 import 'voleo_repository.dart';
 import 'wc2026_group_stage.dart';
 
@@ -158,13 +160,25 @@ class FirestoreVoleoRepository implements VoleoRepository {
   Stream<List<CupMatch>> watchMatches() {
     return _firestore
         .collection('matches')
-        .orderBy('kickoff')
         .snapshots()
         .map((snapshot) {
-      if (snapshot.docs.isEmpty) {
-        return buildWc2026GroupStageMatches();
+      final staticMatches = buildWc2026GroupStageMatches();
+      final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
+      final firestoreMatchesMap = {
+        for (final match in firestoreMatches) match.id: match
+      };
+
+      final merged = <CupMatch>[];
+      for (final staticMatch in staticMatches) {
+        if (firestoreMatchesMap.containsKey(staticMatch.id)) {
+          merged.add(firestoreMatchesMap[staticMatch.id]!);
+        } else {
+          merged.add(staticMatch);
+        }
       }
-      return snapshot.docs.map(_matchFromDoc).toList();
+
+      merged.sort((a, b) => a.kickoff.compareTo(b.kickoff));
+      return merged;
     });
   }
 
@@ -201,9 +215,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
           .snapshots()
           .asyncExpand((snapshot) {
         if (snapshot.docs.isNotEmpty) {
-          return Stream.fromFuture(
-            _standingsWithMemberPhotos(leagueRef, snapshot.docs),
-          );
+          return Stream.value(snapshot.docs.map(_standingFromDoc).toList());
         }
         return leagueRef.collection('members').snapshots().map((members) {
           final standings = members.docs.map((doc) {
@@ -260,6 +272,17 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final userCredential = await _auth.signInWithCredential(credential);
     final user = userCredential.user;
     if (user != null) {
+      if (userCredential.additionalUserInfo?.isNewUser == true) {
+        try {
+          await user.delete();
+        } catch (_) {}
+        await _auth.signOut();
+        await GoogleSignIn.instance.signOut();
+        throw auth.FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Es existiert noch kein Voleo-Konto für diesen Google-Account. Bitte registriere dich zuerst.',
+        );
+      }
       await _ensureUserDocument(
         user,
         nickname: user.displayName ?? googleUser.displayName ?? 'Spieler',
@@ -284,6 +307,16 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final userCredential = await _auth.signInWithCredential(credential);
     final user = userCredential.user;
     if (user != null) {
+      if (userCredential.additionalUserInfo?.isNewUser == true) {
+        try {
+          await user.delete();
+        } catch (_) {}
+        await _auth.signOut();
+        throw auth.FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Es existiert noch kein Voleo-Konto für diesen Apple-Account. Bitte registriere dich zuerst.',
+        );
+      }
       await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
       await _ensureActiveLeague(user);
     }
@@ -294,6 +327,16 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final userCredential = await _auth.signInWithCredential(credential);
     final user = userCredential.user;
     if (user != null) {
+      if (userCredential.additionalUserInfo?.isNewUser == true) {
+        try {
+          await user.delete();
+        } catch (_) {}
+        await _auth.signOut();
+        throw auth.FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Es existiert noch kein Voleo-Konto für diese Anmeldedaten. Bitte registriere dich zuerst.',
+        );
+      }
       await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
       await _ensureActiveLeague(user);
     }
@@ -477,7 +520,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       ..sort();
 
     final tournamentStarted =
-        kickoffs.isNotEmpty && DateTime.now().isAfter(kickoffs.first);
+        kickoffs.isNotEmpty && VoleoClock.now.isAfter(kickoffs.first);
     if (tournamentStarted) {
       throw StateError(
           'Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
@@ -497,6 +540,64 @@ class FirestoreVoleoRepository implements VoleoRepository {
         .collection('users')
         .doc(user.uid)
         .set(updates, SetOptions(merge: true));
+  }
+
+  @override
+  Future<VoleoUser?> getUser(String uid) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(uid).get();
+      final data = userDoc.data();
+      if (data == null) {
+        print('FirestoreVoleoRepository.getUser($uid) -> document is null');
+        return null;
+      }
+      final user = VoleoUser(
+        uid: uid,
+        nickname: data['nickname'] as String? ?? 'Spieler',
+        isAnonymous: data['isAnonymous'] as bool? ?? true,
+        photoUrl: data['photoUrl'] as String?,
+        email: data['email'] as String?,
+        providerIds: List<String>.from(data['providerIds'] ?? const <String>[]),
+        favoriteTeam: data['favoriteTeam'] as String?,
+        predictedChampion: data['predictedChampion'] as String?,
+        riskTeam: data['riskTeam'] as String?,
+        riskStage: data['riskStage'] as String?,
+        themeModeName: data['themeMode'] as String?,
+      );
+      print('FirestoreVoleoRepository.getUser($uid) -> loaded: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+      return user;
+    } catch (e) {
+      print('FirestoreVoleoRepository.getUser($uid) -> network get failed: $e. Retrying from cache...');
+      try {
+        final userDoc = await _firestore
+            .collection('users')
+            .doc(uid)
+            .get(const GetOptions(source: Source.cache));
+        final data = userDoc.data();
+        if (data == null) {
+          print('FirestoreVoleoRepository.getUser($uid) -> cache doc is null');
+          return null;
+        }
+        final user = VoleoUser(
+          uid: uid,
+          nickname: data['nickname'] as String? ?? 'Spieler',
+          isAnonymous: data['isAnonymous'] as bool? ?? true,
+          photoUrl: data['photoUrl'] as String?,
+          email: data['email'] as String?,
+          providerIds: List<String>.from(data['providerIds'] ?? const <String>[]),
+          favoriteTeam: data['favoriteTeam'] as String?,
+          predictedChampion: data['predictedChampion'] as String?,
+          riskTeam: data['riskTeam'] as String?,
+          riskStage: data['riskStage'] as String?,
+          themeModeName: data['themeMode'] as String?,
+        );
+        print('FirestoreVoleoRepository.getUser($uid) -> loaded from cache: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+        return user;
+      } catch (cacheErr) {
+        print('FirestoreVoleoRepository.getUser($uid) -> cache get failed: $cacheErr');
+        return null;
+      }
+    }
   }
 
   @override
@@ -714,7 +815,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final user = _requireFirebaseUser();
     final matches = await watchMatches().first;
     final match = matches.firstWhere((match) => match.id == matchId);
-    if (!canEditTip(match, DateTime.now())) {
+    if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
 
@@ -751,7 +852,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final user = _requireFirebaseUser();
     final matches = await watchMatches().first;
     final match = matches.firstWhere((match) => match.id == matchId);
-    if (!canEditTip(match, DateTime.now())) {
+    if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
     }
 
@@ -823,32 +924,48 @@ class FirestoreVoleoRepository implements VoleoRepository {
 
   @override
   Future<void> signOut() async {
-    final user = _requireFirebaseUser();
-    await user.reload();
-    final currentUser = _auth.currentUser ?? user;
-    if (currentUser.isAnonymous || _providerIds(currentUser).isEmpty) {
-      await _deleteCurrentUserData();
-      try {
-        await currentUser.delete();
-      } on auth.FirebaseAuthException catch (error) {
-        if (error.code != 'requires-recent-login') rethrow;
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await user.reload();
+      final currentUser = _auth.currentUser ?? user;
+      if (currentUser.isAnonymous || _providerIds(currentUser).isEmpty) {
+        try {
+          await _deleteCurrentUserData();
+        } catch (e) {
+          debugPrint('Error deleting user data during signOut: $e');
+        }
+        try {
+          await currentUser.delete();
+        } on auth.FirebaseAuthException catch (error) {
+          if (error.code != 'requires-recent-login') rethrow;
+        } catch (e) {
+          debugPrint('Error deleting auth user during signOut: $e');
+        }
       }
+    } catch (e) {
+      debugPrint('Error during reload or checking providers in signOut: $e');
+    } finally {
       await _auth.signOut();
-      return;
     }
-    await _auth.signOut();
   }
 
   @override
   Future<void> deleteAccount() async {
     final user = _requireFirebaseUser();
-    await _deleteCurrentUserData();
+    try {
+      await _deleteCurrentUserData();
+    } catch (e) {
+      debugPrint('Error deleting user data during deleteAccount: $e');
+    }
     try {
       await user.delete();
     } on auth.FirebaseAuthException catch (error) {
       if (error.code != 'requires-recent-login') rethrow;
+    } finally {
+      await _auth.signOut();
     }
-    await _auth.signOut();
   }
 
   auth.User _requireFirebaseUser() {

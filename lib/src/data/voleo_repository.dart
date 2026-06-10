@@ -50,4 +50,6 @@ abstract class VoleoRepository {
     String? riskTeam,
     String? riskStage,
   });
+
+  Future<VoleoUser?> getUser(String uid);
 }
