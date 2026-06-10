@@ -23,7 +23,7 @@
 - [ ] Verify the end-to-end MVP on Pixel 7 before Thursday deadline.
 - [ ] Fix endless loading indicator in the Heute tab after matches are visible.
 - [ ] Fix match tip routing so matches can be tipped again.
-- [ ] Fix Google sign-in failures after account selection.
+- [x] Fix Google sign-in failures after account selection.
 - [ ] Fix endlessly loading Liga tab.
 - [ ] Replace manual score text fields with vertical score pickers.
 - [ ] Remove redundant "Anpfiff" label from match metadata.
