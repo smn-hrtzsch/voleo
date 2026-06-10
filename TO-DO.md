@@ -4,6 +4,9 @@
 
 - [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
 - [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
+- [x] Fix evaluation points display, dropdown KO filter, and rootNavigator back-button bugs.
+- [ ] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
+- [x] Add Dart defines (`ENVIRONMENT=test`) for toggling simulation vs. production clock.
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
 - [x] Replace local-first repository wiring with Firebase repository after config exists.
@@ -101,8 +104,8 @@
 - [x] Force onboarding route after sign-out/delete to avoid loading deadlocks.
 - [x] Retry Google unlink reauthentication only when Firebase requires it.
 - [x] Use Google profile photo from GoogleSignIn when Firebase Auth has not populated it yet.
-- [ ] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
-- [ ] Add a date-mode switch for games with swipe navigation and current-day initial focus.
+- [x] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
+- [x] Add a date-mode switch for games with swipe navigation and current-day initial focus.
 
 ## MVP
 
