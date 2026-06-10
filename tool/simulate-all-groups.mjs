@@ -34,7 +34,6 @@ if (!accessToken || Date.now() >= expiresAt) {
 }
 
 const projectId = 'voleo-sho2303';
-const leagueId = 'VxekZ4yyTJRvsI1P3Wqy';
 
 class FirestoreRestClient {
   constructor(projectId, accessToken) {
@@ -93,7 +92,8 @@ class FirestoreRestClient {
       throw new Error(`Firestore list failed with ${response.status}: ${url}`);
     }
     if (response.status === 404) return [];
-    return (await response.json()).documents ?? [];
+    const data = await response.json();
+    return data.documents ?? [];
   }
 
   async batchWrite(writes) {
@@ -125,33 +125,83 @@ function timestampValue(value) { return { timestampValue: value }; }
 function booleanValue(value) { return { booleanValue: value }; }
 function arrayValue(values) { return { arrayValue: { values } }; }
 
-// First 5 Matches definition
-const matchesData = [
-  { id: 'wc2026-ga-1', homeTeam: 'Mexiko', awayTeam: 'Südafrika', kickoff: '2026-06-11T19:00:00Z', stage: '1. Runde', group: 'A', status: 'finalResult', homeScore: 2, awayScore: 1 },
-  { id: 'wc2026-ga-2', homeTeam: 'Südkorea', awayTeam: 'Tschechien', kickoff: '2026-06-12T02:00:00Z', stage: '1. Runde', group: 'A', status: 'finalResult', homeScore: 1, awayScore: 1 },
-  { id: 'wc2026-gb-3', homeTeam: 'Kanada', awayTeam: 'Bosnien und Herzegowina', kickoff: '2026-06-12T19:00:00Z', stage: '1. Runde', group: 'B', status: 'finalResult', homeScore: 0, awayScore: 2 },
-  { id: 'wc2026-gd-4', homeTeam: 'USA', awayTeam: 'Paraguay', kickoff: '2026-06-13T01:00:00Z', stage: '1. Runde', group: 'D', status: 'finalResult', homeScore: 3, awayScore: 0 },
-  { id: 'wc2026-gb-5', homeTeam: 'Katar', awayTeam: 'Schweiz', kickoff: '2026-06-13T19:00:00Z', stage: '1. Runde', group: 'B', status: 'live', homeScore: 1, awayScore: 2 },
-];
+// Disable functions sync
+console.log('Disabling background sync job in Firestore settings...');
+await firestore.setDocument('settings/sync_config', {
+  disabled: booleanValue(true),
+  updatedAt: timestampValue(new Date().toISOString()),
+});
 
-console.log('Writing simulated matches to Firestore...');
-const matchWrites = matchesData.map(match => ({
-  update: firestore.document('matches', match.id, {
-    homeTeam: stringValue(match.homeTeam),
-    awayTeam: stringValue(match.awayTeam),
-    kickoff: timestampValue(match.kickoff),
-    stage: stringValue(match.stage),
-    group: stringValue(match.group),
-    status: stringValue(match.status),
-    homeScore: nullableIntValue(match.homeScore),
-    awayScore: nullableIntValue(match.awayScore),
-    source: stringValue('openligadb'),
-    updatedAt: timestampValue(new Date().toISOString()),
-  })
-}));
-await firestore.batchWrite(matchWrites);
+// Find active league
+console.log('Finding active league...');
+const leagues = await firestore.listDocuments('leagues');
+if (leagues.length === 0) {
+  throw new Error('No leagues found in Firestore!');
+}
+let leagueDoc = leagues.find(l => l.name.endsWith('VxekZ4yyTJRvsI1P3Wqy'));
+if (!leagueDoc) {
+  leagueDoc = leagues[0];
+}
+const leagueId = leagueDoc.name.split('/').pop();
+console.log(`Using league ID: ${leagueId}`);
 
-// 3 Mock Users + 2 Real Users UIDs
+// Load group stage matches template
+const matchesJson = JSON.parse(fs.readFileSync('tool/group_stage_matches.json', 'utf8'));
+const groupMatches = matchesJson.filter(m => m.stage.includes('Runde') || m.group !== '');
+const koMatches = matchesJson.filter(m => !m.stage.includes('Runde') && m.group === '');
+
+console.log(`Loaded ${groupMatches.length} group matches and ${koMatches.length} KO matches.`);
+
+// Read existing tips from Firestore to preserve user tips
+console.log('Fetching existing tips from Firestore...');
+const existingTipsDocs = await firestore.listDocuments('leagues', leagueId, 'tips');
+const userTipsMap = {}; // { uid: { matchId: [home, away] } }
+for (const doc of existingTipsDocs) {
+  const fields = doc.fields;
+  if (fields) {
+    const uid = fields.uid.stringValue;
+    const matchId = fields.matchId.stringValue;
+    const home = parseInt(fields.predictedHome.integerValue, 10);
+    const away = parseInt(fields.predictedAway.integerValue, 10);
+    userTipsMap[uid] = userTipsMap[uid] || {};
+    userTipsMap[uid][matchId] = [home, away];
+  }
+}
+
+// Read members
+console.log('Fetching league members...');
+const membersDocs = await firestore.listDocuments('leagues', leagueId, 'members');
+const uids = membersDocs.map(doc => doc.name.split('/').pop());
+console.log(`League members: ${uids.join(', ')}`);
+
+// Setup deterministic random results
+let seed = 98765;
+function random() {
+  let x = Math.sin(seed++) * 10000;
+  return x - Math.floor(x);
+}
+function randomGoals() {
+  const r = random();
+  if (r < 0.25) return 0;
+  if (r < 0.55) return 1;
+  if (r < 0.85) return 2;
+  return 3;
+}
+
+// 1. Simulate results for all group stage matches
+const simulatedMatches = [];
+for (const m of groupMatches) {
+  const homeScore = randomGoals();
+  const awayScore = randomGoals();
+  simulatedMatches.push({
+    ...m,
+    status: 'finalResult',
+    homeScore,
+    awayScore,
+  });
+}
+
+// 2. Setup mock users
 const mockUsers = [
   { uid: 'mock-user-max', nickname: 'Max', favoriteTeam: 'Kanada', predictedChampion: 'Deutschland', riskTeam: 'Spanien', riskStage: 'Gruppenphase' },
   { uid: 'mock-user-anna', nickname: 'Anna', favoriteTeam: 'Mexiko', predictedChampion: 'Brasilien', riskTeam: 'Portugal', riskStage: 'Halbfinale' },
@@ -160,7 +210,7 @@ const mockUsers = [
   { uid: 'mock-user-jonas', nickname: 'Jonas', favoriteTeam: 'Kroatien', predictedChampion: 'Spanien', riskTeam: 'Panama', riskStage: 'Viertelfinale' }
 ];
 
-console.log('Writing mock user profiles to Firestore...');
+console.log('Writing/updating mock user profiles...');
 const userWrites = mockUsers.map(user => ({
   update: firestore.document('users', user.uid, {
     nickname: stringValue(user.nickname),
@@ -177,88 +227,21 @@ const userWrites = mockUsers.map(user => ({
 }));
 await firestore.batchWrite(userWrites);
 
-// Update league document with member IDs
-const uids = [
-  'SKqNUlbDAhblyfAXpM8Sk1kf2Vt2',
-  'JZMz6Tfks8WhKCTn1TSOlOSisqt1',
-  'mock-user-max',
-  'mock-user-anna',
-  'mock-user-felix',
-  'mock-user-clara',
-  'mock-user-jonas'
-];
+// Make sure mock users are in the league members list
+const allUids = [...new Set([...uids, ...mockUsers.map(u => u.uid)])];
 
-console.log('Updating league members list and restoring details...');
+// Update league memberIds list
 await firestore.setDocument(`leagues/${leagueId}`, {
-  name: stringValue('Meine WM-Runde'),
-  inviteCode: stringValue('BLFPKY'),
-  ownerUid: stringValue('SKqNUlbDAhblyfAXpM8Sk1kf2Vt2'),
-  memberIds: arrayValue(uids.map(uid => stringValue(uid))),
+  name: leagueDoc.fields.name,
+  inviteCode: leagueDoc.fields.inviteCode,
+  ownerUid: leagueDoc.fields.ownerUid,
+  memberIds: arrayValue(allUids.map(uid => stringValue(uid))),
   scoringPreset: stringValue('classic'),
-  createdAt: timestampValue('2026-06-09T09:39:54Z'),
+  createdAt: leagueDoc.fields.createdAt,
   updatedAt: timestampValue(new Date().toISOString()),
 });
 
-// Mock Tips
-const simulatedTips = {
-  // Simon (SKqNUlbDAhblyfAXpM8Sk1kf2Vt2): total = 4 + 0 + 4 + 2 = 10
-  'SKqNUlbDAhblyfAXpM8Sk1kf2Vt2': {
-    'wc2026-ga-1': [2, 1], // Mex vs RSA (2:1) -> Exact (4)
-    'wc2026-ga-2': [1, 2], // Kor vs Cze (1:1) -> Wrong (0)
-    'wc2026-gb-3': [0, 2], // Can vs BIH (0:2) -> Exact (4)
-    'wc2026-gd-4': [2, 0], // USA vs Par (3:0) -> Tendency (2)
-    'wc2026-gb-5': [0, 2]  // Kat vs Sui (1:2) -> Live (no points yet)
-  },
-  // Hortzsch 2 (JZMz6Tfks8WhKCTn1TSOlOSisqt1): total = 3 + 4 + 2 + 4 = 13
-  'JZMz6Tfks8WhKCTn1TSOlOSisqt1': {
-    'wc2026-ga-1': [1, 0], // Mex vs RSA (2:1) -> Diff (3)
-    'wc2026-ga-2': [1, 1], // Kor vs Cze (1:1) -> Exact (4)
-    'wc2026-gb-3': [1, 2], // Can vs BIH (0:2) -> Tendency (2)
-    'wc2026-gd-4': [3, 0], // USA vs Par (3:0) -> Exact (4)
-    'wc2026-gb-5': [1, 2]  // Kat vs Sui (1:2) -> Live (no points yet)
-  },
-  // Max: total = 0 + 3 + 0 + 4 = 7
-  'mock-user-max': {
-    'wc2026-ga-1': [1, 1], // Mex vs RSA (2:1) -> Wrong (0)
-    'wc2026-ga-2': [0, 0], // Kor vs Cze (1:1) -> Diff (3)
-    'wc2026-gb-3': [2, 1], // Can vs BIH (0:2) -> Wrong (0)
-    'wc2026-gd-4': [3, 0], // USA vs Par (3:0) -> Exact (4)
-    'wc2026-gb-5': [1, 3]  // Kat vs Sui (1:2) -> Live
-  },
-  // Anna: total = 2 + 3 + 2 + 0 = 7
-  'mock-user-anna': {
-    'wc2026-ga-1': [2, 0], // Mex vs RSA (2:1) -> Tendency (2)
-    'wc2026-ga-2': [2, 2], // Kor vs Cze (1:1) -> Diff (3)
-    'wc2026-gb-3': [0, 1], // Can vs BIH (0:2) -> Tendency (2)
-    'wc2026-gd-4': [1, 1], // USA vs Par (3:0) -> Wrong (0)
-    'wc2026-gb-5': [0, 0]  // Kat vs Sui (1:2) -> Live
-  },
-  // Felix: total = 0 + 0 + 4 + 2 = 6
-  'mock-user-felix': {
-    'wc2026-ga-1': [0, 1], // Mex vs RSA (2:1) -> Wrong (0)
-    'wc2026-ga-2': [2, 1], // Kor vs Cze (1:1) -> Wrong (0)
-    'wc2026-gb-3': [0, 2], // Can vs BIH (0:2) -> Exact (4)
-    'wc2026-gd-4': [2, 1], // USA vs Par (3:0) -> Tendency (2)
-    'wc2026-gb-5': [1, 1]  // Kat vs Sui (1:2) -> Live
-  },
-  // Clara: total = 4 + 4 + 0 + 2 = 10
-  'mock-user-clara': {
-    'wc2026-ga-1': [2, 1], // Mex vs RSA (2:1) -> Exact (4)
-    'wc2026-ga-2': [1, 1], // Kor vs Cze (1:1) -> Exact (4)
-    'wc2026-gb-3': [2, 0], // Can vs BIH (0:2) -> Wrong (0)
-    'wc2026-gd-4': [1, 0], // USA vs Par (3:0) -> Tendency (2)
-    'wc2026-gb-5': [1, 1]  // Kat vs Sui (1:2) -> Live
-  },
-  // Jonas: total = 3 + 3 + 4 + 0 = 10
-  'mock-user-jonas': {
-    'wc2026-ga-1': [3, 2], // Mex vs RSA (2:1) -> Diff (3)
-    'wc2026-ga-2': [2, 2], // Kor vs Cze (1:1) -> Diff (3)
-    'wc2026-gb-3': [0, 2], // Can vs BIH (0:2) -> Exact (4)
-    'wc2026-gd-4': [1, 1], // USA vs Par (3:0) -> Wrong (0)
-    'wc2026-gb-5': [2, 2]  // Kat vs Sui (1:2) -> Live
-  }
-};
-
+// Helper for scoring tips
 function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
   if (predictedHome === actualHome && predictedAway === actualAway) {
     return { points: 4, isExact: true, isTendency: true };
@@ -274,65 +257,224 @@ function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
   return { points: 0, isExact: false, isTendency: false };
 }
 
-console.log('Writing simulated tips to Firestore...');
+// 3. Generate tips for bots & calculate points
 const tipWrites = [];
 const memberStats = {};
-
-// Initialize stats
-for (const uid of uids) {
-  memberStats[uid] = {
-    totalPoints: 0,
-    exactCount: 0,
-    tendencyCount: 0
-  };
+for (const uid of allUids) {
+  memberStats[uid] = { totalPoints: 0, exactCount: 0, tendencyCount: 0 };
 }
 
-for (const uid of uids) {
-  const tips = simulatedTips[uid];
-  for (const matchId of Object.keys(tips)) {
-    const [predHome, predAway] = tips[matchId];
-    const match = matchesData.find(m => m.id === matchId);
-    
-    let points = 0;
-    let isExact = false;
-    let isTendency = false;
-    
-    if (match.status === 'finalResult') {
-      const score = scoreTip(predHome, predAway, match.homeScore, match.awayScore);
-      points = score.points;
-      isExact = score.isExact;
-      isTendency = score.isTendency;
-      
-      memberStats[uid].totalPoints += points;
-      if (isExact) memberStats[uid].exactCount += 1;
-      if (isTendency) memberStats[uid].tendencyCount += 1;
+for (const uid of allUids) {
+  const isBot = mockUsers.some(u => u.uid === uid);
+  const existingUserTips = userTipsMap[uid] || {};
+
+  for (const match of simulatedMatches) {
+    let predHome, predAway;
+    if (isBot) {
+      // Generate bot tip
+      predHome = randomGoals();
+      predAway = randomGoals();
+    } else {
+      // Real user: check if they tipped this match
+      if (existingUserTips[match.id] !== undefined) {
+        [predHome, predAway] = existingUserTips[match.id];
+      } else {
+        // Did not tip: no points
+        continue;
+      }
     }
 
+    const score = scoreTip(predHome, predAway, match.homeScore, match.awayScore);
+    memberStats[uid].totalPoints += score.points;
+    if (score.isExact) memberStats[uid].exactCount++;
+    if (score.isTendency) memberStats[uid].tendencyCount++;
+
     tipWrites.push({
-      update: firestore.document('leagues', leagueId, 'tips', `${uid}_${matchId}`, {
+      update: firestore.document('leagues', leagueId, 'tips', `${uid}_${match.id}`, {
         uid: stringValue(uid),
-        matchId: stringValue(matchId),
+        matchId: stringValue(match.id),
         predictedHome: intValue(predHome),
         predictedAway: intValue(predAway),
-        points: intValue(points),
+        points: intValue(score.points),
         lockedAt: timestampValue(match.kickoff),
       })
     });
   }
 }
-await firestore.batchWrite(tipWrites);
+console.log(`Writing ${tipWrites.length} tips...`);
+// Batch tips writes in chunks of 200
+for (let i = 0; i < tipWrites.length; i += 200) {
+  await firestore.batchWrite(tipWrites.slice(i, i + 200));
+}
 
-// Fetch existing user fields to get nicknames and photoUrls
+// 4. Calculate Group Tables
+console.log('Calculating group tables...');
+const groupTables = {}; // { 'A': { 'Mexiko': { pts, diff, goalsFor, team } } }
+for (const m of simulatedMatches) {
+  const g = m.group;
+  if (!g) continue;
+  groupTables[g] = groupTables[g] || {};
+  groupTables[g][m.homeTeam] = groupTables[g][m.homeTeam] || { pts: 0, diff: 0, goalsFor: 0, team: m.homeTeam };
+  groupTables[g][m.awayTeam] = groupTables[g][m.awayTeam] || { pts: 0, diff: 0, goalsFor: 0, team: m.awayTeam };
+
+  const hs = m.homeScore;
+  const as = m.awayScore;
+  groupTables[g][m.homeTeam].goalsFor += hs;
+  groupTables[g][m.homeTeam].diff += (hs - as);
+  groupTables[g][m.awayTeam].goalsFor += as;
+  groupTables[g][m.awayTeam].diff += (as - hs);
+
+  if (hs > as) {
+    groupTables[g][m.homeTeam].pts += 3;
+  } else if (as > hs) {
+    groupTables[g][m.awayTeam].pts += 3;
+  } else {
+    groupTables[g][m.homeTeam].pts += 1;
+    groupTables[g][m.awayTeam].pts += 1;
+  }
+}
+
+const sortedTables = {};
+for (const g of Object.keys(groupTables)) {
+  const teams = Object.values(groupTables[g]);
+  teams.sort((a, b) => {
+    const pts = b.pts - a.pts;
+    if (pts !== 0) return pts;
+    const diff = b.diff - a.diff;
+    if (diff !== 0) return diff;
+    const goals = b.goalsFor - a.goalsFor;
+    if (goals !== 0) return goals;
+    return a.team.localeCompare(b.team);
+  });
+  sortedTables[g] = teams;
+}
+
+// Determine qualified teams
+const top1 = {}; // winner of group: groupName -> team
+const top2 = {}; // runner-up of group: groupName -> team
+const top3 = []; // list of 3rd place teams: { team, group, pts, diff, goalsFor }
+
+for (const g of Object.keys(sortedTables)) {
+  const list = sortedTables[g];
+  top1[g] = list[0].team;
+  top2[g] = list[1].team;
+  top3.push({
+    team: list[2].team,
+    group: g,
+    pts: list[2].pts,
+    diff: list[2].diff,
+    goalsFor: list[2].goalsFor,
+  });
+}
+
+// Sort the 12 third-placed teams
+top3.sort((a, b) => {
+  const pts = b.pts - a.pts;
+  if (pts !== 0) return pts;
+  const diff = b.diff - a.diff;
+  if (diff !== 0) return diff;
+  const goals = b.goalsFor - a.goalsFor;
+  if (goals !== 0) return goals;
+  return a.team.localeCompare(b.team);
+});
+
+// Top 8 qualify
+const qualified3rd = top3.slice(0, 8);
+console.log('Qualified 3rd-placed teams:', qualified3rd.map(t => `${t.team} (Group ${t.group}, ${t.pts} pts, diff ${t.diff})`).join(', '));
+
+// Distribute to the 4 slots:
+// Bester 3. Gruppe A/B/C
+// Bester 3. Gruppe D/E/F
+// Bester 3. Gruppe G/H/I
+// Bester 3. Gruppe J/K/L
+function getBest3FromGroups(groupsList) {
+  const candidates = qualified3rd.filter(t => groupsList.includes(t.group));
+  if (candidates.length > 0) {
+    const pick = candidates[0];
+    const index = qualified3rd.indexOf(pick);
+    qualified3rd.splice(index, 1);
+    return pick.team;
+  }
+  if (qualified3rd.length > 0) {
+    return qualified3rd.shift().team;
+  }
+  return 'TBD';
+}
+
+const best3ABCDF = getBest3FromGroups(['A', 'B', 'C', 'D', 'F']);
+const best3CDFGH = getBest3FromGroups(['C', 'D', 'F', 'G', 'H']);
+const best3CEFHI = getBest3FromGroups(['C', 'E', 'F', 'H', 'I']);
+const best3EHIJK = getBest3FromGroups(['E', 'H', 'I', 'J', 'K']);
+const best3AEHIJ = getBest3FromGroups(['A', 'E', 'H', 'I', 'J']);
+const best3BEFIJ = getBest3FromGroups(['B', 'E', 'F', 'I', 'J']);
+const best3EFGIJ = getBest3FromGroups(['E', 'F', 'G', 'I', 'J']);
+const best3DEIJL = getBest3FromGroups(['D', 'E', 'I', 'J', 'L']);
+
+// 5. Build K.O. Phase Sechzehntelfinale matches with actual teams!
+const resolvedKoMatches = [];
+
+// Match definitions mapping
+const sfMatchesMapping = [
+  { id: 'wc-ko-sf-1', home: top2['A'], away: top2['B'] },
+  { id: 'wc-ko-sf-2', home: top1['C'], away: top2['F'] },
+  { id: 'wc-ko-sf-3', home: top1['E'], away: best3ABCDF },
+  { id: 'wc-ko-sf-4', home: top1['F'], away: top2['C'] },
+  { id: 'wc-ko-sf-5', home: top2['E'], away: top2['I'] },
+  { id: 'wc-ko-sf-6', home: top1['I'], away: best3CDFGH },
+  { id: 'wc-ko-sf-7', home: top1['A'], away: best3CEFHI },
+  { id: 'wc-ko-sf-8', home: top1['L'], away: best3EHIJK },
+  { id: 'wc-ko-sf-9', home: top1['G'], away: best3AEHIJ },
+  { id: 'wc-ko-sf-10', home: top1['D'], away: best3BEFIJ },
+  { id: 'wc-ko-sf-11', home: top1['H'], away: top2['J'] },
+  { id: 'wc-ko-sf-12', home: top2['K'], away: top2['L'] },
+  { id: 'wc-ko-sf-13', home: top1['B'], away: best3EFGIJ },
+  { id: 'wc-ko-sf-14', home: top2['D'], away: top2['G'] },
+  { id: 'wc-ko-sf-15', home: top1['J'], away: top2['H'] },
+  { id: 'wc-ko-sf-16', home: top1['K'], away: best3DEIJL },
+];
+
+console.log('Sechzehntelfinale matchups:');
+for (const mapping of sfMatchesMapping) {
+  const mTemplate = koMatches.find(m => m.id === mapping.id);
+  resolvedKoMatches.push({
+    ...mTemplate,
+    homeTeam: mapping.home,
+    awayTeam: mapping.away,
+    status: 'scheduled',
+    homeScore: null,
+    awayScore: null,
+  });
+  console.log(`- ${mapping.home} vs ${mapping.away}`);
+}
+
+// Add the other K.O. rounds with placeholders
+const remainingKoMatches = koMatches.filter(m => !m.id.startsWith('wc-ko-sf-'));
+for (const m of remainingKoMatches) {
+  resolvedKoMatches.push({
+    ...m,
+    status: 'scheduled',
+    homeScore: null,
+    awayScore: null,
+  });
+}
+
+// 6. Calculate User Booster / Extra Points
 const userFieldsMap = new Map();
-const memberWrites = [];
-for (const uid of uids) {
+for (const uid of allUids) {
   const userDoc = await firestore.getDocument('users', uid);
   if (userDoc && userDoc.fields) {
     userFieldsMap.set(uid, userDoc.fields);
   }
 }
 
-// Helper functions for extra points calculation
+function getEliminationStage(team, allSimMatches) {
+  const inSf = sfMatchesMapping.some(mapping => mapping.home === team || mapping.away === team);
+  if (!inSf) {
+    return 'Gruppenphase';
+  }
+  return null;
+}
+
 function getTier(team) {
   const favorites = ['Argentinien', 'Brasilien', 'Deutschland', 'England', 'Frankreich', 'Portugal', 'Spanien'];
   const tops = ['Belgien', 'Japan', 'Kroatien', 'Marokko', 'Niederlande', 'Norwegen', 'Schweiz', 'Senegal', 'Uruguay'];
@@ -392,44 +534,6 @@ function calculateRiskPoints(team, predictedStage, actualStage) {
   return 0;
 }
 
-function getEliminationStage(team, matches) {
-  const teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
-  if (teamMatches.length === 0) return null;
-  const knockouts = teamMatches.filter(m => !m.stage.startsWith('Gruppe') && !m.stage.includes('Runde'));
-  for (const m of knockouts) {
-    if (m.status === 'finalResult' && m.homeScore != null && m.awayScore != null) {
-      const isHome = m.homeTeam === team;
-      const won = isHome ? (m.homeScore > m.awayScore) : (m.awayScore > m.homeScore);
-      if (!won) {
-        const stage = m.stage.toLowerCase();
-        if (stage.includes('sechzehntel') || stage.includes('32')) return 'Sechzehntelfinale';
-        if (stage.includes('achtel') || stage.includes('16')) return 'Achtelfinale';
-        if (stage.includes('viertel') || stage.includes('quarter')) return 'Viertelfinale';
-        if (stage.includes('halb') || stage.includes('semi')) return 'Halbfinale';
-        if (stage.includes('final')) return 'Finale';
-      }
-    }
-  }
-  const hasWonFinal = knockouts.some(m =>
-    m.stage.toLowerCase().includes('final') &&
-    !m.stage.toLowerCase().includes('halb') &&
-    !m.stage.toLowerCase().includes('viertel') &&
-    m.status === 'finalResult' &&
-    m.homeScore != null &&
-    m.awayScore != null &&
-    ((m.homeTeam === team && m.homeScore > m.awayScore) ||
-     (m.awayTeam === team && m.awayScore > m.homeScore))
-  );
-  if (hasWonFinal) return 'Champion';
-  
-  const groupMatches = matches.filter(m => m.stage.startsWith('Gruppe') || m.stage.includes('Runde'));
-  const allGroupsFinished = groupMatches.length > 0 && groupMatches.every(m => m.status === 'finalResult');
-  if (allGroupsFinished && knockouts.length === 0) {
-    return 'Gruppenphase';
-  }
-  return null;
-}
-
 function getPickValues(uid) {
   const mock = mockUsers.find(u => u.uid === uid);
   if (mock) {
@@ -452,21 +556,19 @@ function getPickValues(uid) {
   return {};
 }
 
-// Calculate and add extra/booster points
-for (const uid of uids) {
+// Add extra booster points
+for (const uid of allUids) {
   const picks = getPickValues(uid);
   let extraPoints = 0;
 
   // 1. Lieblingsteam
   const fav = picks.favoriteTeam;
   if (fav) {
-    for (const match of matchesData) {
-      if (match.status === 'finalResult') {
-        if (match.homeTeam === fav && match.homeScore > match.awayScore) {
-          extraPoints += 10;
-        } else if (match.awayTeam === fav && match.awayScore > match.homeScore) {
-          extraPoints += 10;
-        }
+    for (const match of simulatedMatches) {
+      if (match.homeTeam === fav && match.homeScore > match.awayScore) {
+        extraPoints += 10;
+      } else if (match.awayTeam === fav && match.awayScore > match.homeScore) {
+        extraPoints += 10;
       }
     }
   }
@@ -474,13 +576,11 @@ for (const uid of uids) {
   // 2. Champion-Tipp
   const champ = picks.predictedChampion;
   if (champ) {
-    for (const match of matchesData) {
-      if (match.status === 'finalResult') {
-        if (match.homeTeam === champ && match.homeScore > match.awayScore) {
-          extraPoints += 10;
-        } else if (match.awayTeam === champ && match.awayScore > match.homeScore) {
-          extraPoints += 10;
-        }
+    for (const match of simulatedMatches) {
+      if (match.homeTeam === champ && match.homeScore > match.awayScore) {
+        extraPoints += 10;
+      } else if (match.awayTeam === champ && match.awayScore > match.homeScore) {
+        extraPoints += 10;
       }
     }
   }
@@ -489,7 +589,7 @@ for (const uid of uids) {
   const rTeam = picks.riskTeam;
   const rStage = picks.riskStage;
   if (rTeam && rStage) {
-    const actualStage = getEliminationStage(rTeam, matchesData);
+    const actualStage = getEliminationStage(rTeam, simulatedMatches);
     if (actualStage) {
       extraPoints += calculateRiskPoints(rTeam, rStage, actualStage);
     }
@@ -499,20 +599,46 @@ for (const uid of uids) {
   memberStats[uid].totalPoints += extraPoints;
 }
 
-// Write league members collection
-console.log('Writing league members collection...');
-for (const uid of uids) {
+// 7. Write all matches to Firestore
+console.log('Writing simulated matches to Firestore...');
+const matchWrites = [];
+const allMatchesToWrite = [...simulatedMatches, ...resolvedKoMatches];
+for (const match of allMatchesToWrite) {
+  matchWrites.push({
+    update: firestore.document('matches', match.id, {
+      homeTeam: stringValue(match.homeTeam),
+      awayTeam: stringValue(match.awayTeam),
+      kickoff: timestampValue(match.kickoff),
+      stage: stringValue(match.stage),
+      group: stringValue(match.group || ''),
+      status: stringValue(match.status),
+      homeScore: nullableIntValue(match.homeScore),
+      awayScore: nullableIntValue(match.awayScore),
+      winner: match.winner ? stringValue(match.winner) : { nullValue: null },
+      source: stringValue('openligadb'),
+      updatedAt: timestampValue(new Date().toISOString()),
+    })
+  });
+}
+for (let i = 0; i < matchWrites.length; i += 200) {
+  await firestore.batchWrite(matchWrites.slice(i, i + 200));
+}
+
+// 8. Write members collection to Firestore
+console.log('Writing members stats...');
+const memberWrites = [];
+for (const uid of allUids) {
   const fields = userFieldsMap.get(uid);
-  const nickname = fields?.nickname?.stringValue ?? 'Spieler';
+  const nickname = fields?.nickname?.stringValue ?? mockUsers.find(u => u.uid === uid)?.nickname ?? 'Spieler';
   const photoUrl = fields?.photoUrl?.stringValue ?? null;
-  const isOwner = uid === 'SKqNUlbDAhblyfAXpM8Sk1kf2Vt2'; // Simon is owner
-  
+  const isOwner = uid === 'SKqNUlbDAhblyfAXpM8Sk1kf2Vt2';
+
   memberWrites.push({
     update: firestore.document('leagues', leagueId, 'members', uid, {
       displayName: stringValue(nickname),
       photoUrl: photoUrl ? stringValue(photoUrl) : { nullValue: null },
       role: stringValue(isOwner ? 'owner' : 'member'),
-      joinedAt: timestampValue(new Date('2026-06-09T09:39:54Z').toISOString()),
+      joinedAt: timestampValue(fields?.createdAt?.timestampValue ?? new Date('2026-06-09T09:39:54Z').toISOString()),
       totalPoints: intValue(memberStats[uid].totalPoints),
       exactCount: intValue(memberStats[uid].exactCount),
       tendencyCount: intValue(memberStats[uid].tendencyCount),
@@ -521,15 +647,21 @@ for (const uid of uids) {
 }
 await firestore.batchWrite(memberWrites);
 
-// Rank standings
-const standingsList = uids.map(uid => ({
-  uid,
-  displayName: userFieldsMap.get(uid)?.nickname?.stringValue ?? 'Spieler',
-  photoUrl: userFieldsMap.get(uid)?.photoUrl?.stringValue ?? null,
-  totalPoints: memberStats[uid].totalPoints,
-  exactCount: memberStats[uid].exactCount,
-  tendencyCount: memberStats[uid].tendencyCount
-}));
+// 9. Rank standings and write to Firestore
+console.log('Ranking standings...');
+const standingsList = allUids.map(uid => {
+  const fields = userFieldsMap.get(uid);
+  const nickname = fields?.nickname?.stringValue ?? mockUsers.find(u => u.uid === uid)?.nickname ?? 'Spieler';
+  const photoUrl = fields?.photoUrl?.stringValue ?? null;
+  return {
+    uid,
+    displayName: nickname,
+    photoUrl,
+    totalPoints: memberStats[uid].totalPoints,
+    exactCount: memberStats[uid].exactCount,
+    tendencyCount: memberStats[uid].tendencyCount,
+  };
+});
 
 standingsList.sort((a, b) => {
   const points = b.totalPoints - a.totalPoints;
@@ -559,7 +691,6 @@ const standingsWrites = standingsList.map((standing, index) => {
     })
   };
 });
-
-console.log('Writing standings to Firestore...');
 await firestore.batchWrite(standingsWrites);
-console.log('Simulation setup completed successfully!');
+
+console.log('Group stage simulation completed successfully!');

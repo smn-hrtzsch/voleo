@@ -105,29 +105,38 @@ class _UserTipsBottomSheetContentState
   }
 
   String _determineCurrentStage() {
-    CupMatch? activeMatch;
-    // Finde das erste Spiel, das noch nicht beendet ist oder live ist
-    final incomplete = widget.matches.where((m) => m.status != MatchStatus.finalResult).toList()
-      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-    
-    if (incomplete.isNotEmpty) {
-      activeMatch = incomplete.first;
-    } else if (widget.matches.isNotEmpty) {
-      // Wenn alle Spiele beendet sind, nimm das letzte
-      final sorted = [...widget.matches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-      activeMatch = sorted.last;
+    if (widget.matches.isEmpty) return 'Alle';
+
+    // 1. Find live matches
+    final liveMatches =
+        widget.matches.where((m) => m.status == MatchStatus.live).toList();
+    if (liveMatches.isNotEmpty) {
+      return _roundFor(liveMatches.first);
     }
 
-    if (activeMatch != null) {
-      final isKo = activeMatch.stage == 'Sechzehntelfinale' ||
-          activeMatch.stage == 'Achtelfinale' ||
-          activeMatch.stage == 'Viertelfinale' ||
-          activeMatch.stage == 'Halbfinale' ||
-          activeMatch.stage == 'Spiel um Platz 3' ||
-          activeMatch.stage == 'Finale';
-      return isKo ? activeMatch.stage : 'Gruppenphase';
+    // 2. Find next upcoming match (scheduled matches)
+    final upcoming = widget.matches.where((m) => m.status == MatchStatus.scheduled).toList()
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    if (upcoming.isNotEmpty) {
+      return _roundFor(upcoming.first);
     }
+
+    // 3. Fallback to last finished match
+    final finished =
+        widget.matches.where((m) => m.status == MatchStatus.finalResult).toList()
+          ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    if (finished.isNotEmpty) {
+      return _roundFor(finished.last);
+    }
+
     return 'Alle';
+  }
+
+  String _roundFor(CupMatch match) {
+    if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde')) {
+      return 'Gruppenphase';
+    }
+    return match.stage.isEmpty ? 'Gruppenphase' : match.stage;
   }
 
   @override
@@ -140,6 +149,29 @@ class _UserTipsBottomSheetContentState
       }
       return match.stage == _selectedFilter;
     }).toList();
+
+    final favPoints = (widget.showPicks &&
+            widget.userProfile?.favoriteTeam != null &&
+            widget.userProfile!.favoriteTeam!.isNotEmpty)
+        ? _countWins(widget.userProfile!.favoriteTeam!, widget.matches) * 10
+        : null;
+    final champPoints = (widget.showPicks &&
+            widget.userProfile?.predictedChampion != null &&
+            widget.userProfile!.predictedChampion!.isNotEmpty)
+        ? _countWins(widget.userProfile!.predictedChampion!, widget.matches) * 10
+        : null;
+    final riskPoints = (widget.showPicks &&
+            (widget.userProfile?.riskTeam?.isNotEmpty ?? false) &&
+            (widget.userProfile?.riskStage?.isNotEmpty ?? false))
+        ? () {
+            final actual =
+                getEliminationStage(widget.userProfile!.riskTeam!, widget.matches);
+            return actual != null
+                ? calculateRiskPoints(widget.userProfile!.riskTeam!,
+                    widget.userProfile!.riskStage!, actual)
+                : null;
+          }()
+        : null;
 
     return ListView(
       controller: widget.scrollController,
@@ -174,6 +206,7 @@ class _UserTipsBottomSheetContentState
                 widget.userProfile?.favoriteTeam,
                 null,
                 widget.showPicks,
+                favPoints,
               ),
               _buildTeamPickCard(
                 context,
@@ -181,6 +214,7 @@ class _UserTipsBottomSheetContentState
                 widget.userProfile?.predictedChampion,
                 null,
                 widget.showPicks,
+                champPoints,
               ),
               _buildTeamPickCard(
                 context,
@@ -188,6 +222,7 @@ class _UserTipsBottomSheetContentState
                 widget.userProfile?.riskTeam,
                 widget.userProfile?.riskStage,
                 widget.showPicks,
+                riskPoints,
               ),
             ],
           ),
@@ -236,6 +271,37 @@ class _UserTipsBottomSheetContentState
           ],
         ),
         const Divider(),
+        if (filteredMatches.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                const SizedBox(width: 60),
+                const SizedBox(width: 8),
+                const Expanded(flex: 3, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                const SizedBox(width: 80, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                const Expanded(flex: 3, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 60,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Punkte',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+        ],
         if (filteredMatches.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -292,7 +358,7 @@ class _UserTipsBottomSheetContentState
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '+$totalPts Pkt.',
+                        '+$totalPts',
                         style: TextStyle(
                           color: totalPts > 0 ? Colors.green : Colors.grey,
                           fontWeight: FontWeight.bold,
@@ -341,6 +407,16 @@ class _UserTipsBottomSheetContentState
                   ? '${match.stage} · Gruppe ${match.group}'
                   : match.stage;
 
+              final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+              final progressionParts = <String>[];
+              if (match.otHomeScore != null) {
+                progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+              }
+              if (match.penaltyHomeScore != null) {
+                progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+              }
+              final progressionText = progressionParts.join(' • ');
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Column(
@@ -380,9 +456,10 @@ class _UserTipsBottomSheetContentState
                           child: Text(
                             match.homeTeam,
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                             maxLines: 2,
                             softWrap: true,
@@ -395,17 +472,23 @@ class _UserTipsBottomSheetContentState
                           children: [
                             Text(homeFlag, style: const TextStyle(fontSize: 20)),
                             const SizedBox(width: 6),
-                            Text(
-                              (match.status == MatchStatus.finalResult ||
-                                      match.status == MatchStatus.live)
-                                  ? '${match.homeScore} : ${match.awayScore}'
-                                  : '- : -',
-                              style: TextStyle(
+                            SizedBox(
+                              width: 44,
+                              child: Text(
+                                match.status == MatchStatus.finalResult ||
+                                        match.status == MatchStatus.live
+                                    ? '${match.regularHomeScore ?? match.homeScore} : ${match.regularAwayScore ?? match.awayScore}'
+                                    : '- : -',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: isLive
                                       ? Colors.green
-                                      : Theme.of(context).colorScheme.onSurface,
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -419,9 +502,10 @@ class _UserTipsBottomSheetContentState
                           child: Text(
                             match.awayTeam,
                             textAlign: TextAlign.left,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                             maxLines: 2,
                             softWrap: true,
@@ -431,6 +515,19 @@ class _UserTipsBottomSheetContentState
                         pointsWidget,
                       ],
                     ),
+                    if (hasProgression)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Center(
+                          child: Text(
+                            progressionText,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 4),
                     Center(
                       child: DefaultTextStyle(
@@ -453,12 +550,26 @@ class _UserTipsBottomSheetContentState
     );
   }
 
+  int _countWins(String team, List<CupMatch> matches) {
+    var wins = 0;
+    for (final m in matches) {
+      if (m.status != MatchStatus.finalResult) continue;
+      final hs = m.homeScore;
+      final as_ = m.awayScore;
+      if (hs == null || as_ == null) continue;
+      if (m.homeTeam == team && hs > as_) wins++;
+      if (m.awayTeam == team && as_ > hs) wins++;
+    }
+    return wins;
+  }
+
   Widget _buildTeamPickCard(
     BuildContext context,
     String label,
     String? teamName,
     String? stage,
     bool isVisible,
+    int? points,
   ) {
     final flag = (isVisible && teamName != null && teamName.isNotEmpty)
         ? CountryFlags.getFlag(teamName)
@@ -516,6 +627,26 @@ class _UserTipsBottomSheetContentState
                           color: scheme.onSurfaceVariant,
                         ),
                     textAlign: TextAlign.center,
+                  ),
+                ],
+                if (points != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (points > 0 ? Colors.green : Colors.grey)
+                          .withAlpha(40),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${points >= 0 ? '+' : ''}$points Pkt.',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: points > 0 ? Colors.green : Colors.grey,
+                      ),
+                    ),
                   ),
                 ],
               ],

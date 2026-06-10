@@ -1,4 +1,4 @@
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -100,6 +100,41 @@ function groupForFixture(homeTeam, awayTeam) {
   return GROUP_BY_FIXTURE.get(`${teamKey(homeTeam)}:${teamKey(awayTeam)}`) ?? "";
 }
 
+function determineWinner(match) {
+  if (!match.matchResults || match.matchResults.length === 0) return null;
+  const results = match.matchResults;
+
+  const penalty = results.find(r => r.resultTypeID === 4 || r.resultTypeName === "nach Elfmeterschießen");
+  if (penalty) {
+    if (penalty.pointsTeam1 > penalty.pointsTeam2) return match.team1?.teamName;
+    if (penalty.pointsTeam2 > penalty.pointsTeam1) return match.team2?.teamName;
+  }
+
+  const extraTime = results.find(r => r.resultTypeID === 3 || r.resultTypeName === "nach Verlängerung");
+  if (extraTime) {
+    if (extraTime.pointsTeam1 > extraTime.pointsTeam2) return match.team1?.teamName;
+    if (extraTime.pointsTeam2 > extraTime.pointsTeam1) return match.team2?.teamName;
+  }
+
+  const finalResult = results.find(r => r.resultTypeID === 2 || r.resultTypeName === "Endergebnis");
+  if (finalResult) {
+    if (finalResult.pointsTeam1 > finalResult.pointsTeam2) return match.team1?.teamName;
+    if (finalResult.pointsTeam2 > finalResult.pointsTeam1) return match.team2?.teamName;
+  }
+
+  return null;
+}
+
+function determineResultNote(match) {
+  if (!match.matchResults || match.matchResults.length === 0) return null;
+  const results = match.matchResults;
+  const penalty = results.find(r => r.resultTypeID === 4 || r.resultTypeName === "nach Elfmeterschießen");
+  if (penalty) return "n.E.";
+  const extraTime = results.find(r => r.resultTypeID === 3 || r.resultTypeName === "nach Verlängerung");
+  if (extraTime) return "n.V.";
+  return null;
+}
+
 function normalizeMatch(match) {
   const id = String(match.matchID ?? match.matchId ?? "");
   const homeTeam = match.team1?.teamName;
@@ -107,9 +142,25 @@ function normalizeMatch(match) {
   const kickoff = match.matchDateTimeUTC ?? match.matchDateTime;
   if (!id || !homeTeam || !awayTeam || !kickoff) return null;
 
-  const finalResult = (match.matchResults ?? []).find((result) => {
-    return result.resultTypeName === "Endergebnis" || result.resultTypeID === 2;
-  });
+  const results = match.matchResults ?? [];
+  const regResult = results.find(r => r.resultTypeID === 2 || r.resultTypeName === "Endergebnis");
+  const otResult = results.find(r => r.resultTypeID === 3 || r.resultTypeName === "nach Verlängerung");
+  const penResult = results.find(r => r.resultTypeID === 4 || r.resultTypeName === "nach Elfmeterschießen");
+
+  const regularHomeScore = regResult !== undefined ? regResult.pointsTeam1 : null;
+  const regularAwayScore = regResult !== undefined ? regResult.pointsTeam2 : null;
+  const otHomeScore = otResult !== undefined ? otResult.pointsTeam1 : null;
+  const otAwayScore = otResult !== undefined ? otResult.pointsTeam2 : null;
+  const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
+  const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
+
+  const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
+  const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
+
+  const isFinished = match.matchIsFinished;
+  const kickoffDate = new Date(kickoff);
+  const now = new Date();
+  const status = isFinished ? "finalResult" : (now > kickoffDate ? "live" : "scheduled");
 
   return {
     id,
@@ -118,11 +169,19 @@ function normalizeMatch(match) {
     kickoff,
     stage: match.group?.groupName ?? "WM 2026",
     group: groupKey(match.group?.groupName) || groupForFixture(homeTeam, awayTeam),
-    status: match.matchIsFinished ? "finalResult" : (finalResult ? "finalResult" : "scheduled"),
-    homeScore: finalResult?.pointsTeam1 ?? null,
-    awayScore: finalResult?.pointsTeam2 ?? null,
+    status,
+    homeScore,
+    awayScore,
+    winner: determineWinner(match) ?? null,
+    resultNote: determineResultNote(match) ?? null,
     source: "openligadb",
     updatedAt: new Date().toISOString(),
+    regularHomeScore,
+    regularAwayScore,
+    otHomeScore,
+    otAwayScore,
+    penaltyHomeScore,
+    penaltyAwayScore,
   };
 }
 
@@ -132,7 +191,7 @@ function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
   }
   const predictedDiff = predictedHome - predictedAway;
   const actualDiff = actualHome - actualAway;
-  if (predictedDiff === actualDiff) {
+  if (predictedDiff === actualDiff && actualDiff !== 0) {
     return { points: 3, isExact: false, isTendency: true };
   }
   if (Math.sign(predictedDiff) === Math.sign(actualDiff)) {
@@ -168,6 +227,16 @@ function stageRank(stage) {
   return 99;
 }
 
+function getMatchWinner(match) {
+  if (match.winner) return match.winner;
+  if (match.status !== "finalResult" || match.homeScore == null || match.awayScore == null) {
+    return null;
+  }
+  if (match.homeScore > match.awayScore) return match.homeTeam;
+  if (match.awayScore > match.homeScore) return match.awayTeam;
+  return null;
+}
+
 function getEliminationStage(team, allMatches) {
   const teamMatches = allMatches.filter((m) => m.homeTeam === team || m.awayTeam === team);
   if (teamMatches.length === 0) return null;
@@ -175,10 +244,9 @@ function getEliminationStage(team, allMatches) {
   const knockouts = teamMatches.filter((m) => !m.stage.startsWith("Gruppe") && !m.stage.includes("Runde"));
 
   for (const m of knockouts) {
-    if (m.status === "finalResult" && m.homeScore != null && m.awayScore != null) {
-      const isHome = m.homeTeam === team;
-      const won = isHome ? m.homeScore > m.awayScore : m.awayScore > m.homeScore;
-      if (!won) {
+    if (m.status === "finalResult") {
+      const winner = getMatchWinner(m);
+      if (winner && winner !== team) {
         const stage = m.stage.toLowerCase();
         if (stage.includes("sechzehntel") || stage.includes("32")) return "Sechzehntelfinale";
         if (stage.includes("achtel") || stage.includes("16")) return "Achtelfinale";
@@ -195,10 +263,7 @@ function getEliminationStage(team, allMatches) {
       !m.stage.toLowerCase().includes("halb") &&
       !m.stage.toLowerCase().includes("viertel") &&
       m.status === "finalResult" &&
-      m.homeScore != null &&
-      m.awayScore != null &&
-      ((m.homeTeam === team && m.homeScore > m.awayScore) ||
-        (m.awayTeam === team && m.awayScore > m.homeScore))
+      getMatchWinner(m) === team
   );
   if (hasWonFinal) return "Champion";
 
@@ -255,10 +320,8 @@ function calculateExtraPoints(userData, allMatches) {
   const fav = userData.favoriteTeam;
   if (fav) {
     for (const match of allMatches) {
-      if (match.status === "finalResult" && match.homeScore != null && match.awayScore != null) {
-        if (match.homeTeam === fav && match.homeScore > match.awayScore) {
-          extraPoints += 10;
-        } else if (match.awayTeam === fav && match.awayScore > match.homeScore) {
+      if (match.status === "finalResult") {
+        if (getMatchWinner(match) === fav) {
           extraPoints += 10;
         }
       }
@@ -268,10 +331,8 @@ function calculateExtraPoints(userData, allMatches) {
   const championTipp = userData.predictedChampion;
   if (championTipp) {
     for (const match of allMatches) {
-      if (match.status === "finalResult" && match.homeScore != null && match.awayScore != null) {
-        if (match.homeTeam === championTipp && match.homeScore > match.awayScore) {
-          extraPoints += 10;
-        } else if (match.awayTeam === championTipp && match.awayScore > match.homeScore) {
+      if (match.status === "finalResult") {
+        if (getMatchWinner(match) === championTipp) {
           extraPoints += 10;
         }
       }
@@ -293,22 +354,22 @@ function calculateExtraPoints(userData, allMatches) {
 function getKnockoutMatches() {
   const list = [];
   const sfMatches = [
-    ['Sieger Gruppe A', 'Zweiter Gruppe C', '2026-06-29T17:00:00Z'],
-    ['Zweiter Gruppe A', 'Sieger Gruppe C', '2026-06-29T20:00:00Z'],
-    ['Sieger Gruppe B', 'Zweiter Gruppe D', '2026-06-30T17:00:00Z'],
-    ['Zweiter Gruppe B', 'Sieger Gruppe D', '2026-06-30T20:00:00Z'],
-    ['Sieger Gruppe E', 'Zweiter Gruppe G', '2026-07-01T17:00:00Z'],
-    ['Zweiter Gruppe E', 'Sieger Gruppe G', '2026-07-01T20:00:00Z'],
-    ['Sieger Gruppe F', 'Zweiter Gruppe H', '2026-07-02T17:00:00Z'],
-    ['Zweiter Gruppe F', 'Sieger Gruppe H', '2026-07-02T20:00:00Z'],
-    ['Sieger Gruppe I', 'Zweiter Gruppe K', '2026-07-03T17:00:00Z'],
-    ['Zweiter Gruppe I', 'Sieger Gruppe K', '2026-07-03T20:00:00Z'],
-    ['Sieger Gruppe J', 'Zweiter Gruppe L', '2026-07-04T17:00:00Z'],
-    ['Zweiter Gruppe J', 'Sieger Gruppe L', '2026-07-04T20:00:00Z'],
-    ['Bester 3. Gruppe A/B/C', 'Sieger Gruppe H', '2026-07-05T17:00:00Z'],
-    ['Bester 3. Gruppe D/E/F', 'Sieger Gruppe I', '2026-07-05T20:00:00Z'],
-    ['Bester 3. Gruppe G/H/I', 'Sieger Gruppe J', '2026-07-06T17:00:00Z'],
-    ['Bester 3. Gruppe J/K/L', 'Sieger Gruppe K', '2026-07-06T20:00:00Z'],
+    ['Zweiter Gruppe A', 'Zweiter Gruppe B', '2026-06-29T17:00:00Z'],
+    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
+    ['Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', '2026-06-30T17:00:00Z'],
+    ['Sieger Gruppe F', 'Zweiter Gruppe C', '2026-06-30T20:00:00Z'],
+    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
+    ['Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', '2026-07-01T20:00:00Z'],
+    ['Sieger Gruppe A', 'Bester 3. Gruppe C/E/F/H/I', '2026-07-02T17:00:00Z'],
+    ['Sieger Gruppe L', 'Bester 3. Gruppe E/H/I/J/K', '2026-07-02T20:00:00Z'],
+    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
+    ['Sieger Gruppe D', 'Bester 3. Gruppe B/E/F/I/J', '2026-07-03T20:00:00Z'],
+    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
+    ['Zweiter Gruppe K', 'Zweiter Gruppe L', '2026-07-04T20:00:00Z'],
+    ['Sieger Gruppe B', 'Bester 3. Gruppe E/F/G/I/J', '2026-07-05T17:00:00Z'],
+    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
+    ['Sieger Gruppe J', 'Zweiter Gruppe H', '2026-07-06T17:00:00Z'],
+    ['Sieger Gruppe K', 'Bester 3. Gruppe D/E/I/J/L', '2026-07-06T20:00:00Z'],
   ];
 
   for (let i = 0; i < sfMatches.length; i++) {
@@ -520,11 +581,14 @@ async function recalculateScores(allMatches, finalMatches) {
       const matchKickoff = new Date(match.kickoff);
       if (matchKickoff < current.joinedAt) return;
 
+      const actualHome = match.regularHomeScore !== undefined && match.regularHomeScore !== null ? match.regularHomeScore : match.homeScore;
+      const actualAway = match.regularAwayScore !== undefined && match.regularAwayScore !== null ? match.regularAwayScore : match.awayScore;
+
       const score = scoreTip(
         data.predictedHome ?? 0,
         data.predictedAway ?? 0,
-        match.homeScore,
-        match.awayScore
+        actualHome,
+        actualAway
       );
 
       // Update tip points in Firestore
@@ -564,12 +628,16 @@ async function recalculateScores(allMatches, finalMatches) {
   }
 }
 
-exports.syncResults = onSchedule({
-  schedule: "*/5 * * * *",
+exports.syncResults = functions.region("europe-west3").runWith({
   timeoutSeconds: 300,
-  memory: "256MiB",
-}, async (event) => {
+  memory: "256MB",
+}).pubsub.schedule("*/5 * * * *").onRun(async (context) => {
   try {
+    const configSnap = await db.collection("settings").doc("sync_config").get();
+    if (configSnap.exists && configSnap.data().disabled === true) {
+      console.log("Sync is disabled via settings/sync_config.");
+      return null;
+    }
     console.log("Starting syncResults job...");
     const response = await fetch(OPENLIGADB_URL);
     if (!response.ok) {
@@ -586,6 +654,8 @@ exports.syncResults = onSchedule({
         homeScore: data.homeScore ?? null,
         awayScore: data.awayScore ?? null,
         status: data.status ?? "scheduled",
+        winner: data.winner ?? null,
+        resultNote: data.resultNote ?? null,
       });
     });
 
@@ -597,9 +667,15 @@ exports.syncResults = onSchedule({
           homeScore: existing.homeScore,
           awayScore: existing.awayScore,
           status: existing.status,
+          winner: existing.winner ?? null,
+          resultNote: existing.resultNote ?? null,
         };
       }
-      return m;
+      return {
+        ...m,
+        winner: null,
+        resultNote: null,
+      };
     });
 
     const allMatches = [...groupMatches, ...koMatches];
@@ -616,6 +692,8 @@ exports.syncResults = onSchedule({
         status: match.status,
         homeScore: match.homeScore,
         awayScore: match.awayScore,
+        winner: match.winner ?? null,
+        resultNote: match.resultNote ?? null,
         source: "openligadb",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });

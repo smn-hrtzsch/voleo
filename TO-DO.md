@@ -3,9 +3,10 @@
 ## In Progress
 
 - [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
+- [x] Dynamically calculate and highlight the 8 best third-placed teams in group standings.
 - [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
 - [x] Fix evaluation points display, dropdown KO filter, and rootNavigator back-button bugs.
-- [ ] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
+- [x] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
 - [x] Add Dart defines (`ENVIRONMENT=test`) for toggling simulation vs. production clock.
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
@@ -31,15 +32,15 @@
 - [x] Show other players' tips in match details only after kickoff.
 - [ ] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
 - [ ] Avoid onboarding flash for already signed-in users on cold start.
-- [ ] Add Bosnia and Herzegovina flag aliases.
+- [x] Add Bosnia and Herzegovina flag aliases.
 - [ ] Restructure Heute tab to show only today's matches plus league shortcut and top 3 standings.
 - [ ] Generate league invite codes randomly instead of deriving them from user input.
 - [x] Add league invite link/code handling for sharing and joining rounds.
 - [ ] Limit Liga day sections to tournament days that have already started.
-- [ ] Add an automatic tournament-phase filter that resets to the current phase on app restart.
+- [x] Add an automatic tournament-phase filter that resets to the current phase on app restart.
 - [x] Refresh profile name and profile image immediately after edits.
 - [x] Enforce unique display names within a league.
-- [ ] Default new score wheels to 0:0.
+- [x] Default new score wheels to 0:0.
 - [x] Always confirm sign-out, with stronger warning for anonymous accounts.
 - [x] Add a debug/test path for fake league members, fake tips, and synthetic match results.
 - [ ] Explain and harden Firestore network/DNS error handling while connected to Wi-Fi.
