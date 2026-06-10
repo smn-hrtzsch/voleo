@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../domain/clock.dart';
 import '../../domain/flags.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
+import '../shared/live_pulse_dot.dart';
 
 class MatchesScreen extends ConsumerStatefulWidget {
   const MatchesScreen({super.key});
@@ -105,7 +107,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
                     itemBuilder: (context, index) {
                       final day = dayKeys[index];
                       return ListView(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                        padding: const EdgeInsets.fromLTRB(6, 0, 6, 16),
                         children: [
                           _DayMatchCard(
                             day: day,
@@ -121,7 +123,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
               ] else
                 Expanded(
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    padding: const EdgeInsets.fromLTRB(6, 0, 6, 16),
                     itemCount: dayKeys.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
@@ -145,7 +147,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   void _setInitialDay(List<DateTime> dayKeys) {
     if (_didSetInitialDay || dayKeys.isEmpty) return;
     _didSetInitialDay = true;
-    final today = _dayFor(DateTime.now());
+    final today = _dayFor(VoleoClock.now);
     final todayIndex = dayKeys.indexWhere((day) => day == today);
     final nextIndex = dayKeys.indexWhere((day) => day.isAfter(today));
     final index = todayIndex != -1
@@ -324,7 +326,7 @@ class _DaySwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
       child: Row(
         children: [
           IconButton.filledTonal(
@@ -374,7 +376,7 @@ class _DayMatchCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+        padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -433,6 +435,8 @@ class _MatchRow extends StatelessWidget {
     final homeFlag = CountryFlags.getFlag(match.homeTeam);
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
     final scheme = Theme.of(context).colorScheme;
+    final isLive = match.status == MatchStatus.live;
+
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () => context.go('/matches/tip/${match.id}'),
@@ -441,14 +445,30 @@ class _MatchRow extends StatelessWidget {
         child: Row(
           children: [
             SizedBox(
-              width: 44,
-              child: Text(
-                time,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
+              width: 48,
+              child: isLive
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LivePulseDot(),
+                        SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      time,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
                     ),
-              ),
             ),
             Expanded(
               child: Row(
@@ -464,16 +484,18 @@ class _MatchRow extends StatelessWidget {
                   SizedBox(
                     width: 34,
                     child: Text(
-                      match.status == MatchStatus.finalResult
+                      (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
                           ? '${match.homeScore}:${match.awayScore}'
                           : '-:-',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: match.status == MatchStatus.finalResult
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant
-                                    .withValues(alpha: 0.5),
+                            color: isLive
+                                ? Colors.green
+                                : match.status == MatchStatus.finalResult
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant
+                                        .withValues(alpha: 0.5),
                           ),
                     ),
                   ),
@@ -627,7 +649,7 @@ bool isPlaceholderTeam(String name) {
 }
 
 String _roundFor(CupMatch match) {
-  if (match.stage.startsWith('Gruppe')) return 'Gruppenphase';
+  if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde')) return 'Gruppenphase';
   return match.stage.isEmpty ? 'Gruppenphase' : match.stage;
 }
 

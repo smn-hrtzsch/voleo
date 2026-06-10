@@ -1,14 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
 import '../shared/app_toast.dart';
+import '../shared/user_tips_bottom_sheet.dart';
 
 class LeagueScreen extends ConsumerStatefulWidget {
   const LeagueScreen({super.key});
@@ -18,7 +19,6 @@ class LeagueScreen extends ConsumerStatefulWidget {
 }
 
 class _LeagueScreenState extends ConsumerState<LeagueScreen> {
-  String? _selectedPhase;
 
   @override
   Widget build(BuildContext context) {
@@ -34,28 +34,8 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
       body: AsyncValueView<List<Standing>>(
         value: standingsValue,
         data: (standings) {
-          final displayNames = {
-            for (final standing in standings)
-              standing.uid: standing.displayName,
-          };
-          final standingsByUid = {
-            for (final standing in standings) standing.uid: standing,
-          };
           final sortedMatches = [...matches]
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-          final phases = _phasesFor(sortedMatches);
-          final activePhase =
-              _selectedPhase == null || !phases.contains(_selectedPhase)
-                  ? _currentPhaseFor(sortedMatches)
-                  : _selectedPhase!;
-          final today = DateTime.now();
-          final visibleMatches = sortedMatches.where((match) {
-            return _phaseFor(match) == activePhase &&
-                !_dayFor(match.kickoff).isAfter(_dayFor(today));
-          }).toList();
-          final days = _groupByDay(visibleMatches);
-          final dayKeys = days.keys.toList()..sort();
-
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -97,57 +77,23 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         '${standing.totalPoints}',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
+                      onTap: () {
+                        final userTips = leagueTips
+                            .where((tip) => tip.uid == standing.uid)
+                            .toList();
+                        _showUserTips(
+                          context,
+                          standing.displayName,
+                          sortedMatches,
+                          userTips,
+                          standing,
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 8),
                 ],
-              if (leagueTips.isNotEmpty && dayKeys.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Tipps der Runde',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 48,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: phases.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final phase = phases[index];
-                      return ChoiceChip(
-                        label: Text(phase),
-                        selected: phase == activePhase,
-                        onSelected: (_) {
-                          setState(() => _selectedPhase = phase);
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                for (final day in dayKeys) ...[
-                  _LeagueDaySection(
-                    day: day,
-                    matches: days[day] ?? const <CupMatch>[],
-                    standings: standings,
-                    tips: leagueTips,
-                    displayNames: displayNames,
-                    standingsByUid: standingsByUid,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ] else if (leagueTips.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Tipps der Runde',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                    'Für diese Phase ist noch kein Spieltag angebrochen.'),
-              ],
+              const SizedBox(height: 12),
             ],
           );
         },
@@ -358,6 +304,23 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
     }
     return '$prefix: $raw';
   }
+
+  void _showUserTips(
+    BuildContext context,
+    String displayName,
+    List<CupMatch> matches,
+    List<Tip> userTips,
+    Standing? standing,
+  ) {
+    showUserTipsBottomSheet(
+      context: context,
+      ref: ref,
+      displayName: displayName,
+      matches: matches,
+      userTips: userTips,
+      standing: standing,
+    );
+  }
 }
 
 class _LeagueControlCard extends StatelessWidget {
@@ -567,13 +530,34 @@ class _LeagueControlCard extends StatelessWidget {
                               color: scheme.onSurfaceVariant,
                             ),
                       ),
-                      Text(
-                        league.inviteCode,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.1,
+                      Row(
+                        children: [
+                          Text(
+                            league.inviteCode,
+                            style:
+                                Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.1,
+                                    ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Code kopieren',
+                            icon: const Icon(Icons.copy, size: 18),
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: league.inviteCode),
+                              );
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Code kopiert.'),
                                 ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -750,249 +734,4 @@ class _RankAvatar extends StatelessWidget {
   }
 }
 
-class _MemberAvatar extends StatelessWidget {
-  const _MemberAvatar({required this.photoUrl, required this.label});
 
-  final String? photoUrl;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasImage = photoUrl != null && photoUrl!.isNotEmpty;
-    final scheme = Theme.of(context).colorScheme;
-
-    Widget avatarChild;
-    if (hasImage) {
-      avatarChild = ClipOval(
-        child: photoUrl!.startsWith('http')
-            ? Image.network(
-                photoUrl!,
-                fit: BoxFit.cover,
-                width: 40,
-                height: 40,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildInitials(context),
-              )
-            : Image.file(
-                File(photoUrl!),
-                fit: BoxFit.cover,
-                width: 40,
-                height: 40,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildInitials(context),
-              ),
-      );
-    } else {
-      avatarChild = _buildInitials(context);
-    }
-
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: scheme.surfaceContainerHighest,
-      ),
-      child: avatarChild,
-    );
-  }
-
-  Widget _buildInitials(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final initial = label.isEmpty ? 'S' : label.characters.first.toUpperCase();
-    return Center(
-      child: Text(
-        initial,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: scheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-}
-
-List<String> _phasesFor(List<CupMatch> matches) {
-  final phases = {for (final match in matches) _phaseFor(match)}.toList();
-  phases.sort((a, b) => _phaseOrder(a).compareTo(_phaseOrder(b)));
-  return phases;
-}
-
-String _currentPhaseFor(List<CupMatch> matches) {
-  if (matches.isEmpty) return 'Gruppenphase';
-  final now = DateTime.now();
-  final today = _dayFor(now);
-  for (final match in matches) {
-    if (_dayFor(match.kickoff) == today) return _phaseFor(match);
-  }
-  for (final match in matches) {
-    if (match.kickoff.isAfter(now)) return _phaseFor(match);
-  }
-  return _phaseFor(matches.last);
-}
-
-String _phaseFor(CupMatch match) {
-  final stage = match.stage.trim();
-  if (stage.startsWith('Gruppe') || match.group.isNotEmpty) {
-    return 'Gruppenphase';
-  }
-  if (stage.isEmpty) return 'Gruppenphase';
-  return stage;
-}
-
-int _phaseOrder(String phase) {
-  const order = {
-    'Gruppenphase': 0,
-    'Sechzehntelfinale': 1,
-    'Achtelfinale': 2,
-    'Viertelfinale': 3,
-    'Halbfinale': 4,
-    'Spiel um Platz 3': 5,
-    'Finale': 6,
-  };
-  return order[phase] ?? 99;
-}
-
-Map<DateTime, List<CupMatch>> _groupByDay(List<CupMatch> matches) {
-  final result = <DateTime, List<CupMatch>>{};
-  for (final match in matches) {
-    final day = _dayFor(match.kickoff);
-    result.putIfAbsent(day, () => []).add(match);
-  }
-  return result;
-}
-
-DateTime _dayFor(DateTime value) {
-  return DateTime(value.year, value.month, value.day);
-}
-
-class _LeagueDaySection extends StatelessWidget {
-  const _LeagueDaySection({
-    required this.day,
-    required this.matches,
-    required this.standings,
-    required this.tips,
-    required this.displayNames,
-    required this.standingsByUid,
-  });
-
-  final DateTime day;
-  final List<CupMatch> matches;
-  final List<Standing> standings;
-  final List<Tip> tips;
-  final Map<String, String> displayNames;
-  final Map<String, Standing> standingsByUid;
-
-  @override
-  Widget build(BuildContext context) {
-    final unlockedMatchIds = {
-      for (final match in matches)
-        if (match.isLocked) match.id,
-    };
-    final visibleTips =
-        tips.where((tip) => unlockedMatchIds.contains(tip.matchId)).toList();
-    final tipsByUser = <String, List<Tip>>{};
-    for (final tip in visibleTips) {
-      tipsByUser.putIfAbsent(tip.uid, () => []).add(tip);
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _formatDay(day),
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${matches.length} Spiele',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            if (visibleTips.isEmpty)
-              const Text('Tipps werden ab Anpfiff sichtbar.')
-            else
-              for (final standing in standings)
-                if ((tipsByUser[standing.uid] ?? const <Tip>[]).isNotEmpty)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: _MemberAvatar(
-                      photoUrl: standing.photoUrl,
-                      label: displayNames[standing.uid] ?? 'Spieler',
-                    ),
-                    title: Text(displayNames[standing.uid] ?? 'Spieler'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showUserTips(
-                      context,
-                      displayNames[standing.uid] ?? 'Spieler',
-                      matches,
-                      tipsByUser[standing.uid] ?? const <Tip>[],
-                      standing,
-                    ),
-                  ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showUserTips(
-    BuildContext context,
-    String displayName,
-    List<CupMatch> matches,
-    List<Tip> userTips,
-    Standing? standing,
-  ) {
-    final matchesById = {for (final match in matches) match.id: match};
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            Row(
-              children: [
-                _MemberAvatar(photoUrl: standing?.photoUrl, label: displayName),
-                const SizedBox(width: 12),
-                Text(displayName,
-                    style: Theme.of(context).textTheme.titleLarge),
-              ],
-            ),
-            const SizedBox(height: 12),
-            for (final tip in userTips) ...[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  '${matchesById[tip.matchId]?.homeTeam ?? 'Spiel'} - '
-                  '${matchesById[tip.matchId]?.awayTeam ?? tip.matchId}',
-                ),
-                trailing: Text(
-                  '${tip.predictedHome}:${tip.predictedAway}',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                subtitle: Text('${tip.points} Punkte'),
-              ),
-              const Divider(),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-String _formatDay(DateTime day) {
-  const weekdays = [
-    'Montag',
-    'Dienstag',
-    'Mittwoch',
-    'Donnerstag',
-    'Freitag',
-    'Samstag',
-    'Sonntag',
-  ];
-  return '${weekdays[day.weekday - 1]}, ${DateFormat('dd.MM.yyyy').format(day)}';
-}

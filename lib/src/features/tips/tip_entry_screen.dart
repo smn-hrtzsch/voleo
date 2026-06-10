@@ -30,6 +30,20 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   bool _isSaving = false;
   bool _didSeedTip = false;
 
+  final Map<String, VoleoUser> _loadedUsers = {};
+
+  Future<void> _loadUserIfNeeded(String uid) async {
+    if (_loadedUsers.containsKey(uid)) return;
+    _loadedUsers[uid] = VoleoUser(uid: uid, nickname: '', isAnonymous: true);
+    final repo = ref.read(repositoryProvider);
+    final user = await repo.getUser(uid);
+    if (user != null && mounted) {
+      setState(() {
+        _loadedUsers[uid] = user;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -69,7 +83,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               children: [
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -100,12 +114,21 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                               ),
                             ),
                             SizedBox(
-                              width: 56,
+                              width: 68,
                               child: Text(
-                                '-:-',
+                                (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
+                                    ? '${match.homeScore}:${match.awayScore}'
+                                    : '-:-',
                                 textAlign: TextAlign.center,
-                                style:
-                                    Theme.of(context).textTheme.headlineSmall,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: match.status == MatchStatus.live
+                                          ? Colors.green
+                                          : null,
+                                    ),
                               ),
                             ),
                             Expanded(
@@ -126,34 +149,44 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ),
-                        if (match.status == MatchStatus.finalResult) ...[
-                          const SizedBox(height: 12),
-                          Chip(
-                            avatar: const Icon(Icons.sports_score, size: 18),
-                            label: Text(
-                              'Offizielles Ergebnis: ${match.homeScore}:${match.awayScore}',
-                            ),
-                          ),
-                        ],
                         if (existingTip != null) ...[
                           const SizedBox(height: 12),
                           Center(
-                            child: InputChip(
-                              avatar: const Icon(Icons.check, size: 18),
-                              label: Text(
-                                'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              deleteIcon: !match.isLocked
-                                  ? Icon(
-                                      Icons.delete_outline,
-                                      color:
-                                          Theme.of(context).colorScheme.error,
-                                    )
-                                  : null,
-                              onDeleted: !match.isLocked && !_isSaving
-                                  ? () => _deleteTip(match)
-                                  : null,
-                              deleteButtonTooltipMessage: 'Tipp löschen',
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check,
+                                    size: 18,
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                  if (!match.isLocked) ...[
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      onTap: _isSaving ? null : () => _deleteTip(match),
+                                      child: Icon(
+                                        Icons.cancel,
+                                        size: 18,
+                                        color: Theme.of(context).colorScheme.error,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -170,79 +203,230 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ScoreWheel(
-                        label: match.homeTeam,
-                        value: _homeGoals,
-                        onChanged: (value) =>
-                            setState(() => _homeGoals = value),
+                if (!match.isLocked) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ScoreWheel(
+                          label: match.homeTeam,
+                          value: _homeGoals,
+                          enabled: !match.isLocked,
+                          onChanged: (value) =>
+                              setState(() => _homeGoals = value),
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        ':',
-                        style: Theme.of(context).textTheme.displaySmall,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          ':',
+                          style: Theme.of(context).textTheme.displaySmall,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _ScoreWheel(
-                        label: match.awayTeam,
-                        value: _awayGoals,
-                        onChanged: (value) =>
-                            setState(() => _awayGoals = value),
+                      Expanded(
+                        child: _ScoreWheel(
+                          label: match.awayTeam,
+                          value: _awayGoals,
+                          enabled: !match.isLocked,
+                          onChanged: (value) =>
+                              setState(() => _awayGoals = value),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed:
-                      _isSaving || match.isLocked ? null : () => _save(match),
-                  icon: const Icon(Icons.save),
-                  label: Text(match.isLocked ? 'Gesperrt' : 'Tipp speichern'),
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: _isSaving ? null : () => _save(match),
+                    icon: const Icon(Icons.save),
+                    label: const Text('Tipp speichern'),
+                  ),
+                ],
                 if (match.isLocked) ...[
                   const SizedBox(height: 24),
                   Text(
                     'Tipps der Runde',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                   const SizedBox(height: 8),
-                  for (final tip
-                      in allTips.where((tip) => tip.matchId == match.id))
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          children: [
-                            Text(
-                              displayNames[tip.uid] ?? 'Spieler',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${tip.predictedHome}:${tip.predictedAway}',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            if (match.status == MatchStatus.finalResult) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                '${tip.points} Punkte',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ],
-                        ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Column(
+                        children: [
+                          (() {
+                            final matchTips = allTips.where((tip) => tip.matchId == match.id).toList();
+                            if (matchTips.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Center(child: Text('Keine Tipps von anderen Spielern.')),
+                              );
+                            }
+                            return Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 4,
+                                        child: Text(
+                                          'Spieler',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          'Tipp',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          'Punkte',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 6,
+                                        child: Text(
+                                          'Wertung',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                for (final tip in matchTips) ...[
+                                  (() {
+                                    _loadUserIfNeeded(tip.uid);
+                                    final userProfile = _loadedUsers[tip.uid];
+                                    final isPlaceholder = userProfile?.nickname.isEmpty ?? true;
+
+                                    final totalPts = getMatchTotalPoints(
+                                      tipPoints: tip.points,
+                                      favoriteTeam: isPlaceholder ? null : userProfile?.favoriteTeam,
+                                      predictedChampion: isPlaceholder ? null : userProfile?.predictedChampion,
+                                      match: match,
+                                    );
+
+                                    final evalStr = getEvaluationLabel(
+                                      tipPoints: tip.points,
+                                      favoriteTeam: isPlaceholder ? null : userProfile?.favoriteTeam,
+                                      predictedChampion: isPlaceholder ? null : userProfile?.predictedChampion,
+                                      match: match,
+                                    );
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 4,
+                                            child: Text(
+                                              displayNames[tip.uid] ?? 'Spieler',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 13,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              '${tip.predictedHome}:${tip.predictedAway}',
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Align(
+                                              alignment: Alignment.center,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: match.status == MatchStatus.finalResult
+                                                      ? (totalPts > 0
+                                                          ? Colors.green.withAlpha(38)
+                                                          : Colors.grey.withAlpha(38))
+                                                      : Colors.blue.withAlpha(38),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  match.status == MatchStatus.finalResult
+                                                      ? '+$totalPts'
+                                                      : '-',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: match.status == MatchStatus.finalResult
+                                                        ? (totalPts > 0 ? Colors.green : Colors.grey)
+                                                        : Colors.blue,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 6,
+                                            child: Text(
+                                              match.status == MatchStatus.finalResult
+                                                  ? evalStr
+                                                  : '-',
+                                              textAlign: TextAlign.right,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: totalPts > 0
+                                                    ? Colors.green
+                                                    : Colors.grey,
+                                                fontWeight: totalPts > 0 ? FontWeight.w500 : FontWeight.normal,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  })(),
+                                  if (tip != matchTips.last)
+                                    const Divider(height: 1),
+                                ],
+                              ],
+                            );
+                          })(),
+                        ],
                       ),
                     ),
+                  ),
                 ],
               ],
             );
@@ -345,7 +529,7 @@ class _MatchupTeamLabel extends StatelessWidget {
         softWrap: true,
         overflow: TextOverflow.ellipsis,
         textAlign: isHome ? TextAlign.right : TextAlign.left,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
       ),
@@ -400,6 +584,7 @@ class _ScoreWheel extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.enabled = true,
   });
 
   static const _maxGoals = 12;
@@ -407,6 +592,7 @@ class _ScoreWheel extends StatelessWidget {
   final String label;
   final int value;
   final ValueChanged<int> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -421,29 +607,35 @@ class _ScoreWheel extends StatelessWidget {
           style: Theme.of(context).textTheme.labelLarge,
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 156,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: CupertinoPicker.builder(
-            scrollController: FixedExtentScrollController(initialItem: value),
-            itemExtent: 48,
-            diameterRatio: 1.35,
-            selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
-              background: Color(0x1A000000),
-            ),
-            onSelectedItemChanged: onChanged,
-            childCount: _maxGoals + 1,
-            itemBuilder: (context, index) {
-              return Center(
-                child: Text(
-                  '$index',
-                  style: Theme.of(context).textTheme.headlineMedium,
+        IgnorePointer(
+          ignoring: !enabled,
+          child: Opacity(
+            opacity: enabled ? 1.0 : 0.72,
+            child: Container(
+              height: 156,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: CupertinoPicker.builder(
+                scrollController: FixedExtentScrollController(initialItem: value),
+                itemExtent: 48,
+                diameterRatio: 1.35,
+                selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
+                  background: Color(0x1A000000),
                 ),
-              );
-            },
+                onSelectedItemChanged: onChanged,
+                childCount: _maxGoals + 1,
+                itemBuilder: (context, index) {
+                  return Center(
+                    child: Text(
+                      '$index',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ],
