@@ -115,16 +115,19 @@ class _UserTipsBottomSheetContentState
     }
 
     // 2. Find next upcoming match (scheduled matches)
-    final upcoming = widget.matches.where((m) => m.status == MatchStatus.scheduled).toList()
+    final upcoming = widget.matches
+        .where((m) => m.status == MatchStatus.scheduled)
+        .toList()
       ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     if (upcoming.isNotEmpty) {
       return _roundFor(upcoming.first);
     }
 
     // 3. Fallback to last finished match
-    final finished =
-        widget.matches.where((m) => m.status == MatchStatus.finalResult).toList()
-          ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final finished = widget.matches
+        .where((m) => m.status == MatchStatus.finalResult)
+        .toList()
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     if (finished.isNotEmpty) {
       return _roundFor(finished.last);
     }
@@ -145,7 +148,8 @@ class _UserTipsBottomSheetContentState
     final filteredMatches = widget.matches.where((match) {
       if (_selectedFilter == 'Alle') return true;
       if (_selectedFilter == 'Gruppenphase') {
-        return match.stage.startsWith('Gruppe') || match.stage.contains('Runde');
+        return match.stage.startsWith('Gruppe') ||
+            match.stage.contains('Runde');
       }
       return match.stage == _selectedFilter;
     }).toList();
@@ -158,14 +162,15 @@ class _UserTipsBottomSheetContentState
     final champPoints = (widget.showPicks &&
             widget.userProfile?.predictedChampion != null &&
             widget.userProfile!.predictedChampion!.isNotEmpty)
-        ? _countWins(widget.userProfile!.predictedChampion!, widget.matches) * 10
+        ? _countWins(widget.userProfile!.predictedChampion!, widget.matches) *
+            10
         : null;
     final riskPoints = (widget.showPicks &&
             (widget.userProfile?.riskTeam?.isNotEmpty ?? false) &&
             (widget.userProfile?.riskStage?.isNotEmpty ?? false))
         ? () {
-            final actual =
-                getEliminationStage(widget.userProfile!.riskTeam!, widget.matches);
+            final actual = getEliminationStage(
+                widget.userProfile!.riskTeam!, widget.matches);
             return actual != null
                 ? calculateRiskPoints(widget.userProfile!.riskTeam!,
                     widget.userProfile!.riskStage!, actual)
@@ -262,7 +267,8 @@ class _UserTipsBottomSheetContentState
                     value: value,
                     child: Text(
                       value,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   );
                 }).toList(),
@@ -292,7 +298,8 @@ class _UserTipsBottomSheetContentState
                       'Punkte',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ),
@@ -407,13 +414,16 @@ class _UserTipsBottomSheetContentState
                   ? '${match.stage} · Gruppe ${match.group}'
                   : match.stage;
 
-              final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+              final hasProgression =
+                  match.otHomeScore != null || match.penaltyHomeScore != null;
               final progressionParts = <String>[];
               if (match.otHomeScore != null) {
-                progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+                progressionParts
+                    .add('${match.otHomeScore}:${match.otAwayScore} n.V.');
               }
               if (match.penaltyHomeScore != null) {
-                progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+                progressionParts.add(
+                    '${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
               }
               final progressionText = progressionParts.join(' • ');
 
@@ -470,7 +480,8 @@ class _UserTipsBottomSheetContentState
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(homeFlag, style: const TextStyle(fontSize: 20)),
+                            Text(homeFlag,
+                                style: const TextStyle(fontSize: 20)),
                             const SizedBox(width: 6),
                             SizedBox(
                               width: 44,
@@ -485,14 +496,13 @@ class _UserTipsBottomSheetContentState
                                   fontWeight: FontWeight.bold,
                                   color: isLive
                                       ? Colors.green
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
+                                      : Theme.of(context).colorScheme.onSurface,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(awayFlag, style: const TextStyle(fontSize: 20)),
+                            Text(awayFlag,
+                                style: const TextStyle(fontSize: 20)),
                           ],
                         ),
                         const SizedBox(width: 4),
@@ -523,7 +533,9 @@ class _UserTipsBottomSheetContentState
                             progressionText,
                             style: TextStyle(
                               fontSize: 9,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -594,7 +606,9 @@ class _UserTipsBottomSheetContentState
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       // Light green in Dark Mode, dark green in Light Mode
-                      color: isDark ? const Color(0xffa7f3d0) : const Color(0xff166534),
+                      color: isDark
+                          ? const Color(0xffa7f3d0)
+                          : const Color(0xff166534),
                     ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -657,8 +671,6 @@ class _UserTipsBottomSheetContentState
     );
   }
 }
-
-
 
 class _MemberAvatar extends StatelessWidget {
   const _MemberAvatar({required this.photoUrl, required this.label});
