@@ -72,10 +72,14 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               for (final standing in standings)
                 standing.uid: standing.displayName,
             };
-            if (!_didSeedTip && existingTip != null) {
-              _homeGoals = existingTip.predictedHome;
-              _awayGoals = existingTip.predictedAway;
-              _didSeedTip = true;
+            if (existingTip != null) {
+              if (!_didSeedTip) {
+                _homeGoals = existingTip.predictedHome;
+                _awayGoals = existingTip.predictedAway;
+                _didSeedTip = true;
+              }
+            } else {
+              _didSeedTip = false;
             }
             final scoreResult = _scoreResult(match, existingTip);
             return ListView(
@@ -212,8 +216,11 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           label: match.homeTeam,
                           value: _homeGoals,
                           enabled: !match.isLocked,
-                          onChanged: (value) =>
-                              setState(() => _homeGoals = value),
+                          onChanged: (value) {
+                            if (_homeGoals != value) {
+                              setState(() => _homeGoals = value);
+                            }
+                          },
                         ),
                       ),
                       Padding(
@@ -228,8 +235,11 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           label: match.awayTeam,
                           value: _awayGoals,
                           enabled: !match.isLocked,
-                          onChanged: (value) =>
-                              setState(() => _awayGoals = value),
+                          onChanged: (value) {
+                            if (_awayGoals != value) {
+                              setState(() => _awayGoals = value);
+                            }
+                          },
                         ),
                       ),
                     ],
@@ -490,7 +500,6 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
       setState(() {
         _homeGoals = 0;
         _awayGoals = 0;
-        _didSeedTip = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tipp gelöscht.')),
@@ -575,16 +584,25 @@ String _scoreLabel(ScoreResult result) {
 }
 
 String _matchContextLabel(CupMatch match) {
-  if (match.group.isNotEmpty) return 'Gruppe ${match.group}';
+  if (match.group.isNotEmpty) {
+    return '${match.stage} · Gruppe ${match.group}';
+  }
+  final parts = match.id.split('-');
+  if (parts.length >= 4 &&
+      (match.stage.contains('finale') || match.stage.contains('Finale'))) {
+    final num = parts.last;
+    return '${match.stage} $num';
+  }
   return match.stage;
 }
 
-class _ScoreWheel extends StatelessWidget {
+class _ScoreWheel extends StatefulWidget {
   const _ScoreWheel({
     required this.label,
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    super.key,
   });
 
   static const _maxGoals = 12;
@@ -595,12 +613,45 @@ class _ScoreWheel extends StatelessWidget {
   final bool enabled;
 
   @override
+  State<_ScoreWheel> createState() => _ScoreWheelState();
+}
+
+class _ScoreWheelState extends State<_ScoreWheel> {
+  late FixedExtentScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = FixedExtentScrollController(initialItem: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScoreWheel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value) {
+      if (_controller.hasClients && _controller.selectedItem != widget.value) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _controller.hasClients && _controller.selectedItem != widget.value) {
+            _controller.jumpToItem(widget.value);
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Text(
-          label,
+          widget.label,
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -608,9 +659,9 @@ class _ScoreWheel extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         IgnorePointer(
-          ignoring: !enabled,
+          ignoring: !widget.enabled,
           child: Opacity(
-            opacity: enabled ? 1.0 : 0.72,
+            opacity: widget.enabled ? 1.0 : 0.72,
             child: Container(
               height: 156,
               decoration: BoxDecoration(
@@ -618,14 +669,14 @@ class _ScoreWheel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: CupertinoPicker.builder(
-                scrollController: FixedExtentScrollController(initialItem: value),
+                scrollController: _controller,
                 itemExtent: 48,
                 diameterRatio: 1.35,
                 selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
                   background: Color(0x1A000000),
                 ),
-                onSelectedItemChanged: onChanged,
-                childCount: _maxGoals + 1,
+                onSelectedItemChanged: widget.onChanged,
+                childCount: _ScoreWheel._maxGoals + 1,
                 itemBuilder: (context, index) {
                   return Center(
                     child: Text(

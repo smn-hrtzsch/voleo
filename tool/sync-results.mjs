@@ -122,6 +122,7 @@ for (const doc of existingMatchesDocs) {
       homeScore: homeVal != null ? parseInt(homeVal, 10) : null,
       awayScore: awayVal != null ? parseInt(awayVal, 10) : null,
       status: fields.status?.stringValue ?? 'scheduled',
+      winner: fields.winner?.stringValue ?? null,
     });
   }
 }
@@ -135,9 +136,13 @@ const koMatches = getKnockoutMatches().map((m) => {
       homeScore: existing.homeScore,
       awayScore: existing.awayScore,
       status: existing.status,
+      winner: existing.winner ?? null,
     };
   }
-  return m;
+  return {
+    ...m,
+    winner: null,
+  };
 });
 
 matches = [...groupMatches, ...koMatches];
@@ -156,6 +161,31 @@ await recalculateScores(
 
 console.log(JSON.stringify({ dryRun: false, synced: matches.length }, null, 2));
 
+function determineWinner(match) {
+  if (!match.matchResults || match.matchResults.length === 0) return null;
+  const results = match.matchResults;
+
+  const penalty = results.find(r => r.resultTypeID === 4 || r.resultTypeName === "nach Elfmeterschießen");
+  if (penalty) {
+    if (penalty.pointsTeam1 > penalty.pointsTeam2) return match.team1?.teamName;
+    if (penalty.pointsTeam2 > penalty.pointsTeam1) return match.team2?.teamName;
+  }
+
+  const extraTime = results.find(r => r.resultTypeID === 3 || r.resultTypeName === "nach Verlängerung");
+  if (extraTime) {
+    if (extraTime.pointsTeam1 > extraTime.pointsTeam2) return match.team1?.teamName;
+    if (extraTime.pointsTeam2 > extraTime.pointsTeam1) return match.team2?.teamName;
+  }
+
+  const finalResult = results.find(r => r.resultTypeID === 2 || r.resultTypeName === "Endergebnis");
+  if (finalResult) {
+    if (finalResult.pointsTeam1 > finalResult.pointsTeam2) return match.team1?.teamName;
+    if (finalResult.pointsTeam2 > finalResult.pointsTeam1) return match.team2?.teamName;
+  }
+
+  return null;
+}
+
 function normalizeMatch(match) {
   const id = String(match.matchID ?? match.matchId ?? '');
   const homeTeam = match.team1?.teamName;
@@ -167,6 +197,11 @@ function normalizeMatch(match) {
     return result.resultTypeName === 'Endergebnis' || result.resultTypeID === 2;
   });
 
+  const isFinished = match.matchIsFinished;
+  const kickoffDate = new Date(kickoff);
+  const now = new Date();
+  const status = isFinished ? 'finalResult' : (now > kickoffDate ? 'live' : 'scheduled');
+
   return {
     id: `openligadb-${id}`,
     homeTeam,
@@ -174,9 +209,10 @@ function normalizeMatch(match) {
     kickoff: new Date(kickoff).toISOString(),
     stage: match.group?.groupName ?? 'WM 2026',
     group: groupKey(match.group?.groupName) || groupForFixture(homeTeam, awayTeam),
-    status: finalResult ? 'finalResult' : 'scheduled',
+    status,
     homeScore: finalResult?.pointsTeam1 ?? null,
     awayScore: finalResult?.pointsTeam2 ?? null,
+    winner: determineWinner(match) ?? null,
     source: 'openligadb',
     updatedAt: new Date().toISOString(),
   };
@@ -331,6 +367,7 @@ function fieldsForMatch(match) {
     status: stringValue(match.status),
     homeScore: nullableIntValue(match.homeScore),
     awayScore: nullableIntValue(match.awayScore),
+    winner: match.winner ? stringValue(match.winner) : { nullValue: null },
     source: stringValue(match.source),
     updatedAt: timestampValue(match.updatedAt),
   };
@@ -361,7 +398,7 @@ function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
   }
   const predictedDiff = predictedHome - predictedAway;
   const actualDiff = actualHome - actualAway;
-  if (predictedDiff === actualDiff) {
+  if (predictedDiff === actualDiff && actualDiff !== 0) {
     return { points: 3, isExact: false, isTendency: true };
   }
   if (Math.sign(predictedDiff) === Math.sign(actualDiff)) {
@@ -566,6 +603,16 @@ function getTier(team) {
   return 'Gurkentruppe';
 }
 
+function getMatchWinner(match) {
+  if (match.winner) return match.winner;
+  if (match.status !== 'finalResult' || match.homeScore == null || match.awayScore == null) {
+    return null;
+  }
+  if (match.homeScore > match.awayScore) return match.homeTeam;
+  if (match.awayScore > match.homeScore) return match.awayTeam;
+  return null;
+}
+
 function getEliminationStage(team, allMatches) {
   const teamMatches = allMatches.filter(
     (m) => m.homeTeam === team || m.awayTeam === team
@@ -575,21 +622,18 @@ function getEliminationStage(team, allMatches) {
   const knockouts = teamMatches.filter((m) => !m.stage.startsWith('Gruppe'));
 
   for (const m of knockouts) {
-    if (
-      m.status === 'finalResult' &&
-      m.homeScore != null &&
-      m.awayScore != null
-    ) {
-      const isHome = m.homeTeam === team;
-      const won = isHome
-          ? m.homeScore > m.awayScore
-          : m.awayScore > m.homeScore;
-      if (!won) {
+    if (m.status === 'finalResult') {
+      const winner = getMatchWinner(m);
+      if (winner && winner !== team) {
         const stage = m.stage.toLowerCase();
         if (
           stage.includes('sechzehntel') ||
+          stage.includes('32')
+        ) {
+          return 'Sechzehntelfinale';
+        }
+        if (
           stage.includes('achtel') ||
-          stage.includes('32') ||
           stage.includes('16')
         ) {
           return 'Achtelfinale';
@@ -613,10 +657,7 @@ function getEliminationStage(team, allMatches) {
       !m.stage.toLowerCase().includes('halb') &&
       !m.stage.toLowerCase().includes('viertel') &&
       m.status === 'finalResult' &&
-      m.homeScore != null &&
-      m.awayScore != null &&
-      ((m.homeTeam === team && m.homeScore > m.awayScore) ||
-        (m.awayTeam === team && m.awayScore > m.homeScore))
+      getMatchWinner(m) === team
   );
   if (hasWonFinal) return 'Champion';
 
@@ -670,17 +711,8 @@ function calculateExtraPoints(userFields, allMatches) {
   const fav = readString(userFields.favoriteTeam);
   if (fav) {
     for (const match of allMatches) {
-      if (
-        match.status === 'finalResult' &&
-        match.homeScore != null &&
-        match.awayScore != null
-      ) {
-        if (match.homeTeam === fav && match.homeScore > match.awayScore) {
-          extraPoints += 10;
-        } else if (
-          match.awayTeam === fav &&
-          match.awayScore > match.homeScore
-        ) {
+      if (match.status === 'finalResult') {
+        if (getMatchWinner(match) === fav) {
           extraPoints += 10;
         }
       }
@@ -690,20 +722,8 @@ function calculateExtraPoints(userFields, allMatches) {
   const championTipp = readString(userFields.predictedChampion);
   if (championTipp) {
     for (const match of allMatches) {
-      if (
-        match.status === 'finalResult' &&
-        match.homeScore != null &&
-        match.awayScore != null
-      ) {
-        if (
-          match.homeTeam === championTipp &&
-          match.homeScore > match.awayScore
-        ) {
-          extraPoints += 10;
-        } else if (
-          match.awayTeam === championTipp &&
-          match.awayScore > match.homeScore
-        ) {
+      if (match.status === 'finalResult') {
+        if (getMatchWinner(match) === championTipp) {
           extraPoints += 10;
         }
       }

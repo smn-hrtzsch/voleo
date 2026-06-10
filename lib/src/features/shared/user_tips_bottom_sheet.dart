@@ -236,6 +236,37 @@ class _UserTipsBottomSheetContentState
           ],
         ),
         const Divider(),
+        if (filteredMatches.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                const SizedBox(width: 60),
+                const SizedBox(width: 8),
+                const Expanded(flex: 3, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                const SizedBox(width: 80, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                const Expanded(flex: 3, child: SizedBox.shrink()),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 60,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Punkte',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+        ],
         if (filteredMatches.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -292,7 +323,7 @@ class _UserTipsBottomSheetContentState
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '+$totalPts Pkt.',
+                        '+$totalPts',
                         style: TextStyle(
                           color: totalPts > 0 ? Colors.green : Colors.grey,
                           fontWeight: FontWeight.bold,

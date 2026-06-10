@@ -24,7 +24,7 @@ ScoreResult scoreTip({
 
   final predictedDiff = predictedHome - predictedAway;
   final actualDiff = actualHome - actualAway;
-  if (predictedDiff == actualDiff) {
+  if (predictedDiff == actualDiff && actualDiff != 0) {
     return const ScoreResult(points: 3, isExact: false, isTendency: true);
   }
 
@@ -135,14 +135,9 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
       teamMatches.where((m) => !m.stage.startsWith('Gruppe')).toList();
 
   for (final m in knockouts) {
-    if (m.status == MatchStatus.finalResult &&
-        m.homeScore != null &&
-        m.awayScore != null) {
-      final isHome = m.homeTeam == team;
-      final won = isHome
-          ? (m.homeScore! > m.awayScore!)
-          : (m.awayScore! > m.homeScore!);
-      if (!won) {
+    if (m.status == MatchStatus.finalResult) {
+      final winner = getMatchWinner(m);
+      if (winner != null && winner != team) {
         final stage = m.stage.toLowerCase();
         if (stage.contains('sechzehntel') || stage.contains('32')) {
           return 'Sechzehntelfinale';
@@ -168,10 +163,7 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
       !m.stage.toLowerCase().contains('halb') &&
       !m.stage.toLowerCase().contains('viertel') &&
       m.status == MatchStatus.finalResult &&
-      m.homeScore != null &&
-      m.awayScore != null &&
-      ((m.homeTeam == team && m.homeScore! > m.awayScore!) ||
-          (m.awayTeam == team && m.awayScore! > m.homeScore!)));
+      getMatchWinner(m) == team);
   if (hasWonFinal) {
     return 'Champion';
   }
@@ -300,6 +292,9 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
 }
 
 String? getMatchWinner(CupMatch match) {
+  if (match.winner != null && match.winner!.isNotEmpty) {
+    return match.winner;
+  }
   if (match.status != MatchStatus.finalResult ||
       match.homeScore == null ||
       match.awayScore == null) {

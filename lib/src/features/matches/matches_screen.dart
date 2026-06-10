@@ -24,12 +24,37 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   String _selectedTeam = 'Alle';
   bool _swipeByDay = false;
   bool _didSetInitialDay = false;
+  bool _didSetInitialFilters = false;
   int _selectedDayIndex = 0;
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  String _determineCurrentStage(List<CupMatch> matches) {
+    CupMatch? activeMatch;
+    final incomplete = matches.where((m) => m.status != MatchStatus.finalResult).toList()
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    
+    if (incomplete.isNotEmpty) {
+      activeMatch = incomplete.first;
+    } else if (matches.isNotEmpty) {
+      final sorted = [...matches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+      activeMatch = sorted.last;
+    }
+
+    if (activeMatch != null) {
+      final isKo = activeMatch.stage == 'Sechzehntelfinale' ||
+          activeMatch.stage == 'Achtelfinale' ||
+          activeMatch.stage == 'Viertelfinale' ||
+          activeMatch.stage == 'Halbfinale' ||
+          activeMatch.stage == 'Spiel um Platz 3' ||
+          activeMatch.stage == 'Finale';
+      return isKo ? activeMatch.stage : 'Gruppenphase';
+    }
+    return 'Alle';
   }
 
   @override
@@ -43,6 +68,10 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
         data: (matches) {
           final sorted = [...matches]
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+          if (!_didSetInitialFilters) {
+            _selectedRound = _determineCurrentStage(sorted);
+            _didSetInitialFilters = true;
+          }
           final groups = _groupsFor(sorted);
           final rounds = _roundsFor(sorted);
           final teams = _teamsFor(sorted);

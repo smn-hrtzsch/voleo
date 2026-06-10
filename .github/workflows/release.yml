@@ -1,0 +1,114 @@
+name: Manual Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Type of release"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      release_title:
+        description: "Release Title (optional)"
+        required: false
+        type: string
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.bump_version.outputs.new_version }}
+      new_version_full: ${{ steps.bump_version.outputs.new_version_full }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Bump Version
+        id: bump_version
+        run: |
+          python3 scripts/bump_version.py "${{ inputs.release_type }}"
+
+      - name: Commit Version Bump & Tag
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add pubspec.yaml
+          git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version_full }}"
+          git tag "v${{ steps.bump_version.outputs.new_version }}"
+          git push origin main
+          git push origin "v${{ steps.bump_version.outputs.new_version }}"
+
+  build-android:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.bump-version.outputs.new_version }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        run: |
+          flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          mkdir dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Voleo-android-v${{ needs.bump-version.outputs.new_version }}.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/Voleo-android-v${{ needs.bump-version.outputs.new_version }}.apk
+
+  publish-release:
+    needs: [bump-version, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.bump-version.outputs.new_version }}
+          name: ${{ inputs.release_title != '' && inputs.release_title || format('Release v{0}', needs.bump-version.outputs.new_version) }}
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
