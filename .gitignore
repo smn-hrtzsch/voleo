@@ -24,3 +24,16 @@ functions/node_modules/
 .idea/
 .vscode/
 *.iml
+
+# Local simulation and fix scripts
+tool/cleanup-matches.mjs
+tool/complete-ko.mjs
+tool/fix-af.mjs
+tool/fix-hf.mjs
+tool/fix-simulation.mjs
+tool/fix-vf.mjs
+tool/hard-cleanup.mjs
+tool/recalculate-points.mjs
+tool/simulate-af.mjs
+tool/simulate-sf.mjs
+tool/simulate-vf.mjs

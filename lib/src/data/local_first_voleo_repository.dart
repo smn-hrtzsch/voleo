@@ -370,16 +370,18 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       for (final tip in _currentTips) {
         final match =
             _currentMatches.firstWhere((match) => match.id == tip.matchId);
+        final actualHome = match.regularHomeScore ?? match.homeScore;
+        final actualAway = match.regularAwayScore ?? match.awayScore;
         if (match.status != MatchStatus.finalResult ||
-            match.homeScore == null ||
-            match.awayScore == null) {
+            actualHome == null ||
+            actualAway == null) {
           continue;
         }
         final result = scoreTip(
           predictedHome: tip.predictedHome,
           predictedAway: tip.predictedAway,
-          actualHome: match.homeScore!,
-          actualAway: match.awayScore!,
+          actualHome: actualHome,
+          actualAway: actualAway,
         );
         total += result.points;
         if (result.isExact) exact++;

@@ -39,20 +39,18 @@ class HomeScreen extends ConsumerWidget {
               .toList()
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
 
-          final displayMatches = upcomingMatches.take(5).toList();
-
-          if (displayMatches.length < 5) {
-            final finished = items
-                .where((m) => m.status == MatchStatus.finalResult)
-                .toList()
-              ..sort((a, b) => b.kickoff.compareTo(a.kickoff));
-            for (final m in finished) {
-              if (displayMatches.length >= 5) break;
-              if (!displayMatches.contains(m)) {
-                displayMatches.add(m);
-              }
-            }
-            displayMatches.sort((a, b) => a.kickoff.compareTo(b.kickoff));
+          final List<CupMatch> displayMatches;
+          if (upcomingMatches.isNotEmpty) {
+            displayMatches = upcomingMatches.take(5).toList();
+          } else {
+            final finaleMatch = items.firstWhere(
+              (m) => m.stage == 'Finale',
+              orElse: () => items.firstWhere(
+                (m) => m.id == 'wc-ko-fi-1',
+                orElse: () => items.last,
+              ),
+            );
+            displayMatches = [finaleMatch];
           }
 
           return ListView(
@@ -212,7 +210,6 @@ class _TopThreeCard extends ConsumerWidget {
     required this.standings,
     required this.matches,
     required this.tips,
-    super.key,
   });
 
   final List<Standing> standings;
