@@ -115,22 +115,24 @@ class _GroupStandingsView extends StatelessWidget {
 
   final List<CupMatch> matches;
 
-  /// Returns the set of teams that appear in Sechzehntelfinale –
-  /// used to determine which 3rd-place teams actually advanced.
-  Set<String> _advancedTeams() {
-    final koMatches = matches.where((m) =>
-        m.stage == 'Sechzehntelfinale' ||
-        m.stage == 'Achtelfinale' ||
-        m.stage == 'Viertelfinale' ||
-        m.stage == 'Halbfinale' ||
-        m.stage == 'Spiel um Platz 3' ||
-        m.stage == 'Finale');
-    final teams = <String>{};
-    for (final m in koMatches) {
-      if (!isPlaceholderTeam(m.homeTeam)) teams.add(m.homeTeam);
-      if (!isPlaceholderTeam(m.awayTeam)) teams.add(m.awayTeam);
+  Set<String> _calculateBestThirds(Map<String, List<_TeamRow>> tables) {
+    final thirds = <_TeamRow>[];
+    for (final group in tables.keys) {
+      final rows = tables[group]!;
+      if (rows.length > 2) {
+        thirds.add(rows[2]);
+      }
     }
-    return teams;
+    thirds.sort((a, b) {
+      final pts = b.points.compareTo(a.points);
+      if (pts != 0) return pts;
+      final diff = b.goalDiff.compareTo(a.goalDiff);
+      if (diff != 0) return diff;
+      final goals = b.goalsFor.compareTo(a.goalsFor);
+      if (goals != 0) return goals;
+      return a.team.compareTo(b.team);
+    });
+    return thirds.take(8).map((row) => row.team).toSet();
   }
 
   Map<String, List<_TeamRow>> _calculateGroupTables() {
@@ -211,14 +213,14 @@ class _GroupStandingsView extends StatelessWidget {
     if (tables.isEmpty) {
       return const Center(child: Text('Keine Gruppenspiele geladen.'));
     }
-    final advanced = _advancedTeams();
+    final bestThirds = _calculateBestThirds(tables);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: tables.length,
       itemBuilder: (context, index) {
         final group = tables.keys.elementAt(index);
         final rows = tables[group]!;
-        return _GroupTableCard(group: group, rows: rows, advancedTeams: advanced);
+        return _GroupTableCard(group: group, rows: rows, bestThirds: bestThirds);
       },
     );
   }
@@ -245,17 +247,16 @@ class _GroupTableCard extends StatelessWidget {
   const _GroupTableCard({
     required this.group,
     required this.rows,
-    required this.advancedTeams,
+    required this.bestThirds,
   });
 
   final String group;
   final List<_TeamRow> rows;
-  final Set<String> advancedTeams;
+  final Set<String> bestThirds;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final koStarted = advancedTeams.isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
@@ -311,7 +312,7 @@ class _GroupTableCard extends StatelessWidget {
                     final row = rows[i];
                     final flag = CountryFlags.getFlag(row.team);
                     final isTopTwo = i < 2;
-                    final isAdvancedThird = i == 2 && koStarted && advancedTeams.contains(row.team);
+                    final isAdvancedThird = i == 2 && bestThirds.contains(row.team);
                     final rankColor = isTopTwo
                         ? Colors.green
                         : isAdvancedThird
