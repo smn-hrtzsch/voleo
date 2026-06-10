@@ -709,8 +709,9 @@ bool isPlaceholderTeam(String name) {
 }
 
 String _roundFor(CupMatch match) {
-  if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde'))
+  if (match.stage.startsWith('Gruppe') || match.stage.contains('Runde')) {
     return 'Gruppenphase';
+  }
   return match.stage.isEmpty ? 'Gruppenphase' : match.stage;
 }
 
