@@ -276,16 +276,16 @@ class _UserTipsBottomSheetContentState
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                const SizedBox(width: 60),
-                const SizedBox(width: 8),
+                const SizedBox(width: 36),
+                const SizedBox(width: 4),
                 const Expanded(flex: 3, child: SizedBox.shrink()),
-                const SizedBox(width: 8),
-                const SizedBox(width: 80, child: SizedBox.shrink()),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                const SizedBox(width: 100, child: SizedBox.shrink()),
+                const SizedBox(width: 4),
                 const Expanded(flex: 3, child: SizedBox.shrink()),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 SizedBox(
-                  width: 60,
+                  width: 36,
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Text(
@@ -350,7 +350,7 @@ class _UserTipsBottomSheetContentState
                   if (match.status != MatchStatus.scheduled) {
                     trailingWidget = Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                          horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
                         color: totalPts > 0
                             ? Colors.green.withAlpha(38)
@@ -393,7 +393,7 @@ class _UserTipsBottomSheetContentState
                 );
               }
               final pointsWidget = SizedBox(
-                width: 60,
+                width: 36,
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: trailingWidget ?? const SizedBox.shrink(),
@@ -448,8 +448,8 @@ class _UserTipsBottomSheetContentState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 60),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 36),
+                        const SizedBox(width: 4),
                         // Home Team Name (Right aligned)
                         Expanded(
                           flex: 3,
@@ -465,7 +465,7 @@ class _UserTipsBottomSheetContentState
                             softWrap: true,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         // Flags and Score in the middle (Correct flags in the middle alignment)
                         Row(
                           mainAxisSize: MainAxisSize.min,
@@ -495,7 +495,7 @@ class _UserTipsBottomSheetContentState
                             Text(awayFlag, style: const TextStyle(fontSize: 20)),
                           ],
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         // Away Team Name (Left aligned)
                         Expanded(
                           flex: 3,
@@ -511,7 +511,7 @@ class _UserTipsBottomSheetContentState
                             softWrap: true,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         pointsWidget,
                       ],
                     ),
