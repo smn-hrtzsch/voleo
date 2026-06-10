@@ -805,6 +805,11 @@ class _BoosterAndRiskPicksCardState
                   value: widget.user.favoriteTeam,
                   teams: teams,
                   disabled: tournamentStarted || _isSaving,
+                  points: (tournamentStarted &&
+                          widget.user.favoriteTeam != null &&
+                          widget.user.favoriteTeam!.isNotEmpty)
+                      ? _countWins(widget.user.favoriteTeam!, matches) * 10
+                      : null,
                   onSelected: (team) => _savePick(favoriteTeam: team),
                 ),
                 const SizedBox(height: 12),
@@ -815,6 +820,11 @@ class _BoosterAndRiskPicksCardState
                   value: widget.user.predictedChampion,
                   teams: teams,
                   disabled: tournamentStarted || _isSaving,
+                  points: (tournamentStarted &&
+                          widget.user.predictedChampion != null &&
+                          widget.user.predictedChampion!.isNotEmpty)
+                      ? _countWins(widget.user.predictedChampion!, matches) * 10
+                      : null,
                   onSelected: (team) => _savePick(predictedChampion: team),
                 ),
                 const SizedBox(height: 12),
@@ -833,6 +843,20 @@ class _BoosterAndRiskPicksCardState
                   teams: teams,
                   groupByRiskTier: true,
                   disabled: tournamentStarted || _isSaving,
+                  points: (tournamentStarted &&
+                          widget.user.riskTeam != null &&
+                          widget.user.riskTeam!.isNotEmpty &&
+                          widget.user.riskStage != null &&
+                          widget.user.riskStage!.isNotEmpty)
+                      ? () {
+                          final actual = getEliminationStage(
+                              widget.user.riskTeam!, matches);
+                          return actual != null
+                              ? calculateRiskPoints(widget.user.riskTeam!,
+                                  widget.user.riskStage!, actual)
+                              : null;
+                        }()
+                      : null,
                   onSelected: (team) =>
                       _savePick(riskTeam: team, riskStage: ''),
                 ),
@@ -879,6 +903,20 @@ class _BoosterAndRiskPicksCardState
     );
   }
 
+  /// Counts how many completed matches [team] has won.
+  int _countWins(String team, List<CupMatch> matches) {
+    var wins = 0;
+    for (final m in matches) {
+      if (m.status != MatchStatus.finalResult) continue;
+      final hs = m.homeScore;
+      final as_ = m.awayScore;
+      if (hs == null || as_ == null) continue;
+      if (m.homeTeam == team && hs > as_) wins++;
+      if (m.awayTeam == team && as_ > hs) wins++;
+    }
+    return wins;
+  }
+
   Widget _buildPickTile({
     required String title,
     required String? value,
@@ -886,6 +924,7 @@ class _BoosterAndRiskPicksCardState
     required bool disabled,
     required ValueChanged<String> onSelected,
     bool groupByRiskTier = false,
+    int? points,
   }) {
     final hasValue = value != null && value.isNotEmpty;
     final flag = hasValue ? CountryFlags.getFlag(value) : '';
@@ -931,6 +970,19 @@ class _BoosterAndRiskPicksCardState
                     color: Theme.of(context).textTheme.bodyMedium?.color,
                   ),
                 ),
+                if (points != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${points >= 0 ? '+' : ''}$points Pkt.)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: points > 0
+                          ? Colors.green
+                          : (points < 0 ? Colors.red : Colors.grey),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ] else
                 Text(
                   'Mannschaft wählen...',

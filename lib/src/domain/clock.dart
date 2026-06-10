@@ -1,9 +1,10 @@
 class VoleoClock {
-  // Simulation: Samstag, 13. Juni 2026, 22:00 Uhr (Mitte des 5. Spiels)
-  static final DateTime _simulatedNow = DateTime(2026, 6, 13, 22, 0, 0);
+  static final DateTime _simulatedNow = DateTime(2026, 7, 15, 12, 0, 0);
 
-  // Auf true setzen, wenn ENVIRONMENT=test übergeben wurde
-  static const bool useSimulation = String.fromEnvironment('ENVIRONMENT', defaultValue: 'prod') == 'test';
+  // Simulation aktiv wenn FLUTTER_ENV=test oder ENVIRONMENT=test übergeben wurde
+  static const bool useSimulation =
+      String.fromEnvironment('FLUTTER_ENV', defaultValue: 'prod') == 'test' ||
+      String.fromEnvironment('ENVIRONMENT', defaultValue: 'prod') == 'test';
 
   static DateTime get now {
     if (useSimulation) {

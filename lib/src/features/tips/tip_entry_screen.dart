@@ -59,7 +59,22 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
           value: ref.watch(matchesProvider),
           data: (matches) {
             final match =
-                matches.firstWhere((item) => item.id == widget.matchId);
+                matches.where((item) => item.id == widget.matchId).firstOrNull;
+            if (match == null) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Spiel wurde nicht gefunden.'),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => context.go(widget.returnPath),
+                      child: const Text('Zurück'),
+                    ),
+                  ],
+                ),
+              );
+            }
             final existingTip = _tipForMatch(
               ref.watch(tipsProvider).value ?? const <Tip>[],
               match.id,
@@ -72,12 +87,27 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               for (final standing in standings)
                 standing.uid: standing.displayName,
             };
-            if (!_didSeedTip && existingTip != null) {
-              _homeGoals = existingTip.predictedHome;
-              _awayGoals = existingTip.predictedAway;
-              _didSeedTip = true;
+            if (existingTip != null) {
+              if (!_didSeedTip) {
+                _homeGoals = existingTip.predictedHome;
+                _awayGoals = existingTip.predictedAway;
+                _didSeedTip = true;
+              }
+            } else {
+              _didSeedTip = false;
             }
             final scoreResult = _scoreResult(match, existingTip);
+
+            final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+            final progressionParts = <String>[];
+            if (match.otHomeScore != null) {
+              progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+            }
+            if (match.penaltyHomeScore != null) {
+              progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+            }
+            final progressionText = progressionParts.join(' • ');
+
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -108,16 +138,25 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
-                              child: _MatchupTeamLabel(
-                                teamName: match.homeTeam,
-                                isHome: true,
-                              ),
+                              child: () {
+                                final winner = getMatchWinner(match);
+                                final isFinished = match.status == MatchStatus.finalResult;
+                                final isHomeWinner = isFinished && winner != null && isSameTeam(winner, match.homeTeam);
+                                final isHomeLoser = isFinished && winner != null && !isSameTeam(winner, match.homeTeam);
+                                return _MatchupTeamLabel(
+                                  teamName: match.homeTeam,
+                                  isHome: true,
+                                  isWinner: isHomeWinner,
+                                  isLoser: isHomeLoser,
+                                );
+                              }(),
                             ),
                             SizedBox(
-                              width: 68,
+                              width: 50,
                               child: Text(
-                                (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
-                                    ? '${match.homeScore}:${match.awayScore}'
+                                match.status == MatchStatus.finalResult ||
+                                        match.status == MatchStatus.live
+                                    ? '${match.regularHomeScore ?? match.homeScore}:${match.regularAwayScore ?? match.awayScore}'
                                     : '-:-',
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context)
@@ -132,13 +171,39 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                               ),
                             ),
                             Expanded(
-                              child: _MatchupTeamLabel(
-                                teamName: match.awayTeam,
-                                isHome: false,
-                              ),
+                              child: () {
+                                final winner = getMatchWinner(match);
+                                final isFinished = match.status == MatchStatus.finalResult;
+                                final isAwayWinner = isFinished && winner != null && isSameTeam(winner, match.awayTeam);
+                                final isAwayLoser = isFinished && winner != null && !isSameTeam(winner, match.awayTeam);
+                                return _MatchupTeamLabel(
+                                  teamName: match.awayTeam,
+                                  isHome: false,
+                                  isWinner: isAwayWinner,
+                                  isLoser: isAwayLoser,
+                                );
+                              }(),
                             ),
                           ],
                         ),
+                        if (hasProgression)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Center(
+                              child: Text(
+                                progressionText,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
@@ -212,8 +277,11 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           label: match.homeTeam,
                           value: _homeGoals,
                           enabled: !match.isLocked,
-                          onChanged: (value) =>
-                              setState(() => _homeGoals = value),
+                          onChanged: (value) {
+                            if (_homeGoals != value) {
+                              setState(() => _homeGoals = value);
+                            }
+                          },
                         ),
                       ),
                       Padding(
@@ -228,8 +296,11 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           label: match.awayTeam,
                           value: _awayGoals,
                           enabled: !match.isLocked,
-                          onChanged: (value) =>
-                              setState(() => _awayGoals = value),
+                          onChanged: (value) {
+                            if (_awayGoals != value) {
+                              setState(() => _awayGoals = value);
+                            }
+                          },
                         ),
                       ),
                     ],
@@ -490,7 +561,6 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
       setState(() {
         _homeGoals = 0;
         _awayGoals = 0;
-        _didSeedTip = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tipp gelöscht.')),
@@ -511,10 +581,14 @@ class _MatchupTeamLabel extends StatelessWidget {
   const _MatchupTeamLabel({
     required this.teamName,
     required this.isHome,
+    this.isWinner = false,
+    this.isLoser = false,
   });
 
   final String teamName;
   final bool isHome;
+  final bool isWinner;
+  final bool isLoser;
 
   @override
   Widget build(BuildContext context) {
@@ -531,6 +605,7 @@ class _MatchupTeamLabel extends StatelessWidget {
         textAlign: isHome ? TextAlign.right : TextAlign.left,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
       ),
     );
@@ -553,17 +628,19 @@ Tip? _tipForMatch(List<Tip> tips, String matchId) {
 }
 
 ScoreResult? _scoreResult(CupMatch match, Tip? tip) {
+  final actualHome = match.regularHomeScore ?? match.homeScore;
+  final actualAway = match.regularAwayScore ?? match.awayScore;
   if (tip == null ||
       match.status != MatchStatus.finalResult ||
-      match.homeScore == null ||
-      match.awayScore == null) {
+      actualHome == null ||
+      actualAway == null) {
     return null;
   }
   return scoreTip(
     predictedHome: tip.predictedHome,
     predictedAway: tip.predictedAway,
-    actualHome: match.homeScore!,
-    actualAway: match.awayScore!,
+    actualHome: actualHome,
+    actualAway: actualAway,
   );
 }
 
@@ -575,11 +652,22 @@ String _scoreLabel(ScoreResult result) {
 }
 
 String _matchContextLabel(CupMatch match) {
-  if (match.group.isNotEmpty) return 'Gruppe ${match.group}';
+  if (match.group.isNotEmpty) {
+    return '${match.stage} · Gruppe ${match.group}';
+  }
+  if (match.stage == 'Finale' || match.stage == 'Spiel um Platz 3') {
+    return match.stage;
+  }
+  final parts = match.id.split('-');
+  if (parts.length >= 4 &&
+      (match.stage.contains('finale') || match.stage.contains('Finale'))) {
+    final num = parts.last;
+    return '${match.stage} $num';
+  }
   return match.stage;
 }
 
-class _ScoreWheel extends StatelessWidget {
+class _ScoreWheel extends StatefulWidget {
   const _ScoreWheel({
     required this.label,
     required this.value,
@@ -595,12 +683,45 @@ class _ScoreWheel extends StatelessWidget {
   final bool enabled;
 
   @override
+  State<_ScoreWheel> createState() => _ScoreWheelState();
+}
+
+class _ScoreWheelState extends State<_ScoreWheel> {
+  late FixedExtentScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = FixedExtentScrollController(initialItem: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScoreWheel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value) {
+      if (_controller.hasClients && _controller.selectedItem != widget.value) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _controller.hasClients && _controller.selectedItem != widget.value) {
+            _controller.jumpToItem(widget.value);
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Text(
-          label,
+          widget.label,
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -608,9 +729,9 @@ class _ScoreWheel extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         IgnorePointer(
-          ignoring: !enabled,
+          ignoring: !widget.enabled,
           child: Opacity(
-            opacity: enabled ? 1.0 : 0.72,
+            opacity: widget.enabled ? 1.0 : 0.72,
             child: Container(
               height: 156,
               decoration: BoxDecoration(
@@ -618,14 +739,14 @@ class _ScoreWheel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: CupertinoPicker.builder(
-                scrollController: FixedExtentScrollController(initialItem: value),
+                scrollController: _controller,
                 itemExtent: 48,
                 diameterRatio: 1.35,
                 selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
                   background: Color(0x1A000000),
                 ),
-                onSelectedItemChanged: onChanged,
-                childCount: _maxGoals + 1,
+                onSelectedItemChanged: widget.onChanged,
+                childCount: _ScoreWheel._maxGoals + 1,
                 itemBuilder: (context, index) {
                   return Center(
                     child: Text(

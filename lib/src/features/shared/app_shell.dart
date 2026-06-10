@@ -72,6 +72,11 @@ class _AppShellState extends ConsumerState<AppShell> {
               label: 'Spiele',
             ),
             NavigationDestination(
+              icon: Icon(Icons.table_chart_outlined),
+              selectedIcon: Icon(Icons.table_chart),
+              label: 'Tabelle',
+            ),
+            NavigationDestination(
               icon: Icon(Icons.leaderboard_outlined),
               selectedIcon: Icon(Icons.leaderboard),
               label: 'Liga',

@@ -158,25 +158,58 @@ class FirestoreVoleoRepository implements VoleoRepository {
 
   @override
   Stream<List<CupMatch>> watchMatches() {
-    return _firestore
-        .collection('matches')
-        .snapshots()
-        .map((snapshot) {
+    return _firestore.collection('matches').snapshots().map((snapshot) {
       final staticMatches = buildWc2026GroupStageMatches();
       final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
-      final firestoreMatchesMap = {
-        for (final match in firestoreMatches) match.id: match
-      };
 
-      final merged = <CupMatch>[];
-      for (final staticMatch in staticMatches) {
-        if (firestoreMatchesMap.containsKey(staticMatch.id)) {
-          merged.add(firestoreMatchesMap[staticMatch.id]!);
+      final mergedMap = <String, CupMatch>{};
+      
+      // First, put all static matches into the map by ID
+      for (final m in staticMatches) {
+        mergedMap[m.id] = m;
+      }
+
+      String normalizeTeam(String name) {
+        final lower = name.toLowerCase().trim();
+        if (lower == 'bosnia and herzegovina' ||
+            lower == 'bosnien und herzegowina' ||
+            lower == 'bosnien-herzegowina' ||
+            lower == 'bosnien herzegowina') {
+          return 'bosnienherzegowina';
+        }
+        return lower.replaceAll('-', '').replaceAll(' ', '');
+      }
+
+      // Then, for each firestore match:
+      for (final fm in firestoreMatches) {
+        // 1. Try to find by ID
+        if (mergedMap.containsKey(fm.id)) {
+          mergedMap[fm.id] = fm;
+          continue;
+        }
+
+        // 2. Fallback: Try to find by content (teams + kickoff) to avoid duplicates
+        // with different IDs (e.g. from different simulation scripts)
+        String? duplicateId;
+        for (final entry in mergedMap.entries) {
+          final sm = entry.value;
+          if (normalizeTeam(sm.homeTeam) == normalizeTeam(fm.homeTeam) &&
+              normalizeTeam(sm.awayTeam) == normalizeTeam(fm.awayTeam) &&
+              sm.kickoff.isAtSameMomentAs(fm.kickoff)) {
+            duplicateId = entry.key;
+            break;
+          }
+        }
+
+        if (duplicateId != null) {
+          // Keep the static match ID, but update with firestore data
+          mergedMap[duplicateId] = fm.copyWith(id: duplicateId);
         } else {
-          merged.add(staticMatch);
+          mergedMap[fm.id] = fm;
         }
       }
 
+      final merged = mergedMap.values.toList();
       merged.sort((a, b) => a.kickoff.compareTo(b.kickoff));
       return merged;
     });
@@ -548,7 +581,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final userDoc = await _firestore.collection('users').doc(uid).get();
       final data = userDoc.data();
       if (data == null) {
-        print('FirestoreVoleoRepository.getUser($uid) -> document is null');
+        debugPrint('FirestoreVoleoRepository.getUser($uid) -> document is null');
         return null;
       }
       final user = VoleoUser(
@@ -564,10 +597,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
         riskStage: data['riskStage'] as String?,
         themeModeName: data['themeMode'] as String?,
       );
-      print('FirestoreVoleoRepository.getUser($uid) -> loaded: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+      debugPrint('FirestoreVoleoRepository.getUser($uid) -> loaded: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
       return user;
     } catch (e) {
-      print('FirestoreVoleoRepository.getUser($uid) -> network get failed: $e. Retrying from cache...');
+      debugPrint('FirestoreVoleoRepository.getUser($uid) -> network get failed: $e. Retrying from cache...');
       try {
         final userDoc = await _firestore
             .collection('users')
@@ -575,7 +608,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
             .get(const GetOptions(source: Source.cache));
         final data = userDoc.data();
         if (data == null) {
-          print('FirestoreVoleoRepository.getUser($uid) -> cache doc is null');
+          debugPrint('FirestoreVoleoRepository.getUser($uid) -> cache doc is null');
           return null;
         }
         final user = VoleoUser(
@@ -591,10 +624,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
           riskStage: data['riskStage'] as String?,
           themeModeName: data['themeMode'] as String?,
         );
-        print('FirestoreVoleoRepository.getUser($uid) -> loaded from cache: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+        debugPrint('FirestoreVoleoRepository.getUser($uid) -> loaded from cache: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
         return user;
       } catch (cacheErr) {
-        print('FirestoreVoleoRepository.getUser($uid) -> cache get failed: $cacheErr');
+        debugPrint('FirestoreVoleoRepository.getUser($uid) -> cache get failed: $cacheErr');
         return null;
       }
     }
@@ -814,7 +847,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
   }) async {
     final user = _requireFirebaseUser();
     final matches = await watchMatches().first;
-    final match = matches.firstWhere((match) => match.id == matchId);
+    final match = matches.where((match) => match.id == matchId).firstOrNull;
+    if (match == null) return;
     if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
@@ -851,7 +885,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
   Future<void> deleteTip({required String matchId}) async {
     final user = _requireFirebaseUser();
     final matches = await watchMatches().first;
-    final match = matches.firstWhere((match) => match.id == matchId);
+    final match = matches.where((match) => match.id == matchId).firstOrNull;
+    if (match == null) return;
     if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
     }
@@ -1047,29 +1082,6 @@ class FirestoreVoleoRepository implements VoleoRepository {
     await batch.commit();
   }
 
-  Future<List<Standing>> _standingsWithMemberPhotos(
-    DocumentReference<Map<String, dynamic>> leagueRef,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) async {
-    final members = await leagueRef.collection('members').get();
-    final memberPhotos = {
-      for (final member in members.docs)
-        member.id: member.data()['photoUrl'] as String?,
-    };
-    return docs.map((doc) {
-      final standing = _standingFromDoc(doc);
-      return Standing(
-        uid: standing.uid,
-        displayName: standing.displayName,
-        totalPoints: standing.totalPoints,
-        exactCount: standing.exactCount,
-        tendencyCount: standing.tendencyCount,
-        rank: standing.rank,
-        photoUrl: memberPhotos[standing.uid] ?? standing.photoUrl,
-      );
-    }).toList();
-  }
-
   Future<void> _ensureActiveLeague(auth.User user) async {
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     final activeLeagueId = userDoc.data()?['activeLeagueId'] as String?;
@@ -1144,7 +1156,15 @@ class FirestoreVoleoRepository implements VoleoRepository {
       ),
       homeScore: data['homeScore'] as int?,
       awayScore: data['awayScore'] as int?,
+      winner: data['winner'] as String?,
+      resultNote: data['resultNote'] as String?,
       source: data['source'] as String? ?? 'openligadb',
+      regularHomeScore: data['regularHomeScore'] as int?,
+      regularAwayScore: data['regularAwayScore'] as int?,
+      otHomeScore: data['otHomeScore'] as int?,
+      otAwayScore: data['otAwayScore'] as int?,
+      penaltyHomeScore: data['penaltyHomeScore'] as int?,
+      penaltyAwayScore: data['penaltyAwayScore'] as int?,
     );
   }
 

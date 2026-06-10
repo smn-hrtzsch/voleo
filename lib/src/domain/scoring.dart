@@ -24,7 +24,7 @@ ScoreResult scoreTip({
 
   final predictedDiff = predictedHome - predictedAway;
   final actualDiff = actualHome - actualAway;
-  if (predictedDiff == actualDiff) {
+  if (predictedDiff == actualDiff && actualDiff != 0) {
     return const ScoreResult(points: 3, isExact: false, isTendency: true);
   }
 
@@ -80,6 +80,25 @@ int _sign(int value) {
   return 0;
 }
 
+bool isSameTeam(String a, String b) {
+  final normA = a.toLowerCase().trim();
+  final normB = b.toLowerCase().trim();
+  if (normA == normB) return true;
+
+  bool isBosnia(String name) {
+    return name == 'bosnia and herzegovina' ||
+        name == 'bosnien und herzegowina' ||
+        name == 'bosnien-herzegowina' ||
+        name == 'bosnien herzegowina';
+  }
+
+  if (isBosnia(normA) && isBosnia(normB)) return true;
+
+  return normA.replaceAll('-', '').replaceAll(' ', '') ==
+      normB.replaceAll('-', '').replaceAll(' ', '');
+}
+
+
 String getTier(String team) {
   final favorites = [
     'Argentinien',
@@ -126,23 +145,23 @@ String getTier(String team) {
   return 'Gurkentruppe';
 }
 
+bool _isGroupStage(String stage) {
+  return stage.startsWith('Gruppe') || stage.contains('Runde');
+}
+
 String? getEliminationStage(String team, List<CupMatch> matches) {
-  final teamMatches =
-      matches.where((m) => m.homeTeam == team || m.awayTeam == team).toList();
+  final teamMatches = matches
+      .where((m) => isSameTeam(m.homeTeam, team) || isSameTeam(m.awayTeam, team))
+      .toList();
   if (teamMatches.isEmpty) return null;
 
   final knockouts =
-      teamMatches.where((m) => !m.stage.startsWith('Gruppe')).toList();
+      teamMatches.where((m) => !_isGroupStage(m.stage)).toList();
 
   for (final m in knockouts) {
-    if (m.status == MatchStatus.finalResult &&
-        m.homeScore != null &&
-        m.awayScore != null) {
-      final isHome = m.homeTeam == team;
-      final won = isHome
-          ? (m.homeScore! > m.awayScore!)
-          : (m.awayScore! > m.homeScore!);
-      if (!won) {
+    if (m.status == MatchStatus.finalResult) {
+      final winner = getMatchWinner(m);
+      if (winner != null && winner != team) {
         final stage = m.stage.toLowerCase();
         if (stage.contains('sechzehntel') || stage.contains('32')) {
           return 'Sechzehntelfinale';
@@ -168,23 +187,59 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
       !m.stage.toLowerCase().contains('halb') &&
       !m.stage.toLowerCase().contains('viertel') &&
       m.status == MatchStatus.finalResult &&
-      m.homeScore != null &&
-      m.awayScore != null &&
-      ((m.homeTeam == team && m.homeScore! > m.awayScore!) ||
-          (m.awayTeam == team && m.awayScore! > m.homeScore!)));
+      getMatchWinner(m) != null &&
+      isSameTeam(getMatchWinner(m)!, team));
   if (hasWonFinal) {
     return 'Champion';
   }
 
   final groupMatches =
-      matches.where((m) => m.stage.startsWith('Gruppe')).toList();
-  final allGroupsFinished = groupMatches.isNotEmpty &&
-      groupMatches.every((m) => m.status == MatchStatus.finalResult);
-  if (allGroupsFinished && knockouts.isEmpty) {
-    return 'Gruppenphase';
+      matches.where((m) => _isGroupStage(m.stage)).toList();
+  final teamGroupMatches = teamMatches.where((m) => _isGroupStage(m.stage)).toList();
+  final teamGroupFinished = teamGroupMatches.isNotEmpty &&
+      teamGroupMatches.every((m) => m.status == MatchStatus.finalResult);
+
+  if (teamGroupFinished && knockouts.isEmpty) {
+    // If the team finished its group matches and has no knockout matches, 
+    // it's either out or not yet assigned. 
+    // If all group matches of the tournament are finished, it's definitely out.
+    final allGroupsFinished = groupMatches.isNotEmpty &&
+        groupMatches.every((m) => m.status == MatchStatus.finalResult);
+    if (allGroupsFinished) {
+      return 'Gruppenphase';
+    }
+    
+    // Or if some knockout matches are already scheduled with real teams (not placeholders),
+    // and this team is not among them, it's likely out.
+    final hasDeterminedKnockouts = matches.any((m) => 
+      !_isGroupStage(m.stage) && 
+      !_isPlaceholder(m.homeTeam) && 
+      !_isPlaceholder(m.awayTeam));
+    
+    if (hasDeterminedKnockouts) {
+      return 'Gruppenphase';
+    }
   }
 
   return null;
+}
+
+bool _isPlaceholder(String name) {
+  final lower = name.toLowerCase();
+  return lower.startsWith('sieger') ||
+      lower.startsWith('zweiter') ||
+      lower.startsWith('dritter') ||
+      lower.startsWith('bester') ||
+      lower.startsWith('verlierer') ||
+      lower.contains('gruppe') ||
+      lower.contains('sechzehntelfinale') ||
+      lower.contains('achtelfinale') ||
+      lower.contains('viertel') ||
+      lower.contains('halb') ||
+      lower.contains('platz 3') ||
+      lower.contains('finale') ||
+      lower.startsWith('tbd') ||
+      lower.trim().isEmpty;
 }
 
 int calculateRiskPoints(
@@ -252,13 +307,9 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
   final fav = user.favoriteTeam;
   if (fav != null && fav.isNotEmpty) {
     for (final match in matches) {
-      if (match.status == MatchStatus.finalResult &&
-          match.homeScore != null &&
-          match.awayScore != null) {
-        if (match.homeTeam == fav && match.homeScore! > match.awayScore!) {
-          extraPoints += 10;
-        } else if (match.awayTeam == fav &&
-            match.awayScore! > match.homeScore!) {
+      if (match.status == MatchStatus.finalResult) {
+        final winner = getMatchWinner(match);
+        if (winner != null && isSameTeam(winner, fav)) {
           extraPoints += 10;
         }
       }
@@ -269,14 +320,9 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
   final championTipp = user.predictedChampion;
   if (championTipp != null && championTipp.isNotEmpty) {
     for (final match in matches) {
-      if (match.status == MatchStatus.finalResult &&
-          match.homeScore != null &&
-          match.awayScore != null) {
-        if (match.homeTeam == championTipp &&
-            match.homeScore! > match.awayScore!) {
-          extraPoints += 10;
-        } else if (match.awayTeam == championTipp &&
-            match.awayScore! > match.homeScore!) {
+      if (match.status == MatchStatus.finalResult) {
+        final winner = getMatchWinner(match);
+        if (winner != null && isSameTeam(winner, championTipp)) {
           extraPoints += 10;
         }
       }
@@ -300,6 +346,9 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
 }
 
 String? getMatchWinner(CupMatch match) {
+  if (match.winner != null && match.winner!.isNotEmpty) {
+    return match.winner;
+  }
   if (match.status != MatchStatus.finalResult ||
       match.homeScore == null ||
       match.awayScore == null) {
@@ -322,8 +371,8 @@ int getMatchTotalPoints({
 }) {
   final winner = getMatchWinner(match);
   var total = tipPoints;
-  if (winner != null && favoriteTeam == winner) total += 10;
-  if (winner != null && predictedChampion == winner) total += 10;
+  if (winner != null && favoriteTeam != null && isSameTeam(favoriteTeam, winner)) total += 10;
+  if (winner != null && predictedChampion != null && isSameTeam(predictedChampion, winner)) total += 10;
   return total;
 }
 
@@ -334,8 +383,8 @@ String getEvaluationLabel({
   required CupMatch match,
 }) {
   final winner = getMatchWinner(match);
-  final isFavWin = winner != null && favoriteTeam == winner;
-  final isChampWin = winner != null && predictedChampion == winner;
+  final isFavWin = winner != null && favoriteTeam != null && isSameTeam(favoriteTeam, winner);
+  final isChampWin = winner != null && predictedChampion != null && isSameTeam(predictedChampion, winner);
 
   final baseLabel = tipPoints == 4
       ? 'exakt'
