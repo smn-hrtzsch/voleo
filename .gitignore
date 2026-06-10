@@ -12,10 +12,12 @@ ios/Runner/GoogleService-Info.plist
 firebase_options.dart
 service-account.json
 .firebase/
-
+*-debug.log
+.firebaserc
 
 # Node tooling for scheduled jobs
 node_modules/
+functions/node_modules/
 
 # IDE / OS
 .DS_Store
