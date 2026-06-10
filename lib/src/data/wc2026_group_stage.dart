@@ -453,7 +453,11 @@ List<CupMatch> buildWc2026GroupStageMatches() {
   final sfMatches = [
     ('Zweiter Gruppe A', 'Zweiter Gruppe B', DateTime(2026, 6, 29, 19)),
     ('Sieger Gruppe C', 'Zweiter Gruppe F', DateTime(2026, 6, 29, 22)),
-    ('Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', DateTime(2026, 6, 30, 19)),
+    (
+      'Sieger Gruppe E',
+      'Bester 3. Gruppe A/B/C/D/F',
+      DateTime(2026, 6, 30, 19)
+    ),
     ('Sieger Gruppe F', 'Zweiter Gruppe C', DateTime(2026, 6, 30, 22)),
     ('Zweiter Gruppe E', 'Zweiter Gruppe I', DateTime(2026, 7, 1, 19)),
     ('Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', DateTime(2026, 7, 1, 22)),

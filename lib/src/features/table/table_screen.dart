@@ -28,7 +28,6 @@ bool isPlaceholderTeam(String name) {
       lower.trim().isEmpty;
 }
 
-
 class TableScreen extends ConsumerStatefulWidget {
   const TableScreen({super.key});
 
@@ -36,7 +35,8 @@ class TableScreen extends ConsumerStatefulWidget {
   ConsumerState<TableScreen> createState() => _TableScreenState();
 }
 
-class _TableScreenState extends ConsumerState<TableScreen> with SingleTickerProviderStateMixin {
+class _TableScreenState extends ConsumerState<TableScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _initializedTab = false;
 
@@ -54,18 +54,18 @@ class _TableScreenState extends ConsumerState<TableScreen> with SingleTickerProv
 
   void _initializeDefaultTab(List<CupMatch> matches) {
     if (_initializedTab) return;
-    
+
     final hasKoStarted = matches.any((m) =>
         (m.stage == 'Sechzehntelfinale' ||
-         m.stage == 'Achtelfinale' ||
-         m.stage == 'Viertelfinale' ||
-         m.stage == 'Halbfinale' ||
-         m.stage == 'Spiel um Platz 3' ||
-         m.stage == 'Finale') &&
+            m.stage == 'Achtelfinale' ||
+            m.stage == 'Viertelfinale' ||
+            m.stage == 'Halbfinale' ||
+            m.stage == 'Spiel um Platz 3' ||
+            m.stage == 'Finale') &&
         (m.status == MatchStatus.live || m.status == MatchStatus.finalResult));
-    
+
     final groupStageOver = VoleoClock.now.isAfter(DateTime(2026, 6, 28, 22));
-    
+
     if (hasKoStarted || groupStageOver) {
       _tabController.index = 1; // Turnierbaum
     } else {
@@ -96,7 +96,7 @@ class _TableScreenState extends ConsumerState<TableScreen> with SingleTickerProv
         value: matchesAsync,
         data: (matches) {
           _initializeDefaultTab(matches);
-          
+
           return TabBarView(
             controller: _tabController,
             children: [
@@ -136,12 +136,19 @@ class _GroupStandingsView extends StatelessWidget {
   }
 
   Map<String, List<_TeamRow>> _calculateGroupTables() {
-    final groupMatches = matches.where((m) => m.stage.startsWith('Gruppe') || m.stage.contains('Runde') || m.group.isNotEmpty).toList();
+    final groupMatches = matches
+        .where((m) =>
+            m.stage.startsWith('Gruppe') ||
+            m.stage.contains('Runde') ||
+            m.group.isNotEmpty)
+        .toList();
     final groupTeams = <String, Set<String>>{};
-    
+
     for (final m in groupMatches) {
       if (m.group.isNotEmpty) {
-        groupTeams.putIfAbsent(m.group, () => <String>{}).addAll([m.homeTeam, m.awayTeam]);
+        groupTeams
+            .putIfAbsent(m.group, () => <String>{})
+            .addAll([m.homeTeam, m.awayTeam]);
       }
     }
 
@@ -220,7 +227,8 @@ class _GroupStandingsView extends StatelessWidget {
       itemBuilder: (context, index) {
         final group = tables.keys.elementAt(index);
         final rows = tables[group]!;
-        return _GroupTableCard(group: group, rows: rows, bestThirds: bestThirds);
+        return _GroupTableCard(
+            group: group, rows: rows, bestThirds: bestThirds);
       },
     );
   }
@@ -277,33 +285,58 @@ class _GroupTableCard extends StatelessWidget {
             const SizedBox(height: 8),
             Table(
               columnWidths: const {
-                0: FixedColumnWidth(22),  // Rank
-                1: FlexColumnWidth(1.0),  // Team Name
-                2: FixedColumnWidth(24),  // Sp
-                3: FixedColumnWidth(52),  // Tore
-                4: FixedColumnWidth(34),  // Diff
-                5: FixedColumnWidth(28),  // Pkt
+                0: FixedColumnWidth(22), // Rank
+                1: FlexColumnWidth(1.0), // Team Name
+                2: FixedColumnWidth(24), // Sp
+                3: FixedColumnWidth(52), // Tore
+                4: FixedColumnWidth(34), // Diff
+                5: FixedColumnWidth(28), // Pkt
               },
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
                 TableRow(
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: scheme.outlineVariant, width: 1),
+                      bottom:
+                          BorderSide(color: scheme.outlineVariant, width: 1),
                     ),
                   ),
                   children: const [
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 6),
-                      child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                      child: Text('#',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Colors.grey)),
                     ),
-                    Text('Team', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-                    Text('Sp', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-                    Text('Tore', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-                    Text('Diff', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                    Text('Team',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Sp',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Tore',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Diff',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: Text('Pkt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                      child: Text('Pkt',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Colors.grey)),
                     ),
                   ],
                 ),
@@ -312,7 +345,8 @@ class _GroupTableCard extends StatelessWidget {
                     final row = rows[i];
                     final flag = CountryFlags.getFlag(row.team);
                     final isTopTwo = i < 2;
-                    final isAdvancedThird = i == 2 && bestThirds.contains(row.team);
+                    final isAdvancedThird =
+                        i == 2 && bestThirds.contains(row.team);
                     final rankColor = isTopTwo
                         ? Colors.green
                         : isAdvancedThird
@@ -337,7 +371,9 @@ class _GroupTableCard extends StatelessWidget {
                             '${i + 1}',
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: (isTopTwo || isAdvancedThird) ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: (isTopTwo || isAdvancedThird)
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               color: rankColor,
                             ),
                           ),
@@ -352,16 +388,22 @@ class _GroupTableCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  fontWeight: (isTopTwo || isAdvancedThird) ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: (isTopTwo || isAdvancedThird)
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        Text('${row.played}', style: const TextStyle(fontSize: 12)),
-                        Text('${row.goalsFor}:${row.goalsAgainst}', style: const TextStyle(fontSize: 11)),
+                        Text('${row.played}',
+                            style: const TextStyle(fontSize: 12)),
+                        Text('${row.goalsFor}:${row.goalsAgainst}',
+                            style: const TextStyle(fontSize: 11)),
                         Text(
-                          row.goalDiff > 0 ? '+${row.goalDiff}' : '${row.goalDiff}',
+                          row.goalDiff > 0
+                              ? '+${row.goalDiff}'
+                              : '${row.goalDiff}',
                           style: TextStyle(
                             fontSize: 12,
                             color: row.goalDiff > 0
@@ -378,7 +420,9 @@ class _GroupTableCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: (isTopTwo || isAdvancedThird) ? scheme.primary : null,
+                              color: (isTopTwo || isAdvancedThird)
+                                  ? scheme.primary
+                                  : null,
                             ),
                           ),
                         ),
@@ -410,10 +454,12 @@ class _TournamentTreeView extends StatelessWidget {
     final af = _getRoundMatches('Achtelfinale');
     final vf = _getRoundMatches('Viertelfinale');
     final hf = _getRoundMatches('Halbfinale');
-    
+
     final finalMatches = matches.where((m) => m.stage == 'Finale').toList();
-    final p3Matches = matches.where((m) => m.stage == 'Spiel um Platz 3').toList();
-    final finals = [...finalMatches, ...p3Matches]..sort((a, b) => b.stage.compareTo(a.stage));
+    final p3Matches =
+        matches.where((m) => m.stage == 'Spiel um Platz 3').toList();
+    final finals = [...finalMatches, ...p3Matches]
+      ..sort((a, b) => b.stage.compareTo(a.stage));
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -421,7 +467,8 @@ class _TournamentTreeView extends StatelessWidget {
         scrollDirection: Axis.vertical,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          height: 2000, // Increased height to prevent overflow in columns with many matches
+          height:
+              2000, // Increased height to prevent overflow in columns with many matches
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -441,7 +488,8 @@ class _TournamentTreeView extends StatelessWidget {
     );
   }
 
-  Widget _buildRoundColumn(BuildContext context, String title, List<CupMatch> roundMatches) {
+  Widget _buildRoundColumn(
+      BuildContext context, String title, List<CupMatch> roundMatches) {
     final scheme = Theme.of(context).colorScheme;
 
     return SizedBox(
@@ -470,8 +518,7 @@ class _TournamentTreeView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 if (roundMatches.isEmpty)
-                  for (var i = 0; i < 4; i++)
-                    const _PlaceholderMatchCard()
+                  for (var i = 0; i < 4; i++) const _PlaceholderMatchCard()
                 else
                   for (var i = 0; i < roundMatches.length; i++)
                     _TournamentMatchCard(
@@ -504,11 +551,16 @@ class _TournamentMatchCard extends ConsumerWidget {
     if (match.stage == 'Spiel um Platz 3') return 'Platz 3';
     if (matchIndex <= 0) return '';
     switch (match.stage) {
-      case 'Sechzehntelfinale': return '1/16 Finale $matchIndex';
-      case 'Achtelfinale':      return 'Achtelfinale $matchIndex';
-      case 'Viertelfinale':     return 'Viertelfinale $matchIndex';
-      case 'Halbfinale':        return 'Halbfinale $matchIndex';
-      default:                  return '';
+      case 'Sechzehntelfinale':
+        return '1/16 Finale $matchIndex';
+      case 'Achtelfinale':
+        return 'Achtelfinale $matchIndex';
+      case 'Viertelfinale':
+        return 'Viertelfinale $matchIndex';
+      case 'Halbfinale':
+        return 'Halbfinale $matchIndex';
+      default:
+        return '';
     }
   }
 
@@ -527,7 +579,8 @@ class _TournamentMatchCard extends ConsumerWidget {
 
     // Own tip
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
-    final tip = tips.cast<Tip?>().where((t) => t?.matchId == match.id).firstOrNull;
+    final tip =
+        tips.cast<Tip?>().where((t) => t?.matchId == match.id).firstOrNull;
     final hasTip = tip != null;
 
     return GestureDetector(
@@ -573,11 +626,14 @@ class _TournamentMatchCard extends ConsumerWidget {
                       const SizedBox(width: 3),
                     ],
                     Text(
-                      isLive ? 'LIVE' : DateFormat('dd.MM. HH:mm').format(match.kickoff),
+                      isLive
+                          ? 'LIVE'
+                          : DateFormat('dd.MM. HH:mm').format(match.kickoff),
                       style: TextStyle(
                         fontSize: 9,
                         color: isLive ? Colors.green : Colors.grey,
-                        fontWeight: isLive ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isLive ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -597,7 +653,8 @@ class _TournamentMatchCard extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isHomeWinner ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isHomeWinner ? FontWeight.bold : FontWeight.normal,
                       color: isHomeWinner ? scheme.primary : null,
                     ),
                   ),
@@ -607,7 +664,8 @@ class _TournamentMatchCard extends ConsumerWidget {
                     '${match.homeScore ?? 0}',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isHomeWinner ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isHomeWinner ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
               ],
@@ -625,7 +683,8 @@ class _TournamentMatchCard extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isAwayWinner ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isAwayWinner ? FontWeight.bold : FontWeight.normal,
                       color: isAwayWinner ? scheme.primary : null,
                     ),
                   ),
@@ -635,7 +694,8 @@ class _TournamentMatchCard extends ConsumerWidget {
                     '${match.awayScore ?? 0}',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isAwayWinner ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isAwayWinner ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
               ],
@@ -698,7 +758,8 @@ class _PlaceholderMatchCard extends StatelessWidget {
       child: const Center(
         child: Text(
           'TBD',
-          style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
         ),
       ),
     );

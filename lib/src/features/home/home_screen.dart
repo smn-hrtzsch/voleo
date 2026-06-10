@@ -256,7 +256,8 @@ class _TopThreeCard extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   onTap: () {
-                    final userTips = tips.where((tip) => tip.uid == standing.uid).toList();
+                    final userTips =
+                        tips.where((tip) => tip.uid == standing.uid).toList();
                     showUserTipsBottomSheet(
                       context: context,
                       ref: ref,
@@ -531,7 +532,8 @@ class _NextMatchRow extends StatelessWidget {
                   SizedBox(
                     width: 34,
                     child: Text(
-                      (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
+                      (match.status == MatchStatus.finalResult ||
+                              match.status == MatchStatus.live)
                           ? '${match.homeScore}:${match.awayScore}'
                           : '-:-',
                       textAlign: TextAlign.center,
@@ -584,8 +586,6 @@ class _NextMatchRow extends StatelessWidget {
     );
   }
 }
-
-
 
 class _TeamSlot extends StatelessWidget {
   const _TeamSlot({
