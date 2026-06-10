@@ -163,7 +163,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
 
       final mergedMap = <String, CupMatch>{};
-      
+
       // First, put all static matches into the map by ID
       for (final m in staticMatches) {
         mergedMap[m.id] = m;
@@ -313,7 +313,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
         await GoogleSignIn.instance.signOut();
         throw auth.FirebaseAuthException(
           code: 'user-not-found',
-          message: 'Es existiert noch kein Voleo-Konto für diesen Google-Account. Bitte registriere dich zuerst.',
+          message:
+              'Es existiert noch kein Voleo-Konto für diesen Google-Account. Bitte registriere dich zuerst.',
         );
       }
       await _ensureUserDocument(
@@ -347,7 +348,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
         await _auth.signOut();
         throw auth.FirebaseAuthException(
           code: 'user-not-found',
-          message: 'Es existiert noch kein Voleo-Konto für diesen Apple-Account. Bitte registriere dich zuerst.',
+          message:
+              'Es existiert noch kein Voleo-Konto für diesen Apple-Account. Bitte registriere dich zuerst.',
         );
       }
       await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
@@ -367,7 +369,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
         await _auth.signOut();
         throw auth.FirebaseAuthException(
           code: 'user-not-found',
-          message: 'Es existiert noch kein Voleo-Konto für diese Anmeldedaten. Bitte registriere dich zuerst.',
+          message:
+              'Es existiert noch kein Voleo-Konto für diese Anmeldedaten. Bitte registriere dich zuerst.',
         );
       }
       await _ensureUserDocument(user, nickname: user.displayName ?? 'Spieler');
@@ -581,7 +584,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final userDoc = await _firestore.collection('users').doc(uid).get();
       final data = userDoc.data();
       if (data == null) {
-        debugPrint('FirestoreVoleoRepository.getUser($uid) -> document is null');
+        debugPrint(
+            'FirestoreVoleoRepository.getUser($uid) -> document is null');
         return null;
       }
       final user = VoleoUser(
@@ -597,10 +601,12 @@ class FirestoreVoleoRepository implements VoleoRepository {
         riskStage: data['riskStage'] as String?,
         themeModeName: data['themeMode'] as String?,
       );
-      debugPrint('FirestoreVoleoRepository.getUser($uid) -> loaded: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+      debugPrint(
+          'FirestoreVoleoRepository.getUser($uid) -> loaded: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
       return user;
     } catch (e) {
-      debugPrint('FirestoreVoleoRepository.getUser($uid) -> network get failed: $e. Retrying from cache...');
+      debugPrint(
+          'FirestoreVoleoRepository.getUser($uid) -> network get failed: $e. Retrying from cache...');
       try {
         final userDoc = await _firestore
             .collection('users')
@@ -608,7 +614,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
             .get(const GetOptions(source: Source.cache));
         final data = userDoc.data();
         if (data == null) {
-          debugPrint('FirestoreVoleoRepository.getUser($uid) -> cache doc is null');
+          debugPrint(
+              'FirestoreVoleoRepository.getUser($uid) -> cache doc is null');
           return null;
         }
         final user = VoleoUser(
@@ -617,17 +624,20 @@ class FirestoreVoleoRepository implements VoleoRepository {
           isAnonymous: data['isAnonymous'] as bool? ?? true,
           photoUrl: data['photoUrl'] as String?,
           email: data['email'] as String?,
-          providerIds: List<String>.from(data['providerIds'] ?? const <String>[]),
+          providerIds:
+              List<String>.from(data['providerIds'] ?? const <String>[]),
           favoriteTeam: data['favoriteTeam'] as String?,
           predictedChampion: data['predictedChampion'] as String?,
           riskTeam: data['riskTeam'] as String?,
           riskStage: data['riskStage'] as String?,
           themeModeName: data['themeMode'] as String?,
         );
-        debugPrint('FirestoreVoleoRepository.getUser($uid) -> loaded from cache: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
+        debugPrint(
+            'FirestoreVoleoRepository.getUser($uid) -> loaded from cache: ${user.nickname}, favoriteTeam: ${user.favoriteTeam}, predictedChampion: ${user.predictedChampion}');
         return user;
       } catch (cacheErr) {
-        debugPrint('FirestoreVoleoRepository.getUser($uid) -> cache get failed: $cacheErr');
+        debugPrint(
+            'FirestoreVoleoRepository.getUser($uid) -> cache get failed: $cacheErr');
         return null;
       }
     }

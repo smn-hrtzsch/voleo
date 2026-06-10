@@ -2,6 +2,7 @@
 
 ## In Progress
 
+- [x] Fix loading screen deadlock on sign-out/account deletion.
 - [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
 - [x] Dynamically calculate and highlight the 8 best third-placed teams in group standings.
 - [x] Fix team name wrapping in player tips sheet (e.g. for Elfenbeinküste).

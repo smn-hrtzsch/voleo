@@ -331,15 +331,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final router = GoRouter.of(context);
     await _runProfileAction(
       () async {
         ref.read(sessionTransitionProvider.notifier).value = true;
         ref.read(forceOnboardingProvider.notifier).value = false;
-        if (mounted) context.go('/loading');
+        router.go('/loading');
         await ref.read(repositoryProvider).signOut();
         ref.read(forceOnboardingProvider.notifier).value = true;
         ref.read(sessionTransitionProvider.notifier).value = false;
-        if (mounted) context.go('/');
+        router.go('/');
       },
       null,
     );
@@ -377,15 +378,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _deleteAccount() async {
+    final router = GoRouter.of(context);
     await _runProfileAction(
       () async {
         ref.read(sessionTransitionProvider.notifier).value = true;
         ref.read(forceOnboardingProvider.notifier).value = false;
-        if (mounted) context.go('/loading');
+        router.go('/loading');
         await ref.read(repositoryProvider).deleteAccount();
         ref.read(forceOnboardingProvider.notifier).value = true;
         ref.read(sessionTransitionProvider.notifier).value = false;
-        if (mounted) context.go('/');
+        router.go('/');
       },
       'Account erfolgreich gelöscht.',
     );
@@ -940,7 +942,8 @@ class _BoosterAndRiskPicksCardState
               ? () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Turnier-Picks können nach Turnierstart nicht mehr geändert werden.'),
+                      content: Text(
+                          'Turnier-Picks können nach Turnierstart nicht mehr geändert werden.'),
                       duration: Duration(seconds: 2),
                     ),
                   );
@@ -1017,7 +1020,8 @@ class _BoosterAndRiskPicksCardState
               ? () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Die Risiko-Ausscheidungsrunde kann nach Turnierstart nicht mehr geändert werden.'),
+                      content: Text(
+                          'Die Risiko-Ausscheidungsrunde kann nach Turnierstart nicht mehr geändert werden.'),
                       duration: Duration(seconds: 2),
                     ),
                   );

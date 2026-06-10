@@ -19,7 +19,6 @@ class LeagueScreen extends ConsumerStatefulWidget {
 }
 
 class _LeagueScreenState extends ConsumerState<LeagueScreen> {
-
   @override
   Widget build(BuildContext context) {
     final standingsValue = ref.watch(standingsProvider);
@@ -534,11 +533,13 @@ class _LeagueControlCard extends StatelessWidget {
                         children: [
                           Text(
                             league.inviteCode,
-                            style:
-                                Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.1,
-                                    ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.1,
+                                ),
                           ),
                           const SizedBox(width: 4),
                           IconButton(
@@ -733,5 +734,3 @@ class _RankAvatar extends StatelessWidget {
     );
   }
 }
-
-

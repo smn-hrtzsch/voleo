@@ -23,10 +23,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     final leagueTips = ref.watch(leagueTipsProvider);
     final standings = ref.watch(standingsProvider);
 
-    final isSyncing = matches.isRefreshing || matches.isLoading ||
-        tips.isRefreshing || tips.isLoading ||
-        leagueTips.isRefreshing || leagueTips.isLoading ||
-        standings.isRefreshing || standings.isLoading;
+    final isSyncing = matches.isRefreshing ||
+        matches.isLoading ||
+        tips.isRefreshing ||
+        tips.isLoading ||
+        leagueTips.isRefreshing ||
+        leagueTips.isLoading ||
+        standings.isRefreshing ||
+        standings.isLoading;
 
     final canPopNavigator = Navigator.of(context, rootNavigator: true).canPop();
     return PopScope(

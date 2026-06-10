@@ -153,7 +153,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _buildNicknameStep(ColorScheme colorScheme) {
     final user = ref.watch(userProvider).value;
-    final showAlreadyRegistered = user == null || (user.isAnonymous && !user.hasLinkedProvider);
+    final showAlreadyRegistered =
+        user == null || (user.isAnonymous && !user.hasLinkedProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,8 +205,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _isLoading ? null : _signInWithGoogle,
-            icon:
-                SvgPicture.asset('assets/google_logo.svg', width: 18, height: 18),
+            icon: SvgPicture.asset('assets/google_logo.svg',
+                width: 18, height: 18),
             label: const Text('Mit Google anmelden'),
           ),
           const SizedBox(height: 12),
@@ -267,11 +268,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isGoogle ? 'Mit Google verknüpft' : 'Mit Apple verknüpft',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: colorScheme.primary,
-                            ),
+                        isGoogle
+                            ? 'Mit Google verknüpft'
+                            : 'Mit Apple verknüpft',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
                       ),
                     ],
                   ),
@@ -313,8 +317,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ] else ...[
           OutlinedButton.icon(
             onPressed: _isLoading ? null : _linkGoogle,
-            icon:
-                SvgPicture.asset('assets/google_logo.svg', width: 20, height: 20),
+            icon: SvgPicture.asset('assets/google_logo.svg',
+                width: 20, height: 20),
             label: const Text('Mit Google verknüpfen'),
           ),
           const SizedBox(height: 12),
@@ -769,7 +773,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Future<void> _unlinkActiveProvider() async {
     final user = ref.read(userProvider).value;
     if (user == null) return;
-    final providerId = user.hasGoogleProvider ? 'google.com' : (user.hasAppleProvider ? 'apple.com' : null);
+    final providerId = user.hasGoogleProvider
+        ? 'google.com'
+        : (user.hasAppleProvider ? 'apple.com' : null);
     if (providerId == null) return;
 
     setState(() => _isLoading = true);
