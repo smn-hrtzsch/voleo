@@ -1144,6 +1144,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       ),
       homeScore: data['homeScore'] as int?,
       awayScore: data['awayScore'] as int?,
+      winner: data['winner'] as String?,
       source: data['source'] as String? ?? 'openligadb',
     );
   }

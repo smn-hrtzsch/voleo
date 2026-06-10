@@ -79,6 +79,7 @@ class CupMatch {
     required this.status,
     this.homeScore,
     this.awayScore,
+    this.winner,
     this.source = 'openligadb',
   });
 
@@ -91,6 +92,7 @@ class CupMatch {
   final MatchStatus status;
   final int? homeScore;
   final int? awayScore;
+  final String? winner;
   final String source;
 
   bool get isLocked => VoleoClock.now.isAfter(kickoff);
@@ -99,6 +101,7 @@ class CupMatch {
     MatchStatus? status,
     int? homeScore,
     int? awayScore,
+    String? winner,
   }) {
     return CupMatch(
       id: id,
@@ -110,6 +113,7 @@ class CupMatch {
       status: status ?? this.status,
       homeScore: homeScore ?? this.homeScore,
       awayScore: awayScore ?? this.awayScore,
+      winner: winner ?? this.winner,
       source: source,
     );
   }

@@ -10,6 +10,7 @@ import '../features/matches/matches_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/shared/app_shell.dart';
+import '../features/table/table_screen.dart';
 import '../features/tips/tip_entry_screen.dart';
 import '../providers.dart';
 import 'voleo_theme.dart';
@@ -143,8 +144,36 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
+              path: '/table',
+              builder: (context, state) => const TableScreen(),
+              routes: [
+                GoRoute(
+                  path: 'tip/:matchId',
+                  builder: (context, state) {
+                    return TipEntryScreen(
+                      matchId: state.pathParameters['matchId']!,
+                      returnPath: '/table',
+                    );
+                  },
+                ),
+              ],
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
               path: '/league',
               builder: (context, state) => const LeagueScreen(),
+              routes: [
+                GoRoute(
+                  path: 'tip/:matchId',
+                  builder: (context, state) {
+                    return TipEntryScreen(
+                      matchId: state.pathParameters['matchId']!,
+                      returnPath: '/league',
+                    );
+                  },
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [
