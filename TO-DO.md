@@ -2,14 +2,17 @@
 
 ## In Progress
 
+- [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
+- [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
+
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
 - [x] Replace local-first repository wiring with Firebase repository after config exists.
 - [ ] Authenticate GitHub CLI and create private remote repository.
-- [ ] Stabilize Firebase-backed app flow after enabling Firebase integration.
+- [x] Stabilize Firebase-backed app flow after enabling Firebase integration.
 - [ ] Ensure tips are evaluated correctly and consistently for all users.
 - [ ] Automatically update match results so points are recalculated from current results.
 - [ ] Keep the friends league state correct and consistent across devices and sessions.
-- [ ] Show other league participants' tips and points inside the league.
+- [x] Show other league participants' tips and points inside the league.
 - [ ] In the match overview, show point breakdown details when a match is selected.
 - [ ] Verify the end-to-end MVP on Pixel 7 before Thursday deadline.
 - [ ] Fix endless loading indicator in the Heute tab after matches are visible.
@@ -21,8 +24,8 @@
 - [ ] Design and implement a local-first sync architecture with Firestore as the cloud source of truth.
 - [ ] Fix saved tips not appearing immediately in Heute and Spiele.
 - [ ] Fix tip detail back navigation preserving the originating tab.
-- [ ] Redesign Liga tips by day and player with visibility only after kickoff.
-- [ ] Show other players' tips in match details only after kickoff.
+- [x] Redesign Liga tips by day and player with visibility only after kickoff.
+- [x] Show other players' tips in match details only after kickoff.
 - [ ] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
 - [ ] Avoid onboarding flash for already signed-in users on cold start.
 - [ ] Add Bosnia and Herzegovina flag aliases.
@@ -35,7 +38,7 @@
 - [x] Enforce unique display names within a league.
 - [ ] Default new score wheels to 0:0.
 - [x] Always confirm sign-out, with stronger warning for anonymous accounts.
-- [ ] Add a debug/test path for fake league members, fake tips, and synthetic match results.
+- [x] Add a debug/test path for fake league members, fake tips, and synthetic match results.
 - [ ] Explain and harden Firestore network/DNS error handling while connected to Wi-Fi.
 - [ ] Replace old deterministic league codes like MEIN26 with migrated random invite codes.
 - [x] Use real web invitation links that are linkified in messengers and route into the app.

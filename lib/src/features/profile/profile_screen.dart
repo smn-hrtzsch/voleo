@@ -10,6 +10,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../domain/flags.dart';
+import '../../domain/clock.dart';
 import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
@@ -762,7 +763,7 @@ class _BoosterAndRiskPicksCardState
         final sorted = [...matches]
           ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
         final tournamentStarted =
-            sorted.isNotEmpty && DateTime.now().isAfter(sorted.first.kickoff);
+            sorted.isNotEmpty && VoleoClock.now.isAfter(sorted.first.kickoff);
 
         final teams = {
           for (final m in matches) ...[m.homeTeam, m.awayTeam]
@@ -897,7 +898,14 @@ class _BoosterAndRiskPicksCardState
         const SizedBox(height: 4),
         OutlinedButton(
           onPressed: disabled
-              ? null
+              ? () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Turnier-Picks können nach Turnierstart nicht mehr geändert werden.'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               : () => _showTeamPickerDialog(
                     title,
                     value,
@@ -953,8 +961,16 @@ class _BoosterAndRiskPicksCardState
         Text(title, style: Theme.of(context).textTheme.labelSmall),
         const SizedBox(height: 4),
         OutlinedButton(
-          onPressed:
-              disabled ? null : () => _showStagePickerDialog(value, onSelected),
+          onPressed: disabled
+              ? () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Die Risiko-Ausscheidungsrunde kann nach Turnierstart nicht mehr geändert werden.'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              : () => _showStagePickerDialog(value, onSelected),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.centerLeft,
