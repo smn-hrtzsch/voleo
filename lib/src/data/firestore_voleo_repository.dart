@@ -243,27 +243,44 @@ class FirestoreVoleoRepository implements VoleoRepository {
       if (league == null) return Stream.value(const <Standing>[]);
       final leagueRef = _firestore.collection('leagues').doc(league.id);
       return leagueRef
-          .collection('standings')
-          .orderBy('rank')
+          .collection('members')
           .snapshots()
-          .asyncExpand((snapshot) {
-        if (snapshot.docs.isNotEmpty) {
-          return Stream.value(snapshot.docs.map(_standingFromDoc).toList());
-        }
-        return leagueRef.collection('members').snapshots().map((members) {
-          final standings = members.docs.map((doc) {
-            final data = doc.data();
-            return Standing(
-              uid: doc.id,
-              displayName: data['displayName'] as String? ?? 'Spieler',
-              totalPoints: data['totalPoints'] as int? ?? 0,
-              exactCount: data['exactCount'] as int? ?? 0,
-              tendencyCount: data['tendencyCount'] as int? ?? 0,
-              rank: 0,
-              photoUrl: data['photoUrl'] as String?,
-            );
-          }).toList();
-          return rankStandings(standings);
+          .asyncExpand((membersSnap) {
+        return leagueRef
+            .collection('standings')
+            .orderBy('rank')
+            .snapshots()
+            .map((standingsSnap) {
+          final standings = standingsSnap.docs.map(_standingFromDoc).toList();
+          final existingUids = standings.map((s) => s.uid).toSet();
+          bool addedAny = false;
+
+          for (final memberDoc in membersSnap.docs) {
+            final memberData = memberDoc.data();
+            final uid = memberDoc.id;
+            final leftAt = memberData['leftAt'];
+            if (leftAt != null) {
+              continue;
+            }
+
+            if (!existingUids.contains(uid)) {
+              standings.add(Standing(
+                uid: uid,
+                displayName: memberData['displayName'] as String? ?? 'Spieler',
+                totalPoints: memberData['totalPoints'] as int? ?? 0,
+                exactCount: memberData['exactCount'] as int? ?? 0,
+                tendencyCount: memberData['tendencyCount'] as int? ?? 0,
+                rank: 0,
+                photoUrl: memberData['photoUrl'] as String?,
+              ));
+              addedAny = true;
+            }
+          }
+
+          if (addedAny || standingsSnap.docs.isEmpty) {
+            return rankStandings(standings);
+          }
+          return standings;
         });
       });
     });

@@ -398,6 +398,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     String? successMessage,
   ) async {
     setState(() => _isLoading = true);
+    final transitionController =
+        ref.read(sessionTransitionProvider.notifier);
     try {
       await action();
       if (mounted && successMessage != null) {
@@ -409,7 +411,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             type: AppToastType.error);
       }
     } finally {
-      ref.read(sessionTransitionProvider.notifier).value = false;
+      transitionController.value = false;
       if (mounted) setState(() => _isLoading = false);
     }
   }
