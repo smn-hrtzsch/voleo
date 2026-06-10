@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../domain/scoring.dart';
 import '../domain/voleo_models.dart';
+import '../domain/clock.dart';
 import 'voleo_repository.dart';
 import 'wc2026_group_stage.dart';
 
@@ -245,7 +246,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }) async {
     final user = _requireUser();
     final match = _currentMatches.firstWhere((match) => match.id == matchId);
-    if (!canEditTip(match, DateTime.now())) {
+    if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
 
@@ -273,7 +274,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   Future<void> deleteTip({required String matchId}) async {
     final user = _requireUser();
     final match = _currentMatches.firstWhere((match) => match.id == matchId);
-    if (!canEditTip(match, DateTime.now())) {
+    if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps können ab Anpfiff nicht mehr gelöscht werden.');
     }
     _currentTips.removeWhere(
@@ -743,7 +744,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     final sortedMatches = [..._currentMatches]
       ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     final tournamentStarted = sortedMatches.isNotEmpty &&
-        DateTime.now().isAfter(sortedMatches.first.kickoff);
+        VoleoClock.now.isAfter(sortedMatches.first.kickoff);
     if (tournamentStarted) {
       throw StateError(
           'Das Turnier hat bereits begonnen. Tipps können nicht mehr geändert werden.');
@@ -763,5 +764,11 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     );
     await _persist();
     _emitAll();
+  }
+
+  @override
+  Future<VoleoUser?> getUser(String uid) async {
+    if (_currentUser?.uid == uid) return _currentUser;
+    return null;
   }
 }

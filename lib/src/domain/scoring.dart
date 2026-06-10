@@ -298,3 +298,57 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
 
   return extraPoints;
 }
+
+String? getMatchWinner(CupMatch match) {
+  if (match.status != MatchStatus.finalResult ||
+      match.homeScore == null ||
+      match.awayScore == null) {
+    return null;
+  }
+  if (match.homeScore! > match.awayScore!) {
+    return match.homeTeam;
+  }
+  if (match.awayScore! > match.homeScore!) {
+    return match.awayTeam;
+  }
+  return null;
+}
+
+int getMatchTotalPoints({
+  required int tipPoints,
+  required String? favoriteTeam,
+  required String? predictedChampion,
+  required CupMatch match,
+}) {
+  final winner = getMatchWinner(match);
+  var total = tipPoints;
+  if (winner != null && favoriteTeam == winner) total += 10;
+  if (winner != null && predictedChampion == winner) total += 10;
+  return total;
+}
+
+String getEvaluationLabel({
+  required int tipPoints,
+  required String? favoriteTeam,
+  required String? predictedChampion,
+  required CupMatch match,
+}) {
+  final winner = getMatchWinner(match);
+  final isFavWin = winner != null && favoriteTeam == winner;
+  final isChampWin = winner != null && predictedChampion == winner;
+
+  final baseLabel = tipPoints == 4
+      ? 'exakt'
+      : tipPoints == 3
+          ? 'Differenz'
+          : tipPoints == 2
+              ? 'Tendenz'
+              : 'falsch';
+
+  final boosters = <String>[];
+  if (isFavWin) boosters.add('Lieblings-Team');
+  if (isChampWin) boosters.add('Favorit-Booster');
+
+  if (boosters.isEmpty) return baseLabel;
+  return '$baseLabel\n+ ${boosters.join('\n+ ')}';
+}

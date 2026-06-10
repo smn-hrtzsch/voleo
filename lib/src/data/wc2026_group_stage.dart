@@ -433,15 +433,18 @@ List<CupMatch> buildWc2026GroupStageMatches() {
 
   final groupMatches = [
     for (var index = 0; index < rows.length; index++)
-      CupMatch(
-        id: 'wc2026-g${rows[index].group.toLowerCase()}-${index + 1}',
-        homeTeam: rows[index].home,
-        awayTeam: rows[index].away,
-        kickoff: rows[index].kickoff,
-        stage: 'Gruppe ${rows[index].group}',
-        group: rows[index].group,
-        status: MatchStatus.scheduled,
-      ),
+      (() {
+        final roundNum = (index ~/ 24) + 1;
+        return CupMatch(
+          id: 'wc2026-g${rows[index].group.toLowerCase()}-${index + 1}',
+          homeTeam: rows[index].home,
+          awayTeam: rows[index].away,
+          kickoff: rows[index].kickoff,
+          stage: '${roundNum}. Runde',
+          group: rows[index].group,
+          status: MatchStatus.scheduled,
+        );
+      })(),
   ];
 
   final list = [...groupMatches];

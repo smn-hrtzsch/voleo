@@ -40,14 +40,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    ref.listen(sessionTransitionProvider, (prev, next) {
+      final transitioning = next;
+      final user = ref.read(userProvider).value;
+      if (!transitioning && user == null) {
+        if (_nicknameController.text.isNotEmpty) {
+          _nicknameController.clear();
+        }
+        if (_currentStep != 0 || _step2Mode != '') {
+          setState(() {
+            _currentStep = 0;
+            _step2Mode = '';
+          });
+        }
+      }
+    });
+
     ref.listen(userProvider, (prev, next) {
       final user = next.value;
       if (user == null) {
-        setState(() {
-          _currentStep = 0;
-          _step2Mode = '';
-        });
+        if (_nicknameController.text.isNotEmpty) {
+          _nicknameController.clear();
+        }
+        if (_currentStep != 0 || _step2Mode != '') {
+          setState(() {
+            _currentStep = 0;
+            _step2Mode = '';
+          });
+        }
         return;
+      }
+      if (_nicknameController.text.isEmpty &&
+          user.nickname.isNotEmpty &&
+          user.nickname != 'Spieler') {
+        _nicknameController.text = user.nickname;
       }
 
       final code = ref.read(cachedInviteCodeProvider);
@@ -126,6 +152,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildNicknameStep(ColorScheme colorScheme) {
+    final user = ref.watch(userProvider).value;
+    final showAlreadyRegistered = user == null || (user.isAnonymous && !user.hasLinkedProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -161,34 +190,41 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           icon: const Icon(Icons.arrow_forward),
           label: const Text('Weiter'),
         ),
-        const SizedBox(height: 32),
-        const Divider(),
-        const SizedBox(height: 16),
-        Text(
-          'Bereits registriert?',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _isLoading ? null : _signInWithGoogle,
-          icon:
-              SvgPicture.asset('assets/google_logo.svg', width: 18, height: 18),
-          label: const Text('Mit Google anmelden'),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _isLoading ? null : _signInWithApple,
-          icon: const FaIcon(FontAwesomeIcons.apple, size: 20),
-          label: const Text('Mit Apple anmelden'),
-        ),
+        if (showAlreadyRegistered) ...[
+          const SizedBox(height: 32),
+          const Divider(),
+          const SizedBox(height: 16),
+          Text(
+            'Bereits registriert?',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _signInWithGoogle,
+            icon:
+                SvgPicture.asset('assets/google_logo.svg', width: 18, height: 18),
+            label: const Text('Mit Google anmelden'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _signInWithApple,
+            icon: const FaIcon(FontAwesomeIcons.apple, size: 20),
+            label: const Text('Mit Apple anmelden'),
+          ),
+        ],
       ],
     );
   }
 
   Widget _buildLinkAccountStep(ColorScheme colorScheme) {
+    final user = ref.watch(userProvider).value;
+    final isLinked = user?.hasLinkedProvider ?? false;
+    final isGoogle = user?.hasGoogleProvider ?? false;
+    final email = user?.email;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -201,36 +237,104 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Verknüpfe dein Konto, damit deine Tipps und Punkte gerettet sind, falls du die App neu installierst.',
+          isLinked
+              ? 'Dein Konto ist erfolgreich gesichert!'
+              : 'Verknüpfe dein Konto, damit deine Tipps und Punkte gerettet sind, falls du die App neu installierst.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
-        OutlinedButton.icon(
-          onPressed: _isLoading ? null : _linkGoogle,
-          icon:
-              SvgPicture.asset('assets/google_logo.svg', width: 20, height: 20),
-          label: const Text('Mit Google verknüpfen'),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _isLoading ? null : _linkApple,
-          icon: const FaIcon(FontAwesomeIcons.apple, size: 22),
-          label: const Text('Mit Apple verknüpfen'),
-        ),
-        const SizedBox(height: 32),
-        TextButton(
-          onPressed: _isLoading
-              ? null
-              : () {
-                  setState(() {
-                    _currentStep = 2;
-                  });
-                },
-          child: const Text('Überspringen & Später verknüpfen'),
-        ),
+        if (isLinked) ...[
+          Card(
+            color: colorScheme.primaryContainer.withAlpha(51),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: colorScheme.primary.withAlpha(128)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: colorScheme.primary,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isGoogle ? 'Mit Google verknüpft' : 'Mit Apple verknüpft',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.primary,
+                            ),
+                      ),
+                    ],
+                  ),
+                  if (email != null && email.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      email,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurface,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _unlinkActiveProvider,
+                    icon: const Icon(Icons.link_off, size: 18),
+                    label: const Text('Verknüpfung aufheben'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      side: BorderSide(color: colorScheme.error.withAlpha(128)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: _isLoading
+                ? null
+                : () {
+                    setState(() {
+                      _currentStep = 2;
+                    });
+                  },
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Weiter'),
+          ),
+        ] else ...[
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _linkGoogle,
+            icon:
+                SvgPicture.asset('assets/google_logo.svg', width: 20, height: 20),
+            label: const Text('Mit Google verknüpfen'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _linkApple,
+            icon: const FaIcon(FontAwesomeIcons.apple, size: 22),
+            label: const Text('Mit Apple verknüpfen'),
+          ),
+          const SizedBox(height: 32),
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () {
+                    setState(() {
+                      _currentStep = 2;
+                    });
+                  },
+            child: const Text('Überspringen & Später verknüpfen'),
+          ),
+        ],
         TextButton.icon(
           onPressed: _isLoading ? null : () => setState(() => _currentStep = 0),
           icon: const Icon(Icons.arrow_back),
@@ -662,6 +766,35 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  Future<void> _unlinkActiveProvider() async {
+    final user = ref.read(userProvider).value;
+    if (user == null) return;
+    final providerId = user.hasGoogleProvider ? 'google.com' : (user.hasAppleProvider ? 'apple.com' : null);
+    if (providerId == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(repositoryProvider).unlinkProvider(providerId);
+      if (mounted) {
+        showAppToast(
+          context,
+          'Verknüpfung erfolgreich aufgehoben.',
+          type: AppToastType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showAppToast(
+          context,
+          _formatError('Entkoppeln fehlgeschlagen', e),
+          type: AppToastType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _signInWithExistingCredential(
     auth.AuthCredential credential,
   ) async {
@@ -703,6 +836,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   String _authErrorMessage(String code) {
     return switch (code) {
+      'user-not-found' =>
+        'Kein Voleo-Konto mit diesem Social-Media-Account verknüpft. Bitte registriere dich zuerst.',
       'credential-already-in-use' ||
       'account-exists-with-different-credential' ||
       'email-already-in-use' =>

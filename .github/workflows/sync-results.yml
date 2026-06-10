@@ -24,8 +24,10 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ] || [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "Running in dry-run mode (either dry_run input is true or FIREBASE_SERVICE_ACCOUNT_JSON secret is empty)."
             npm run sync:results -- --dry-run
           else
+            echo "Running in live sync mode."
             npm run sync:results
           fi
