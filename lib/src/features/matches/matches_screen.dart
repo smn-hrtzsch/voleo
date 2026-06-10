@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
 import '../../domain/flags.dart';
+import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
@@ -34,26 +35,30 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   }
 
   String _determineCurrentStage(List<CupMatch> matches) {
-    CupMatch? activeMatch;
-    final incomplete = matches.where((m) => m.status != MatchStatus.finalResult).toList()
-      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-    
-    if (incomplete.isNotEmpty) {
-      activeMatch = incomplete.first;
-    } else if (matches.isNotEmpty) {
-      final sorted = [...matches]..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-      activeMatch = sorted.last;
+    if (matches.isEmpty) return 'Alle';
+
+    // 1. Find live matches
+    final liveMatches =
+        matches.where((m) => m.status == MatchStatus.live).toList();
+    if (liveMatches.isNotEmpty) {
+      return _roundFor(liveMatches.first);
     }
 
-    if (activeMatch != null) {
-      final isKo = activeMatch.stage == 'Sechzehntelfinale' ||
-          activeMatch.stage == 'Achtelfinale' ||
-          activeMatch.stage == 'Viertelfinale' ||
-          activeMatch.stage == 'Halbfinale' ||
-          activeMatch.stage == 'Spiel um Platz 3' ||
-          activeMatch.stage == 'Finale';
-      return isKo ? activeMatch.stage : 'Gruppenphase';
+    // 2. Find next upcoming match (scheduled matches)
+    final upcoming = matches.where((m) => m.status == MatchStatus.scheduled).toList()
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    if (upcoming.isNotEmpty) {
+      return _roundFor(upcoming.first);
     }
+
+    // 3. Fallback to last finished match
+    final finished =
+        matches.where((m) => m.status == MatchStatus.finalResult).toList()
+          ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    if (finished.isNotEmpty) {
+      return _roundFor(finished.last);
+    }
+
     return 'Alle';
   }
 
@@ -466,6 +471,16 @@ class _MatchRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isLive = match.status == MatchStatus.live;
 
+    final hasProgression = match.otHomeScore != null || match.penaltyHomeScore != null;
+    final progressionParts = <String>[];
+    if (match.otHomeScore != null) {
+      progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+    }
+    if (match.penaltyHomeScore != null) {
+      progressionParts.add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+    }
+    final progressionText = progressionParts.join(' • ');
+
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () => context.go('/matches/tip/${match.id}'),
@@ -500,42 +515,48 @@ class _MatchRow extends StatelessWidget {
                     ),
             ),
             Expanded(
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: _TeamSlot(
-                      teamName: match.homeTeam,
-                      flag: homeFlag,
-                      user: user,
-                      isHome: true,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TeamSlot(
+                          teamName: match.homeTeam,
+                          flag: homeFlag,
+                          user: user,
+                          isHome: true,
+                          isWinner: false,
+                          isLoser: false,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 44,
+                        child: _buildScoreProgression(context, match, scheme, isLive),
+                      ),
+                      Expanded(
+                        child: _TeamSlot(
+                          teamName: match.awayTeam,
+                          flag: awayFlag,
+                          user: user,
+                          isHome: false,
+                          isWinner: false,
+                          isLoser: false,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(
-                    width: 34,
-                    child: Text(
-                      (match.status == MatchStatus.finalResult || match.status == MatchStatus.live)
-                          ? '${match.homeScore}:${match.awayScore}'
-                          : '-:-',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isLive
-                                ? Colors.green
-                                : match.status == MatchStatus.finalResult
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant
-                                        .withValues(alpha: 0.5),
-                          ),
+                  if (hasProgression)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        progressionText,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontSize: 9,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _TeamSlot(
-                      teamName: match.awayTeam,
-                      flag: awayFlag,
-                      user: user,
-                      isHome: false,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -573,17 +594,21 @@ class _TeamSlot extends StatelessWidget {
     required this.flag,
     required this.user,
     required this.isHome,
+    this.isWinner = false,
+    this.isLoser = false,
   });
 
   final String teamName;
   final String flag;
   final VoleoUser? user;
   final bool isHome;
+  final bool isWinner;
+  final bool isLoser;
 
   @override
   Widget build(BuildContext context) {
     final name =
-        _buildTeamName(context, teamName, user, isRightAligned: isHome);
+        _buildTeamName(context, teamName, user, isRightAligned: isHome, isWinner: isWinner, isLoser: isLoser);
     final flagText = Text(flag, style: const TextStyle(fontSize: 21));
     final children = isHome
         ? <Widget>[
@@ -707,10 +732,12 @@ Widget _buildTeamName(
   String teamName,
   VoleoUser? user, {
   required bool isRightAligned,
+  bool isWinner = false,
+  bool isLoser = false,
 }) {
   final List<Widget> markers = [];
   if (user != null) {
-    if (user.favoriteTeam == teamName) {
+    if (user.favoriteTeam != null && isSameTeam(user.favoriteTeam!, teamName)) {
       markers.add(
         const Icon(
           Icons.star,
@@ -719,7 +746,7 @@ Widget _buildTeamName(
         ),
       );
     }
-    if (user.predictedChampion == teamName) {
+    if (user.predictedChampion != null && isSameTeam(user.predictedChampion!, teamName)) {
       markers.add(
         const Icon(
           Icons.sports_soccer,
@@ -728,7 +755,7 @@ Widget _buildTeamName(
         ),
       );
     }
-    if (user.riskTeam == teamName) {
+    if (user.riskTeam != null && isSameTeam(user.riskTeam!, teamName)) {
       markers.add(
         const Icon(
           Icons.close,
@@ -745,6 +772,9 @@ Widget _buildTeamName(
     maxLines: 2,
     softWrap: true,
     overflow: TextOverflow.ellipsis,
+    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
   );
 
   if (markers.isEmpty) {
@@ -771,5 +801,30 @@ Widget _buildTeamName(
         isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: children,
+  );
+}
+
+Widget _buildScoreProgression(BuildContext context, CupMatch match, ColorScheme scheme, bool isLive) {
+  if (match.status != MatchStatus.finalResult && match.status != MatchStatus.live) {
+    return Text(
+      '-:-',
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
+    );
+  }
+
+  final mainHome = match.regularHomeScore ?? match.homeScore ?? 0;
+  final mainAway = match.regularAwayScore ?? match.awayScore ?? 0;
+
+  return Text(
+    '$mainHome:$mainAway',
+    textAlign: TextAlign.center,
+    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isLive ? Colors.green : scheme.primary,
+        ),
   );
 }

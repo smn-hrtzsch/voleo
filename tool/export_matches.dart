@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
 import 'package:voleo/src/data/wc2026_group_stage.dart';

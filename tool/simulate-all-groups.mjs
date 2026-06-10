@@ -401,32 +401,36 @@ function getBest3FromGroups(groupsList) {
   return 'TBD';
 }
 
-const best3ABC = getBest3FromGroups(['A', 'B', 'C']);
-const best3DEF = getBest3FromGroups(['D', 'E', 'F']);
-const best3GHI = getBest3FromGroups(['G', 'H', 'I']);
-const best3JKL = getBest3FromGroups(['J', 'K', 'L']);
+const best3ABCDF = getBest3FromGroups(['A', 'B', 'C', 'D', 'F']);
+const best3CDFGH = getBest3FromGroups(['C', 'D', 'F', 'G', 'H']);
+const best3CEFHI = getBest3FromGroups(['C', 'E', 'F', 'H', 'I']);
+const best3EHIJK = getBest3FromGroups(['E', 'H', 'I', 'J', 'K']);
+const best3AEHIJ = getBest3FromGroups(['A', 'E', 'H', 'I', 'J']);
+const best3BEFIJ = getBest3FromGroups(['B', 'E', 'F', 'I', 'J']);
+const best3EFGIJ = getBest3FromGroups(['E', 'F', 'G', 'I', 'J']);
+const best3DEIJL = getBest3FromGroups(['D', 'E', 'I', 'J', 'L']);
 
 // 5. Build K.O. Phase Sechzehntelfinale matches with actual teams!
 const resolvedKoMatches = [];
 
 // Match definitions mapping
 const sfMatchesMapping = [
-  { id: 'wc-ko-sf-1', home: top1['A'], away: top2['C'] },
-  { id: 'wc-ko-sf-2', home: top2['A'], away: top1['C'] },
-  { id: 'wc-ko-sf-3', home: top1['B'], away: top2['D'] },
-  { id: 'wc-ko-sf-4', home: top2['B'], away: top1['D'] },
-  { id: 'wc-ko-sf-5', home: top1['E'], away: top2['G'] },
-  { id: 'wc-ko-sf-6', home: top2['E'], away: top1['G'] },
-  { id: 'wc-ko-sf-7', home: top1['F'], away: top2['H'] },
-  { id: 'wc-ko-sf-8', home: top2['F'], away: top1['H'] },
-  { id: 'wc-ko-sf-9', home: top1['I'], away: top2['K'] },
-  { id: 'wc-ko-sf-10', home: top2['I'], away: top1['K'] },
-  { id: 'wc-ko-sf-11', home: top1['J'], away: top2['L'] },
-  { id: 'wc-ko-sf-12', home: top2['J'], away: top1['L'] },
-  { id: 'wc-ko-sf-13', home: best3ABC, away: top1['H'] },
-  { id: 'wc-ko-sf-14', home: best3DEF, away: top1['I'] },
-  { id: 'wc-ko-sf-15', home: best3GHI, away: top1['J'] },
-  { id: 'wc-ko-sf-16', home: best3JKL, away: top1['K'] },
+  { id: 'wc-ko-sf-1', home: top2['A'], away: top2['B'] },
+  { id: 'wc-ko-sf-2', home: top1['C'], away: top2['F'] },
+  { id: 'wc-ko-sf-3', home: top1['E'], away: best3ABCDF },
+  { id: 'wc-ko-sf-4', home: top1['F'], away: top2['C'] },
+  { id: 'wc-ko-sf-5', home: top2['E'], away: top2['I'] },
+  { id: 'wc-ko-sf-6', home: top1['I'], away: best3CDFGH },
+  { id: 'wc-ko-sf-7', home: top1['A'], away: best3CEFHI },
+  { id: 'wc-ko-sf-8', home: top1['L'], away: best3EHIJK },
+  { id: 'wc-ko-sf-9', home: top1['G'], away: best3AEHIJ },
+  { id: 'wc-ko-sf-10', home: top1['D'], away: best3BEFIJ },
+  { id: 'wc-ko-sf-11', home: top1['H'], away: top2['J'] },
+  { id: 'wc-ko-sf-12', home: top2['K'], away: top2['L'] },
+  { id: 'wc-ko-sf-13', home: top1['B'], away: best3EFGIJ },
+  { id: 'wc-ko-sf-14', home: top2['D'], away: top2['G'] },
+  { id: 'wc-ko-sf-15', home: top1['J'], away: top2['H'] },
+  { id: 'wc-ko-sf-16', home: top1['K'], away: best3DEIJL },
 ];
 
 console.log('Sechzehntelfinale matchups:');

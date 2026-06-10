@@ -80,7 +80,14 @@ class CupMatch {
     this.homeScore,
     this.awayScore,
     this.winner,
+    this.resultNote,
     this.source = 'openligadb',
+    this.regularHomeScore,
+    this.regularAwayScore,
+    this.otHomeScore,
+    this.otAwayScore,
+    this.penaltyHomeScore,
+    this.penaltyAwayScore,
   });
 
   final String id;
@@ -93,18 +100,33 @@ class CupMatch {
   final int? homeScore;
   final int? awayScore;
   final String? winner;
+  final String? resultNote;
   final String source;
+  final int? regularHomeScore;
+  final int? regularAwayScore;
+  final int? otHomeScore;
+  final int? otAwayScore;
+  final int? penaltyHomeScore;
+  final int? penaltyAwayScore;
 
   bool get isLocked => VoleoClock.now.isAfter(kickoff);
 
   CupMatch copyWith({
+    String? id,
     MatchStatus? status,
     int? homeScore,
     int? awayScore,
     String? winner,
+    String? resultNote,
+    int? regularHomeScore,
+    int? regularAwayScore,
+    int? otHomeScore,
+    int? otAwayScore,
+    int? penaltyHomeScore,
+    int? penaltyAwayScore,
   }) {
     return CupMatch(
-      id: id,
+      id: id ?? this.id,
       homeTeam: homeTeam,
       awayTeam: awayTeam,
       kickoff: kickoff,
@@ -114,7 +136,14 @@ class CupMatch {
       homeScore: homeScore ?? this.homeScore,
       awayScore: awayScore ?? this.awayScore,
       winner: winner ?? this.winner,
+      resultNote: resultNote ?? this.resultNote,
       source: source,
+      regularHomeScore: regularHomeScore ?? this.regularHomeScore,
+      regularAwayScore: regularAwayScore ?? this.regularAwayScore,
+      otHomeScore: otHomeScore ?? this.otHomeScore,
+      otAwayScore: otAwayScore ?? this.otAwayScore,
+      penaltyHomeScore: penaltyHomeScore ?? this.penaltyHomeScore,
+      penaltyAwayScore: penaltyAwayScore ?? this.penaltyAwayScore,
     );
   }
 }

@@ -186,6 +186,16 @@ function determineWinner(match) {
   return null;
 }
 
+function determineResultNote(match) {
+  if (!match.matchResults || match.matchResults.length === 0) return null;
+  const results = match.matchResults;
+  const penalty = results.find(r => r.resultTypeID === 4 || r.resultTypeName === "nach Elfmeterschießen");
+  if (penalty) return "n.E.";
+  const extraTime = results.find(r => r.resultTypeID === 3 || r.resultTypeName === "nach Verlängerung");
+  if (extraTime) return "n.V.";
+  return null;
+}
+
 function normalizeMatch(match) {
   const id = String(match.matchID ?? match.matchId ?? '');
   const homeTeam = match.team1?.teamName;
@@ -193,9 +203,20 @@ function normalizeMatch(match) {
   const kickoff = match.matchDateTimeUTC ?? match.matchDateTime;
   if (!id || !homeTeam || !awayTeam || !kickoff) return null;
 
-  const finalResult = (match.matchResults ?? []).find((result) => {
-    return result.resultTypeName === 'Endergebnis' || result.resultTypeID === 2;
-  });
+  const results = match.matchResults ?? [];
+  const regResult = results.find(r => r.resultTypeID === 2 || r.resultTypeName === 'Endergebnis');
+  const otResult = results.find(r => r.resultTypeID === 3 || r.resultTypeName === 'nach Verlängerung');
+  const penResult = results.find(r => r.resultTypeID === 4 || r.resultTypeName === 'nach Elfmeterschießen');
+
+  const regularHomeScore = regResult !== undefined ? regResult.pointsTeam1 : null;
+  const regularAwayScore = regResult !== undefined ? regResult.pointsTeam2 : null;
+  const otHomeScore = otResult !== undefined ? otResult.pointsTeam1 : null;
+  const otAwayScore = otResult !== undefined ? otResult.pointsTeam2 : null;
+  const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
+  const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
+
+  const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
+  const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
 
   const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
@@ -210,11 +231,18 @@ function normalizeMatch(match) {
     stage: match.group?.groupName ?? 'WM 2026',
     group: groupKey(match.group?.groupName) || groupForFixture(homeTeam, awayTeam),
     status,
-    homeScore: finalResult?.pointsTeam1 ?? null,
-    awayScore: finalResult?.pointsTeam2 ?? null,
+    homeScore,
+    awayScore,
     winner: determineWinner(match) ?? null,
+    resultNote: determineResultNote(match) ?? null,
     source: 'openligadb',
     updatedAt: new Date().toISOString(),
+    regularHomeScore,
+    regularAwayScore,
+    otHomeScore,
+    otAwayScore,
+    penaltyHomeScore,
+    penaltyAwayScore,
   };
 }
 
@@ -308,11 +336,14 @@ async function recalculateScores(firestore, allMatches, finalMatches) {
         continue;
       }
 
+      const actualHome = match.regularHomeScore !== undefined && match.regularHomeScore !== null ? match.regularHomeScore : match.homeScore;
+      const actualAway = match.regularAwayScore !== undefined && match.regularAwayScore !== null ? match.regularAwayScore : match.awayScore;
+
       const score = scoreTip(
         readInt(tipData.predictedHome),
         readInt(tipData.predictedAway),
-        match.homeScore,
-        match.awayScore,
+        actualHome,
+        actualAway,
       );
 
       writes.push({
@@ -368,6 +399,7 @@ function fieldsForMatch(match) {
     homeScore: nullableIntValue(match.homeScore),
     awayScore: nullableIntValue(match.awayScore),
     winner: match.winner ? stringValue(match.winner) : { nullValue: null },
+    resultNote: match.resultNote ? stringValue(match.resultNote) : { nullValue: null },
     source: stringValue(match.source),
     updatedAt: timestampValue(match.updatedAt),
   };
@@ -619,7 +651,7 @@ function getEliminationStage(team, allMatches) {
   );
   if (teamMatches.length === 0) return null;
 
-  const knockouts = teamMatches.filter((m) => !m.stage.startsWith('Gruppe'));
+  const knockouts = teamMatches.filter((m) => !m.stage.startsWith('Gruppe') && !m.stage.includes('Runde'));
 
   for (const m of knockouts) {
     if (m.status === 'finalResult') {
@@ -627,7 +659,7 @@ function getEliminationStage(team, allMatches) {
       if (winner && winner !== team) {
         const stage = m.stage.toLowerCase();
         if (
-          stage.includes('sechzehntel') ||
+          stage.includes('sechzehntelfinale') ||
           stage.includes('32')
         ) {
           return 'Sechzehntelfinale';
@@ -661,7 +693,7 @@ function getEliminationStage(team, allMatches) {
   );
   if (hasWonFinal) return 'Champion';
 
-  const groupMatches = allMatches.filter((m) => m.stage.startsWith('Gruppe'));
+  const groupMatches = allMatches.filter((m) => m.stage.startsWith('Gruppe') || m.stage.includes('Runde'));
   const allGroupsFinished =
     groupMatches.length > 0 && groupMatches.every((m) => m.status === 'finalResult');
   if (allGroupsFinished && knockouts.length === 0) {
@@ -747,22 +779,22 @@ function getKnockoutMatches() {
 
   // 1. Sechzehntelfinale (June 29 - July 3)
   const sfMatches = [
-    ['Sieger Gruppe A', 'Zweiter Gruppe C', '2026-06-29T17:00:00Z'],
-    ['Zweiter Gruppe A', 'Sieger Gruppe C', '2026-06-29T20:00:00Z'],
-    ['Sieger Gruppe B', 'Zweiter Gruppe D', '2026-06-30T17:00:00Z'],
-    ['Zweiter Gruppe B', 'Sieger Gruppe D', '2026-06-30T20:00:00Z'],
-    ['Sieger Gruppe E', 'Zweiter Gruppe G', '2026-07-01T17:00:00Z'],
-    ['Zweiter Gruppe E', 'Sieger Gruppe G', '2026-07-01T20:00:00Z'],
-    ['Sieger Gruppe F', 'Zweiter Gruppe H', '2026-07-02T17:00:00Z'],
-    ['Zweiter Gruppe F', 'Sieger Gruppe H', '2026-07-02T20:00:00Z'],
-    ['Sieger Gruppe I', 'Zweiter Gruppe K', '2026-07-03T17:00:00Z'],
-    ['Zweiter Gruppe I', 'Sieger Gruppe K', '2026-07-03T20:00:00Z'],
-    ['Sieger Gruppe J', 'Zweiter Gruppe L', '2026-07-04T17:00:00Z'],
-    ['Zweiter Gruppe J', 'Sieger Gruppe L', '2026-07-04T20:00:00Z'],
-    ['Bester 3. Gruppe A/B/C', 'Sieger Gruppe H', '2026-07-05T17:00:00Z'],
-    ['Bester 3. Gruppe D/E/F', 'Sieger Gruppe I', '2026-07-05T20:00:00Z'],
-    ['Bester 3. Gruppe G/H/I', 'Sieger Gruppe J', '2026-07-06T17:00:00Z'],
-    ['Bester 3. Gruppe J/K/L', 'Sieger Gruppe K', '2026-07-06T20:00:00Z'],
+    ['Zweiter Gruppe A', 'Zweiter Gruppe B', '2026-06-29T17:00:00Z'],
+    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
+    ['Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', '2026-06-30T17:00:00Z'],
+    ['Sieger Gruppe F', 'Zweiter Gruppe C', '2026-06-30T20:00:00Z'],
+    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
+    ['Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', '2026-07-01T20:00:00Z'],
+    ['Sieger Gruppe A', 'Bester 3. Gruppe C/E/F/H/I', '2026-07-02T17:00:00Z'],
+    ['Sieger Gruppe L', 'Bester 3. Gruppe E/H/I/J/K', '2026-07-02T20:00:00Z'],
+    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
+    ['Sieger Gruppe D', 'Bester 3. Gruppe B/E/F/I/J', '2026-07-03T20:00:00Z'],
+    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
+    ['Zweiter Gruppe K', 'Zweiter Gruppe L', '2026-07-04T20:00:00Z'],
+    ['Sieger Gruppe B', 'Bester 3. Gruppe E/F/G/I/J', '2026-07-05T17:00:00Z'],
+    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
+    ['Sieger Gruppe J', 'Zweiter Gruppe H', '2026-07-06T17:00:00Z'],
+    ['Sieger Gruppe K', 'Bester 3. Gruppe D/E/I/J/L', '2026-07-06T20:00:00Z'],
   ];
 
   for (let i = 0; i < sfMatches.length; i++) {

@@ -31,12 +31,12 @@
 - [x] Show other players' tips in match details only after kickoff.
 - [ ] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
 - [ ] Avoid onboarding flash for already signed-in users on cold start.
-- [ ] Add Bosnia and Herzegovina flag aliases.
+- [x] Add Bosnia and Herzegovina flag aliases.
 - [ ] Restructure Heute tab to show only today's matches plus league shortcut and top 3 standings.
 - [ ] Generate league invite codes randomly instead of deriving them from user input.
 - [x] Add league invite link/code handling for sharing and joining rounds.
 - [ ] Limit Liga day sections to tournament days that have already started.
-- [ ] Add an automatic tournament-phase filter that resets to the current phase on app restart.
+- [x] Add an automatic tournament-phase filter that resets to the current phase on app restart.
 - [x] Refresh profile name and profile image immediately after edits.
 - [x] Enforce unique display names within a league.
 - [x] Default new score wheels to 0:0.

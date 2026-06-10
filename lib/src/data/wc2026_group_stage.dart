@@ -440,7 +440,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
           homeTeam: rows[index].home,
           awayTeam: rows[index].away,
           kickoff: rows[index].kickoff,
-          stage: '${roundNum}. Runde',
+          stage: '$roundNum. Runde',
           group: rows[index].group,
           status: MatchStatus.scheduled,
         );
@@ -451,22 +451,22 @@ List<CupMatch> buildWc2026GroupStageMatches() {
 
   // 1. Sechzehntelfinale (June 29 - July 3)
   final sfMatches = [
-    ('Sieger Gruppe A', 'Zweiter Gruppe C', DateTime(2026, 6, 29, 19)),
-    ('Zweiter Gruppe A', 'Sieger Gruppe C', DateTime(2026, 6, 29, 22)),
-    ('Sieger Gruppe B', 'Zweiter Gruppe D', DateTime(2026, 6, 30, 19)),
-    ('Zweiter Gruppe B', 'Sieger Gruppe D', DateTime(2026, 6, 30, 22)),
-    ('Sieger Gruppe E', 'Zweiter Gruppe G', DateTime(2026, 7, 1, 19)),
-    ('Zweiter Gruppe E', 'Sieger Gruppe G', DateTime(2026, 7, 1, 22)),
-    ('Sieger Gruppe F', 'Zweiter Gruppe H', DateTime(2026, 7, 2, 19)),
-    ('Zweiter Gruppe F', 'Sieger Gruppe H', DateTime(2026, 7, 2, 22)),
-    ('Sieger Gruppe I', 'Zweiter Gruppe K', DateTime(2026, 7, 3, 19)),
-    ('Zweiter Gruppe I', 'Sieger Gruppe K', DateTime(2026, 7, 3, 22)),
-    ('Sieger Gruppe J', 'Zweiter Gruppe L', DateTime(2026, 7, 4, 19)),
-    ('Zweiter Gruppe J', 'Sieger Gruppe L', DateTime(2026, 7, 4, 22)),
-    ('Bester 3. Gruppe A/B/C', 'Sieger Gruppe H', DateTime(2026, 7, 5, 19)),
-    ('Bester 3. Gruppe D/E/F', 'Sieger Gruppe I', DateTime(2026, 7, 5, 22)),
-    ('Bester 3. Gruppe G/H/I', 'Sieger Gruppe J', DateTime(2026, 7, 6, 19)),
-    ('Bester 3. Gruppe J/K/L', 'Sieger Gruppe K', DateTime(2026, 7, 6, 22)),
+    ('Zweiter Gruppe A', 'Zweiter Gruppe B', DateTime(2026, 6, 29, 19)),
+    ('Sieger Gruppe C', 'Zweiter Gruppe F', DateTime(2026, 6, 29, 22)),
+    ('Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', DateTime(2026, 6, 30, 19)),
+    ('Sieger Gruppe F', 'Zweiter Gruppe C', DateTime(2026, 6, 30, 22)),
+    ('Zweiter Gruppe E', 'Zweiter Gruppe I', DateTime(2026, 7, 1, 19)),
+    ('Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', DateTime(2026, 7, 1, 22)),
+    ('Sieger Gruppe A', 'Bester 3. Gruppe C/E/F/H/I', DateTime(2026, 7, 2, 19)),
+    ('Sieger Gruppe L', 'Bester 3. Gruppe E/H/I/J/K', DateTime(2026, 7, 2, 22)),
+    ('Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', DateTime(2026, 7, 3, 19)),
+    ('Sieger Gruppe D', 'Bester 3. Gruppe B/E/F/I/J', DateTime(2026, 7, 3, 22)),
+    ('Sieger Gruppe H', 'Zweiter Gruppe J', DateTime(2026, 7, 4, 19)),
+    ('Zweiter Gruppe K', 'Zweiter Gruppe L', DateTime(2026, 7, 4, 22)),
+    ('Sieger Gruppe B', 'Bester 3. Gruppe E/F/G/I/J', DateTime(2026, 7, 5, 19)),
+    ('Zweiter Gruppe D', 'Zweiter Gruppe G', DateTime(2026, 7, 5, 22)),
+    ('Sieger Gruppe J', 'Zweiter Gruppe H', DateTime(2026, 7, 6, 19)),
+    ('Sieger Gruppe K', 'Bester 3. Gruppe D/E/I/J/L', DateTime(2026, 7, 6, 22)),
   ];
 
   for (var i = 0; i < sfMatches.length; i++) {
