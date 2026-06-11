@@ -255,11 +255,81 @@ class FirestoreVoleoRepository implements VoleoRepository {
       StreamSubscription? membersSub;
       StreamSubscription? standingsSub;
       final Map<String, StreamSubscription> userSubs = {};
+      final Map<String, Map<String, dynamic>> userDataMap = {};
+      QuerySnapshot<Map<String, dynamic>>? lastStandingsSnap;
+      QuerySnapshot<Map<String, dynamic>>? lastMembersSnap;
 
       controller = StreamController<List<Standing>>(
         onListen: () {
+          void updateController() {
+            if (lastStandingsSnap == null || lastMembersSnap == null) return;
+
+            final standings =
+                lastStandingsSnap!.docs.map(_standingFromDoc).toList();
+            final memberDataMap = {
+              for (final doc in lastMembersSnap!.docs) doc.id: doc.data()
+            };
+
+            final updatedStandings = standings.map((s) {
+              final memberData = memberDataMap[s.uid];
+              final userData = userDataMap[s.uid];
+              final photoUrl = memberData?['photoUrl'] as String? ??
+                  userData?['photoUrl'] as String? ??
+                  s.photoUrl;
+              final displayName = memberData?['displayName'] as String? ??
+                  userData?['nickname'] as String? ??
+                  s.displayName;
+
+              return Standing(
+                uid: s.uid,
+                displayName: displayName,
+                totalPoints: s.totalPoints,
+                exactCount: s.exactCount,
+                tendencyCount: s.tendencyCount,
+                rank: s.rank,
+                photoUrl: photoUrl,
+              );
+            }).toList();
+
+            final existingUids = updatedStandings.map((s) => s.uid).toSet();
+            bool addedAny = false;
+
+            for (final memberDoc in lastMembersSnap!.docs) {
+              final memberData = memberDoc.data();
+              final uid = memberDoc.id;
+              final leftAt = memberData['leftAt'];
+              if (leftAt != null) {
+                continue;
+              }
+
+              if (!existingUids.contains(uid)) {
+                final userData = userDataMap[uid];
+                updatedStandings.add(Standing(
+                  uid: uid,
+                  displayName: memberData['displayName'] as String? ??
+                      userData?['nickname'] as String? ??
+                      'Spieler',
+                  totalPoints: memberData['totalPoints'] as int? ?? 0,
+                  exactCount: memberData['exactCount'] as int? ?? 0,
+                  tendencyCount: memberData['tendencyCount'] as int? ?? 0,
+                  rank: 0,
+                  photoUrl: memberData['photoUrl'] as String? ??
+                      userData?['photoUrl'] as String?,
+                ));
+                addedAny = true;
+              }
+            }
+
+            if (addedAny || lastStandingsSnap!.docs.isEmpty) {
+              controller.add(rankStandings(updatedStandings));
+            } else {
+              controller.add(updatedStandings);
+            }
+          }
+
           membersSub =
               leagueRef.collection('members').snapshots().listen((membersSnap) {
+            lastMembersSnap = membersSnap;
             final currentUids = membersSnap.docs.map((doc) => doc.id).toSet();
             final toCancel = userSubs.keys
                 .where((uid) => !currentUids.contains(uid))
@@ -267,6 +337,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
             for (final uid in toCancel) {
               userSubs[uid]?.cancel();
               userSubs.remove(uid);
+              userDataMap.remove(uid);
             }
 
             for (final uid in currentUids) {
@@ -275,7 +346,15 @@ class FirestoreVoleoRepository implements VoleoRepository {
                     .collection('users')
                     .doc(uid)
                     .snapshots()
-                    .listen((_) {}, onError: (e) {
+                    .listen((userDocSnap) {
+                  if (userDocSnap.exists) {
+                    final data = userDocSnap.data();
+                    if (data != null) {
+                      userDataMap[uid] = data;
+                      updateController();
+                    }
+                  }
+                }, onError: (e) {
                   debugPrint('Error caching user $uid: $e');
                 });
               }
@@ -287,60 +366,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
                 .orderBy('rank')
                 .snapshots()
                 .listen((standingsSnap) {
-              final standings =
-                  standingsSnap.docs.map(_standingFromDoc).toList();
-              final memberDataMap = {
-                for (final doc in membersSnap.docs) doc.id: doc.data()
-              };
-
-              final updatedStandings = standings.map((s) {
-                final memberData = memberDataMap[s.uid];
-                if (memberData != null) {
-                  return Standing(
-                    uid: s.uid,
-                    displayName:
-                        memberData['displayName'] as String? ?? s.displayName,
-                    totalPoints: s.totalPoints,
-                    exactCount: s.exactCount,
-                    tendencyCount: s.tendencyCount,
-                    rank: s.rank,
-                    photoUrl: memberData['photoUrl'] as String? ?? s.photoUrl,
-                  );
-                }
-                return s;
-              }).toList();
-
-              final existingUids = updatedStandings.map((s) => s.uid).toSet();
-              bool addedAny = false;
-
-              for (final memberDoc in membersSnap.docs) {
-                final memberData = memberDoc.data();
-                final uid = memberDoc.id;
-                final leftAt = memberData['leftAt'];
-                if (leftAt != null) {
-                  continue;
-                }
-
-                if (!existingUids.contains(uid)) {
-                  updatedStandings.add(Standing(
-                    uid: uid,
-                    displayName:
-                        memberData['displayName'] as String? ?? 'Spieler',
-                    totalPoints: memberData['totalPoints'] as int? ?? 0,
-                    exactCount: memberData['exactCount'] as int? ?? 0,
-                    tendencyCount: memberData['tendencyCount'] as int? ?? 0,
-                    rank: 0,
-                    photoUrl: memberData['photoUrl'] as String?,
-                  ));
-                  addedAny = true;
-                }
-              }
-
-              if (addedAny || standingsSnap.docs.isEmpty) {
-                controller.add(rankStandings(updatedStandings));
-              } else {
-                controller.add(updatedStandings);
-              }
+              lastStandingsSnap = standingsSnap;
+              updateController();
             }, onError: controller.addError);
           }, onError: controller.addError);
         },
@@ -351,6 +378,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
             sub.cancel();
           }
           userSubs.clear();
+          userDataMap.clear();
         },
       );
 
