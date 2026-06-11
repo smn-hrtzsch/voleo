@@ -92,7 +92,16 @@
     <div class="info-box">
       Öffne einen Einladungslink auf deinem Smartphone, um direkt einer Tipprunde beizutreten und mitzutippen!
     </div>
-    <a href="https://voleo.capycode.de" class="btn">App öffnen</a>
+    <a id="app-link" href="voleo://voleo-sho2303.web.app/join/" class="btn">App öffnen</a>
+    <script>
+      (function() {
+        var path = window.location.pathname;
+        var link = document.getElementById('app-link');
+        if (path && path.startsWith('/join/')) {
+          link.href = 'voleo://voleo-sho2303.web.app' + path;
+        }
+      })();
+    </script>
   </div>
 </body>
 </html>
