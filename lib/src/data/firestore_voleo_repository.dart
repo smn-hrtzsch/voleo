@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -249,69 +250,85 @@ class FirestoreVoleoRepository implements VoleoRepository {
     return watchLeague().asyncExpand((league) {
       if (league == null) return Stream.value(const <Standing>[]);
       final leagueRef = _firestore.collection('leagues').doc(league.id);
-      return leagueRef
-          .collection('members')
-          .snapshots()
-          .asyncExpand((membersSnap) {
-        return leagueRef
-            .collection('standings')
-            .orderBy('rank')
-            .snapshots()
-            .map((standingsSnap) {
-          final standings = standingsSnap.docs.map(_standingFromDoc).toList();
-          final memberDataMap = {
-            for (final doc in membersSnap.docs) doc.id: doc.data()
-          };
 
-          // Sync displayName and photoUrl in real-time from league member profiles
-          final updatedStandings = standings.map((s) {
-            final memberData = memberDataMap[s.uid];
-            if (memberData != null) {
-              return Standing(
-                uid: s.uid,
-                displayName:
-                    memberData['displayName'] as String? ?? s.displayName,
-                totalPoints: s.totalPoints,
-                exactCount: s.exactCount,
-                tendencyCount: s.tendencyCount,
-                rank: s.rank,
-                photoUrl: memberData['photoUrl'] as String? ?? s.photoUrl,
-              );
-            }
-            return s;
-          }).toList();
+      late StreamController<List<Standing>> controller;
+      StreamSubscription? membersSub;
+      StreamSubscription? standingsSub;
 
-          final existingUids = updatedStandings.map((s) => s.uid).toSet();
-          bool addedAny = false;
+      controller = StreamController<List<Standing>>(
+        onListen: () {
+          membersSub =
+              leagueRef.collection('members').snapshots().listen((membersSnap) {
+            standingsSub?.cancel();
+            standingsSub = leagueRef
+                .collection('standings')
+                .orderBy('rank')
+                .snapshots()
+                .listen((standingsSnap) {
+              final standings =
+                  standingsSnap.docs.map(_standingFromDoc).toList();
+              final memberDataMap = {
+                for (final doc in membersSnap.docs) doc.id: doc.data()
+              };
 
-          for (final memberDoc in membersSnap.docs) {
-            final memberData = memberDoc.data();
-            final uid = memberDoc.id;
-            final leftAt = memberData['leftAt'];
-            if (leftAt != null) {
-              continue;
-            }
+              final updatedStandings = standings.map((s) {
+                final memberData = memberDataMap[s.uid];
+                if (memberData != null) {
+                  return Standing(
+                    uid: s.uid,
+                    displayName:
+                        memberData['displayName'] as String? ?? s.displayName,
+                    totalPoints: s.totalPoints,
+                    exactCount: s.exactCount,
+                    tendencyCount: s.tendencyCount,
+                    rank: s.rank,
+                    photoUrl: memberData['photoUrl'] as String? ?? s.photoUrl,
+                  );
+                }
+                return s;
+              }).toList();
 
-            if (!existingUids.contains(uid)) {
-              updatedStandings.add(Standing(
-                uid: uid,
-                displayName: memberData['displayName'] as String? ?? 'Spieler',
-                totalPoints: memberData['totalPoints'] as int? ?? 0,
-                exactCount: memberData['exactCount'] as int? ?? 0,
-                tendencyCount: memberData['tendencyCount'] as int? ?? 0,
-                rank: 0,
-                photoUrl: memberData['photoUrl'] as String?,
-              ));
-              addedAny = true;
-            }
-          }
+              final existingUids = updatedStandings.map((s) => s.uid).toSet();
+              bool addedAny = false;
 
-          if (addedAny || standingsSnap.docs.isEmpty) {
-            return rankStandings(updatedStandings);
-          }
-          return updatedStandings;
-        });
-      });
+              for (final memberDoc in membersSnap.docs) {
+                final memberData = memberDoc.data();
+                final uid = memberDoc.id;
+                final leftAt = memberData['leftAt'];
+                if (leftAt != null) {
+                  continue;
+                }
+
+                if (!existingUids.contains(uid)) {
+                  updatedStandings.add(Standing(
+                    uid: uid,
+                    displayName:
+                        memberData['displayName'] as String? ?? 'Spieler',
+                    totalPoints: memberData['totalPoints'] as int? ?? 0,
+                    exactCount: memberData['exactCount'] as int? ?? 0,
+                    tendencyCount: memberData['tendencyCount'] as int? ?? 0,
+                    rank: 0,
+                    photoUrl: memberData['photoUrl'] as String?,
+                  ));
+                  addedAny = true;
+                }
+              }
+
+              if (addedAny || standingsSnap.docs.isEmpty) {
+                controller.add(rankStandings(updatedStandings));
+              } else {
+                controller.add(updatedStandings);
+              }
+            }, onError: controller.addError);
+          }, onError: controller.addError);
+        },
+        onCancel: () {
+          membersSub?.cancel();
+          standingsSub?.cancel();
+        },
+      );
+
+      return controller.stream;
     });
   }
 
