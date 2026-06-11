@@ -154,13 +154,27 @@ function normalizeMatch(match) {
   const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
   const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
 
-  const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
-  const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
-
   const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
   const status = isFinished ? "finalResult" : (now > kickoffDate ? "live" : "scheduled");
+
+  let homeScore = null;
+  let awayScore = null;
+
+  if (status === "live") {
+    if (match.goals && match.goals.length > 0) {
+      const lastGoal = match.goals[match.goals.length - 1];
+      homeScore = lastGoal.scoreTeam1;
+      awayScore = lastGoal.scoreTeam2;
+    } else {
+      homeScore = 0;
+      awayScore = 0;
+    }
+  } else if (status === "finalResult") {
+    homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
+    awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
+  }
 
   return {
     id,
