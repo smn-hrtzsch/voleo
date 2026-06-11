@@ -217,7 +217,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
           final sm = entry.value;
           if (normalizeTeam(sm.homeTeam) == normalizeTeam(fm.homeTeam) &&
               normalizeTeam(sm.awayTeam) == normalizeTeam(fm.awayTeam) &&
-              sm.kickoff.isAtSameMomentAs(fm.kickoff)) {
+              sm.kickoff.difference(fm.kickoff).abs() < const Duration(hours: 12)) {
             duplicateId = entry.key;
             break;
           }
