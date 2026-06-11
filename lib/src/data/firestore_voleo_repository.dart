@@ -170,6 +170,13 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final staticMatches = buildWc2026GroupStageMatches();
       final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
 
+      print('DEBUG VOLEO: Loaded ${firestoreMatches.length} matches from Firestore.');
+      for (final fm in firestoreMatches) {
+        if (fm.homeTeam == 'Mexiko' || fm.awayTeam == 'Südafrika') {
+          print('DEBUG VOLEO Firestore Match: ID=${fm.id}, teams=${fm.homeTeam}-${fm.awayTeam}, status=${fm.status.name}, kickoff=${fm.kickoff}');
+        }
+      }
+
       final mergedMap = <String, CupMatch>{};
 
       // First, put all static matches into the map by ID
@@ -188,11 +195,25 @@ class FirestoreVoleoRepository implements VoleoRepository {
         return lower.replaceAll('-', '').replaceAll(' ', '');
       }
 
+      int statusPriority(MatchStatus status) {
+        switch (status) {
+          case MatchStatus.finalResult:
+            return 3;
+          case MatchStatus.live:
+            return 2;
+          case MatchStatus.scheduled:
+            return 1;
+        }
+      }
+
       // Then, for each firestore match:
       for (final fm in firestoreMatches) {
         // 1. Try to find by ID
         if (mergedMap.containsKey(fm.id)) {
-          mergedMap[fm.id] = fm;
+          final existing = mergedMap[fm.id]!;
+          if (statusPriority(fm.status) >= statusPriority(existing.status)) {
+            mergedMap[fm.id] = fm;
+          }
           continue;
         }
 
@@ -210,8 +231,11 @@ class FirestoreVoleoRepository implements VoleoRepository {
         }
 
         if (duplicateId != null) {
-          // Keep the static match ID, but update with firestore data
-          mergedMap[duplicateId] = fm.copyWith(id: duplicateId);
+          final existing = mergedMap[duplicateId]!;
+          if (statusPriority(fm.status) >= statusPriority(existing.status)) {
+            // Keep the static match ID, but update with firestore data
+            mergedMap[duplicateId] = fm.copyWith(id: duplicateId);
+          }
         } else {
           mergedMap[fm.id] = fm;
         }

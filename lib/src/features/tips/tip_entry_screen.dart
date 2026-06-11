@@ -9,6 +9,7 @@ import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
+import '../shared/live_pulse_dot.dart';
 
 class TipEntryScreen extends ConsumerStatefulWidget {
   const TipEntryScreen({
@@ -115,100 +116,22 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            _matchContextLabel(match),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: () {
-                                final winner = getMatchWinner(match);
-                                final isFinished =
-                                    match.status == MatchStatus.finalResult;
-                                final isHomeWinner = isFinished &&
-                                    winner != null &&
-                                    isSameTeam(winner, match.homeTeam);
-                                final isHomeLoser = isFinished &&
-                                    winner != null &&
-                                    !isSameTeam(winner, match.homeTeam);
-                                return _MatchupTeamLabel(
-                                  teamName: match.homeTeam,
-                                  isHome: true,
-                                  isWinner: isHomeWinner,
-                                  isLoser: isHomeLoser,
-                                );
-                              }(),
-                            ),
                             SizedBox(
-                              width: 50,
+                              width: double.infinity,
                               child: Text(
-                                match.status == MatchStatus.finalResult ||
-                                        match.status == MatchStatus.live
-                                    ? '${match.regularHomeScore ?? match.homeScore}:${match.regularAwayScore ?? match.awayScore}'
-                                    : '-:-',
+                                _matchContextLabel(match),
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context)
                                     .textTheme
-                                    .headlineMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: match.status == MatchStatus.live
-                                          ? Colors.green
-                                          : null,
-                                    ),
-                              ),
-                            ),
-                            Expanded(
-                              child: () {
-                                final winner = getMatchWinner(match);
-                                final isFinished =
-                                    match.status == MatchStatus.finalResult;
-                                final isAwayWinner = isFinished &&
-                                    winner != null &&
-                                    isSameTeam(winner, match.awayTeam);
-                                final isAwayLoser = isFinished &&
-                                    winner != null &&
-                                    !isSameTeam(winner, match.awayTeam);
-                                return _MatchupTeamLabel(
-                                  teamName: match.awayTeam,
-                                  isHome: false,
-                                  isWinner: isAwayWinner,
-                                  isLoser: isAwayLoser,
-                                );
-                              }(),
-                            ),
-                          ],
-                        ),
-                        if (hasProgression)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Center(
-                              child: Text(
-                                progressionText,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
+                                    .labelLarge
                                     ?.copyWith(
                                       color: Theme.of(context)
                                           .colorScheme
@@ -217,79 +140,192 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                     ),
                               ),
                             ),
-                          ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: Text(
-                            DateFormat('dd.MM.yyyy HH:mm')
-                                .format(match.kickoff),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
-                        if (existingTip != null) ...[
-                          const SizedBox(height: 12),
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primaryContainer,
-                                borderRadius: BorderRadius.circular(16),
+                            const SizedBox(height: 12),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: () {
+                                    final winner = getMatchWinner(match);
+                                    final isFinished =
+                                        match.status == MatchStatus.finalResult;
+                                    final isHomeWinner = isFinished &&
+                                        winner != null &&
+                                        isSameTeam(winner, match.homeTeam);
+                                    final isHomeLoser = isFinished &&
+                                        winner != null &&
+                                        !isSameTeam(winner, match.homeTeam);
+                                    return _MatchupTeamLabel(
+                                      teamName: match.homeTeam,
+                                      isHome: true,
+                                      isWinner: isHomeWinner,
+                                      isLoser: isHomeLoser,
+                                    );
+                                  }(),
+                                ),
+                                SizedBox(
+                                  width: 50,
+                                  child: Text(
+                                    match.status == MatchStatus.finalResult ||
+                                            match.status == MatchStatus.live
+                                        ? '${match.regularHomeScore ?? match.homeScore}:${match.regularAwayScore ?? match.awayScore}'
+                                        : '-:-',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: match.status == MatchStatus.live
+                                              ? Colors.green
+                                              : null,
+                                        ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: () {
+                                    final winner = getMatchWinner(match);
+                                    final isFinished =
+                                        match.status == MatchStatus.finalResult;
+                                    final isAwayWinner = isFinished &&
+                                        winner != null &&
+                                        isSameTeam(winner, match.awayTeam);
+                                    final isAwayLoser = isFinished &&
+                                        winner != null &&
+                                        !isSameTeam(winner, match.awayTeam);
+                                    return _MatchupTeamLabel(
+                                      teamName: match.awayTeam,
+                                      isHome: false,
+                                      isWinner: isAwayWinner,
+                                      isLoser: isAwayLoser,
+                                    );
+                                  }(),
+                                ),
+                              ],
+                            ),
+                            if (hasProgression)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Center(
+                                  child: Text(
+                                    progressionText,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check,
-                                    size: 18,
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: Text(
+                                DateFormat('dd.MM.yyyy HH:mm')
+                                    .format(match.kickoff),
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ),
+                            if (existingTip != null) ...[
+                              const SizedBox(height: 12),
+                              Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
                                     color: Theme.of(context)
                                         .colorScheme
-                                        .onPrimaryContainer,
+                                        .primaryContainer,
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onPrimaryContainer,
-                                    ),
-                                  ),
-                                  if (!match.isLocked) ...[
-                                    const SizedBox(width: 6),
-                                    GestureDetector(
-                                      onTap: _isSaving
-                                          ? null
-                                          : () => _deleteTip(match),
-                                      child: Icon(
-                                        Icons.cancel,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.check,
                                         size: 18,
-                                        color:
-                                            Theme.of(context).colorScheme.error,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onPrimaryContainer,
                                       ),
-                                    ),
-                                  ],
-                                ],
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onPrimaryContainer,
+                                        ),
+                                      ),
+                                      if (!match.isLocked) ...[
+                                        const SizedBox(width: 6),
+                                        GestureDetector(
+                                          onTap: _isSaving
+                                              ? null
+                                              : () => _deleteTip(match),
+                                          child: Icon(
+                                            Icons.cancel,
+                                            size: 18,
+                                            color:
+                                                Theme.of(context).colorScheme.error,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
+                            ],
+                            if (scoreResult != null) ...[
+                              const SizedBox(height: 8),
+                              Center(
+                                child: Chip(
+                                  avatar: const Icon(Icons.stars, size: 18),
+                                  label: Text(_scoreLabel(scoreResult)),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (match.status == MatchStatus.live)
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                  color: Colors.green, width: 1.2),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                LivePulseDot(),
+                                const SizedBox(width: 4),
+                                const Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                        if (scoreResult != null) ...[
-                          const SizedBox(height: 8),
-                          Center(
-                            child: Chip(
-                              avatar: const Icon(Icons.stars, size: 18),
-                              label: Text(_scoreLabel(scoreResult)),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
                 if (!match.isLocked) ...[
