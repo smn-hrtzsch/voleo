@@ -642,17 +642,13 @@ class FirestoreVoleoRepository implements VoleoRepository {
   @override
   Future<void> uploadProfileImage(String filePath) async {
     final user = _requireFirebaseUser();
-    try {
-      final ref = _storage.ref('users/${user.uid}/profile.jpg');
-      await ref.putFile(
-        File(filePath),
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-      final url = await ref.getDownloadURL();
-      await updateProfile(photoUrl: url);
-    } on FirebaseException {
-      await updateProfile(photoUrl: filePath);
-    }
+    final ref = _storage.ref('users/${user.uid}/profile.jpg');
+    await ref.putFile(
+      File(filePath),
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    final url = await ref.getDownloadURL();
+    await updateProfile(photoUrl: url);
   }
 
   @override
