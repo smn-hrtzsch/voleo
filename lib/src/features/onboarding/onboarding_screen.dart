@@ -596,7 +596,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       transitionNotifier.value = true;
       ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithGoogle();
-      
+
       final currentUser = auth.FirebaseAuth.instance.currentUser;
       String? activeLeagueId;
       if (currentUser != null) {
@@ -606,7 +606,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             .get();
         activeLeagueId = doc.data()?['activeLeagueId'] as String?;
       }
-      
+
       transitionNotifier.value = false;
       if (mounted) {
         if (activeLeagueId == null || activeLeagueId.isEmpty) {
@@ -638,7 +638,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       transitionNotifier.value = true;
       ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithApple();
-      
+
       final currentUser = auth.FirebaseAuth.instance.currentUser;
       String? activeLeagueId;
       if (currentUser != null) {
@@ -648,7 +648,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             .get();
         activeLeagueId = doc.data()?['activeLeagueId'] as String?;
       }
-      
+
       transitionNotifier.value = false;
       if (mounted) {
         if (activeLeagueId == null || activeLeagueId.isEmpty) {
@@ -864,7 +864,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       transitionNotifier.value = true;
       ref.read(forceOnboardingProvider.notifier).value = false;
       await ref.read(repositoryProvider).signInWithCredential(credential);
-      
+
       final currentUser = auth.FirebaseAuth.instance.currentUser;
       String? activeLeagueId;
       if (currentUser != null) {
@@ -874,7 +874,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             .get();
         activeLeagueId = doc.data()?['activeLeagueId'] as String?;
       }
-      
+
       transitionNotifier.value = false;
       if (mounted) {
         if (activeLeagueId == null || activeLeagueId.isEmpty) {

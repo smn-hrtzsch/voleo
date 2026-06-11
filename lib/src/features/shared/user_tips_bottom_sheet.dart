@@ -349,8 +349,12 @@ class _UserTipsBottomSheetContentState
                     match: match,
                   ).replaceAll('\n', ' ');
 
+                  final isCompleted = match.status == MatchStatus.finalResult;
+
                   tipWidget = Text(
-                    'Tipp: ${tip.predictedHome}:${tip.predictedAway} ($fullEval)',
+                    isCompleted
+                        ? 'Tipp: ${tip.predictedHome}:${tip.predictedAway} ($fullEval)'
+                        : 'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   );
 
@@ -645,23 +649,27 @@ class _UserTipsBottomSheetContentState
                 ],
                 if (points != null) ...[
                   const SizedBox(height: 4),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: (points > 0 ? Colors.green : Colors.grey)
-                          .withAlpha(40),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${points >= 0 ? '+' : ''}$points Pkt.',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: points > 0 ? Colors.green : Colors.grey,
+                  (() {
+                    final color = points > 0
+                        ? Colors.green
+                        : (points < 0 ? Colors.red : Colors.grey);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: color.withAlpha(40),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    ),
-                  ),
+                      child: Text(
+                        '${points >= 0 ? '+' : ''}$points Pkt.',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    );
+                  })(),
                 ],
               ],
             ],
@@ -696,7 +704,9 @@ class _MemberAvatar extends StatelessWidget {
                     _buildInitials(context),
               )
             : Image.file(
-                File(photoUrl!),
+                File(photoUrl!.startsWith('file://')
+                    ? Uri.parse(photoUrl!).toFilePath()
+                    : photoUrl!),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,

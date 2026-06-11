@@ -398,8 +398,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     String? successMessage,
   ) async {
     setState(() => _isLoading = true);
-    final transitionController =
-        ref.read(sessionTransitionProvider.notifier);
+    final transitionController = ref.read(sessionTransitionProvider.notifier);
     try {
       await action();
       if (mounted && successMessage != null) {
@@ -561,11 +560,17 @@ class _ProfileAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photoUrl = user.photoUrl;
-    final imageProvider = photoUrl == null || photoUrl.isEmpty
-        ? null
-        : photoUrl.startsWith('http')
-            ? NetworkImage(photoUrl) as ImageProvider
-            : FileImage(File(photoUrl));
+    ImageProvider? imageProvider;
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      if (photoUrl.startsWith('http')) {
+        imageProvider = NetworkImage(photoUrl);
+      } else {
+        final rawPath = photoUrl.startsWith('file://')
+            ? Uri.parse(photoUrl).toFilePath()
+            : photoUrl;
+        imageProvider = FileImage(File(rawPath));
+      }
+    }
     return CircleAvatar(
       radius: 54,
       backgroundColor: Theme.of(context).colorScheme.primaryContainer,
