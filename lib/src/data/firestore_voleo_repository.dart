@@ -82,9 +82,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
           .collection('users')
           .doc(user.uid)
           .snapshots()
-          .asyncExpand((userSnapshot) {
-        final activeLeagueId =
-            userSnapshot.data()?['activeLeagueId'] as String?;
+          .map((snap) => snap.data()?['activeLeagueId'] as String?)
+          .distinct()
+          .asyncExpand((activeLeagueId) {
         if (activeLeagueId == null || activeLeagueId.isEmpty) {
           return Stream.value(null);
         }
