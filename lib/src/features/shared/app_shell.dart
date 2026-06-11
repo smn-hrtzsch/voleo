@@ -38,7 +38,8 @@ class _AppShellState extends ConsumerState<AppShell> {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (widget.navigationShell.currentIndex != 0) {
-          if (widget.navigationShell.currentIndex == 4 && ref.read(comingFromRulesDialogProvider)) {
+          if (widget.navigationShell.currentIndex == 4 &&
+              ref.read(comingFromRulesDialogProvider)) {
             ref.read(comingFromRulesDialogProvider.notifier).value = false;
             ref.read(showRulesDialogProvider.notifier).value = true;
           }

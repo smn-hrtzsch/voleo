@@ -261,8 +261,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
           membersSub =
               leagueRef.collection('members').snapshots().listen((membersSnap) {
             final currentUids = membersSnap.docs.map((doc) => doc.id).toSet();
-            final toCancel =
-                userSubs.keys.where((uid) => !currentUids.contains(uid)).toList();
+            final toCancel = userSubs.keys
+                .where((uid) => !currentUids.contains(uid))
+                .toList();
             for (final uid in toCancel) {
               userSubs[uid]?.cancel();
               userSubs.remove(uid);

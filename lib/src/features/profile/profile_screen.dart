@@ -39,7 +39,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
-                  ref.read(comingFromRulesDialogProvider.notifier).value = false;
+                  ref.read(comingFromRulesDialogProvider.notifier).value =
+                      false;
                   ref.read(showRulesDialogProvider.notifier).value = true;
                   context.go('/home');
                 },
