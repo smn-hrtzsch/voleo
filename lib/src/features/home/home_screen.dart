@@ -299,7 +299,9 @@ class _StandingAvatar extends StatelessWidget {
                     _buildInitials(context),
               )
             : Image.file(
-                File(photoUrl),
+                File(photoUrl.startsWith('file://')
+                    ? Uri.parse(photoUrl).toFilePath()
+                    : photoUrl),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,

@@ -49,11 +49,18 @@ class FirestoreVoleoRepository implements VoleoRepository {
             providerIds: _providerIds(currentUser),
           );
         }
+        final rawPhotoUrl = data['photoUrl'] as String?;
+        final isLocalPath = rawPhotoUrl != null &&
+            rawPhotoUrl.isNotEmpty &&
+            !rawPhotoUrl.startsWith('http');
+        final photoUrl = isLocalPath
+            ? currentUser.photoURL
+            : rawPhotoUrl ?? currentUser.photoURL;
         return VoleoUser(
           uid: currentUser.uid,
           nickname: data['nickname'] as String? ?? 'Spieler',
           isAnonymous: currentUser.isAnonymous,
-          photoUrl: data['photoUrl'] as String? ?? currentUser.photoURL,
+          photoUrl: photoUrl,
           email: data['email'] as String? ?? currentUser.email,
           providerIds: _providerIds(currentUser),
           favoriteTeam: data['favoriteTeam'] as String?,
@@ -252,7 +259,29 @@ class FirestoreVoleoRepository implements VoleoRepository {
             .snapshots()
             .map((standingsSnap) {
           final standings = standingsSnap.docs.map(_standingFromDoc).toList();
-          final existingUids = standings.map((s) => s.uid).toSet();
+          final memberDataMap = {
+            for (final doc in membersSnap.docs) doc.id: doc.data()
+          };
+
+          // Sync displayName and photoUrl in real-time from league member profiles
+          final updatedStandings = standings.map((s) {
+            final memberData = memberDataMap[s.uid];
+            if (memberData != null) {
+              return Standing(
+                uid: s.uid,
+                displayName:
+                    memberData['displayName'] as String? ?? s.displayName,
+                totalPoints: s.totalPoints,
+                exactCount: s.exactCount,
+                tendencyCount: s.tendencyCount,
+                rank: s.rank,
+                photoUrl: memberData['photoUrl'] as String? ?? s.photoUrl,
+              );
+            }
+            return s;
+          }).toList();
+
+          final existingUids = updatedStandings.map((s) => s.uid).toSet();
           bool addedAny = false;
 
           for (final memberDoc in membersSnap.docs) {
@@ -264,7 +293,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
             }
 
             if (!existingUids.contains(uid)) {
-              standings.add(Standing(
+              updatedStandings.add(Standing(
                 uid: uid,
                 displayName: memberData['displayName'] as String? ?? 'Spieler',
                 totalPoints: memberData['totalPoints'] as int? ?? 0,
@@ -278,9 +307,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
           }
 
           if (addedAny || standingsSnap.docs.isEmpty) {
-            return rankStandings(standings);
+            return rankStandings(updatedStandings);
           }
-          return standings;
+          return updatedStandings;
         });
       });
     });
@@ -812,24 +841,22 @@ class FirestoreVoleoRepository implements VoleoRepository {
       'memberIds': FieldValue.arrayRemove([user.uid]),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-
     final userDocRef = _firestore.collection('users').doc(user.uid);
+    final userDoc = await userDocRef.get();
+    final userData = userDoc.data();
+    final leagueIds = List<String>.from(userData?['leagueIds'] as List? ?? []);
+    leagueIds.remove(leagueId);
+
+    final activeId = userData?['activeLeagueId'] as String?;
+    final nextActive = (activeId == leagueId)
+        ? (leagueIds.isNotEmpty ? leagueIds.first : '')
+        : activeId ?? '';
+
     await userDocRef.set({
-      'leagueIds': FieldValue.arrayRemove([leagueId]),
+      'leagueIds': leagueIds,
+      'activeLeagueId': nextActive,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-
-    final userDoc = await userDocRef.get();
-    final activeId = userDoc.data()?['activeLeagueId'] as String?;
-    if (activeId == leagueId) {
-      final leagueIds =
-          List<String>.from(userDoc.data()?['leagueIds'] as List? ?? []);
-      final nextActive = leagueIds.isNotEmpty ? leagueIds.first : '';
-      await userDocRef.set({
-        'activeLeagueId': nextActive,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
   }
 
   @override
@@ -1046,8 +1073,11 @@ class FirestoreVoleoRepository implements VoleoRepository {
     final existingData = existing.data();
     final existingNickname = existingData?['nickname'] as String?;
     final existingPhotoUrl = existingData?['photoUrl'] as String?;
+    final isLocalPath = existingPhotoUrl != null &&
+        existingPhotoUrl.isNotEmpty &&
+        !existingPhotoUrl.startsWith('http');
     final shouldUseProviderPhoto =
-        (existingPhotoUrl == null || existingPhotoUrl.isEmpty) &&
+        (existingPhotoUrl == null || existingPhotoUrl.isEmpty || isLocalPath) &&
             ((providerPhotoUrl != null && providerPhotoUrl.isNotEmpty) ||
                 (user.photoURL != null && user.photoURL!.isNotEmpty));
     final photoUrl = shouldUseProviderPhoto

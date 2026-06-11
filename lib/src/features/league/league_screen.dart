@@ -249,6 +249,18 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
 
   Future<void> _confirmLeaveLeague(
       BuildContext context, WidgetRef ref, League league) async {
+    final leaguesVal = ref.read(leaguesProvider).value ?? [];
+    if (leaguesVal.length <= 1) {
+      if (context.mounted) {
+        showAppToast(
+          context,
+          'Du kannst deine einzige Tipprunde nicht verlassen. Tritt erst einer anderen Tipprunde bei.',
+          type: AppToastType.error,
+        );
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -278,6 +290,13 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
     if (confirmed != true) return;
     try {
       await ref.read(repositoryProvider).leaveLeague(leagueId: league.id);
+
+      // Invalidate providers so UI refreshes and switches to the other league
+      ref.invalidate(leagueProvider);
+      ref.invalidate(leaguesProvider);
+      ref.invalidate(leagueTipsProvider);
+      ref.invalidate(standingsProvider);
+
       if (context.mounted) {
         showAppToast(
             context, 'Du hast die Tipprunde "${league.name}" verlassen.',
@@ -657,7 +676,9 @@ class _RankAvatar extends StatelessWidget {
                     _buildInitials(context),
               )
             : Image.file(
-                File(photoUrl),
+                File(photoUrl.startsWith('file://')
+                    ? Uri.parse(photoUrl).toFilePath()
+                    : photoUrl),
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,

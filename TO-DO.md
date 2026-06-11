@@ -32,7 +32,7 @@
 - [ ] Fix tip detail back navigation preserving the originating tab.
 - [x] Redesign Liga tips by day and player with visibility only after kickoff.
 - [x] Show other players' tips in match details only after kickoff.
-- [ ] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
+- [x] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
 - [ ] Avoid onboarding flash for already signed-in users on cold start.
 - [x] Add Bosnia and Herzegovina flag aliases.
 - [ ] Restructure Heute tab to show only today's matches plus league shortcut and top 3 standings.
