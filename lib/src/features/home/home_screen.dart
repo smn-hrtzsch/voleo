@@ -700,7 +700,8 @@ class _InfoTippspielCard extends ConsumerWidget {
                       style: Theme.of(context).textTheme.bodyMedium,
                       children: [
                         const TextSpan(
-                          text: 'Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden (du kannst die Mannschaften im ',
+                          text:
+                              'Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden (du kannst die Mannschaften im ',
                         ),
                         TextSpan(
                           text: 'Profil-Tab',
@@ -712,7 +713,9 @@ class _InfoTippspielCard extends ConsumerWidget {
                           recognizer: TapGestureRecognizer()
                             ..onTap = () {
                               Navigator.pop(context);
-                              ref.read(comingFromRulesDialogProvider.notifier).value = true;
+                              ref
+                                  .read(comingFromRulesDialogProvider.notifier)
+                                  .value = true;
                               context.go('/profile');
                             },
                         ),

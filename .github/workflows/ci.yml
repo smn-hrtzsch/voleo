@@ -25,16 +25,16 @@ jobs:
             echo "creating dummy firebase_options.dart"
             mkdir -p lib
             cat << 'EOF' > lib/firebase_options.dart
-            import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-            class DefaultFirebaseOptions {
-              static FirebaseOptions get currentPlatform => const FirebaseOptions(
-                apiKey: 'dummy',
-                appId: 'dummy',
-                messagingSenderId: 'dummy',
-                projectId: 'dummy',
-              );
-            }
-            EOF
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform => const FirebaseOptions(
+    apiKey: 'dummy',
+    appId: 'dummy',
+    messagingSenderId: 'dummy',
+    projectId: 'dummy',
+  );
+}
+EOF
           fi
       - uses: subosito/flutter-action@v2
         with:

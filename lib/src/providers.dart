@@ -99,7 +99,6 @@ final showRulesDialogProvider =
     NotifierProvider<ShowRulesDialogController, bool>(
         ShowRulesDialogController.new);
 
-
 final themeModeProvider =
     NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
