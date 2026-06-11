@@ -38,6 +38,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (widget.navigationShell.currentIndex != 0) {
+          if (widget.navigationShell.currentIndex == 4 && ref.read(comingFromRulesDialogProvider)) {
+            ref.read(comingFromRulesDialogProvider.notifier).value = false;
+            ref.read(showRulesDialogProvider.notifier).value = true;
+          }
           widget.navigationShell.goBranch(0, initialLocation: false);
         }
       },
@@ -59,6 +63,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: widget.navigationShell.currentIndex,
           onDestinationSelected: (index) {
+            ref.read(comingFromRulesDialogProvider.notifier).value = false;
             widget.navigationShell.goBranch(
               index,
               initialLocation: index == widget.navigationShell.currentIndex,

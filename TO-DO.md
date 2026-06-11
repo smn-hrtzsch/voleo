@@ -9,7 +9,8 @@
 - [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
 - [x] Fix evaluation points display, dropdown KO filter, and rootNavigator back-button bugs.
 - [x] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
-- [x] Add Dart defines (`ENVIRONMENT=test`) for toggling simulation vs. production clock.
+- [x] Improve rules dialog: change subtitle to "Regeln, Punktevergabe & Team-Picks", fix "Tendenz" example, add link to Profile Screen under booster notice with back-routing, and update risk tip points to match app logic.
+- [x] Fix local/offline caching of profile pictures, points, and picks for all league members and the current user.
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
 - [x] Replace local-first repository wiring with Firebase repository after config exists.

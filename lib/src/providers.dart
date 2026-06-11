@@ -77,6 +77,29 @@ final forceOnboardingProvider =
     NotifierProvider<ForceOnboardingController, bool>(
         ForceOnboardingController.new);
 
+class ComingFromRulesDialogController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  set value(bool next) => state = next;
+}
+
+final comingFromRulesDialogProvider =
+    NotifierProvider<ComingFromRulesDialogController, bool>(
+        ComingFromRulesDialogController.new);
+
+class ShowRulesDialogController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  set value(bool next) => state = next;
+}
+
+final showRulesDialogProvider =
+    NotifierProvider<ShowRulesDialogController, bool>(
+        ShowRulesDialogController.new);
+
+
 final themeModeProvider =
     NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
