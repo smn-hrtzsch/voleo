@@ -497,7 +497,7 @@ class _NextMatchRow extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => context.go('/home/tip/${match.id}'),
+      onTap: () => context.push('/home/tip/${match.id}'),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(

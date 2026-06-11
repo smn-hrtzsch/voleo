@@ -52,7 +52,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
         title: const Text('Tipp'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go(widget.returnPath),
+          onPressed: () => context.canPop() ? context.pop() : context.go(widget.returnPath),
         ),
       ),
       body: SafeArea(
@@ -69,7 +69,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                     const Text('Spiel wurde nicht gefunden.'),
                     const SizedBox(height: 16),
                     FilledButton(
-                      onPressed: () => context.go(widget.returnPath),
+                      onPressed: () => context.canPop() ? context.pop() : context.go(widget.returnPath),
                       child: const Text('Zurück'),
                     ),
                   ],
@@ -622,7 +622,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
             home: _homeGoals,
             away: _awayGoals,
           );
-      if (mounted) context.go(widget.returnPath);
+      if (mounted) {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go(widget.returnPath);
+        }
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
