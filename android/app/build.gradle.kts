@@ -33,6 +33,12 @@ android {
                 keyAlias = envKeyAlias
                 keyPassword = envKeyPassword
             }
+            getByName("debug") {
+                storeFile = file(envKeystoreFile!!)
+                storePassword = envStorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
+            }
         }
     }
 

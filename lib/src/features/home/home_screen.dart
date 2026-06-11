@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,15 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<bool>(showRulesDialogProvider, (prev, next) {
+      if (next) {
+        ref.read(showRulesDialogProvider.notifier).value = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _InfoTippspielCard.showRulesDialog(context, ref);
+        });
+      }
+    });
+
     final matches = ref.watch(matchesProvider);
     final league = ref.watch(leagueProvider);
     final leagueValue = league.value;
@@ -290,13 +301,17 @@ class _StandingAvatar extends StatelessWidget {
     if (hasImage) {
       avatarChild = ClipOval(
         child: photoUrl.startsWith('http')
-            ? Image.network(
-                photoUrl,
+            ? CachedNetworkImage(
+                imageUrl: photoUrl,
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildInitials(context),
+                errorWidget: (context, url, error) => _buildInitials(context),
+                placeholder: (context, url) => const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               )
             : Image.file(
                 File(photoUrl.startsWith('file://')
@@ -622,11 +637,11 @@ class _TeamSlot extends StatelessWidget {
   }
 }
 
-class _InfoTippspielCard extends StatelessWidget {
+class _InfoTippspielCard extends ConsumerWidget {
   const _InfoTippspielCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: ListTile(
@@ -635,14 +650,14 @@ class _InfoTippspielCard extends StatelessWidget {
           'Infos zum Tippspiel',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: const Text('Regeln, Punktevergabe & Sonderregeln'),
+        subtitle: const Text('Regeln, Punktevergabe & Team-Picks'),
         trailing: const Icon(Icons.keyboard_arrow_right),
-        onTap: () => _showRulesDialog(context),
+        onTap: () => showRulesDialog(context, ref),
       ),
     );
   }
 
-  void _showRulesDialog(BuildContext context) {
+  static void showRulesDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) {
@@ -671,7 +686,7 @@ class _InfoTippspielCard extends StatelessWidget {
                 _buildBulletPoint(
                     'Tordifferenz: +3 Punkte (z.B. Tipp 3:1, Spiel endet 2:0)'),
                 _buildBulletPoint(
-                    'Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:1)'),
+                    'Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:0)'),
                 _buildBulletPoint('Falscher Tipp: 0 Punkte'),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'Mannschafts-Booster'),
@@ -679,8 +694,35 @@ class _InfoTippspielCard extends StatelessWidget {
                     'Lieblingsmannschaft: +10 Punkte für jeden Sieg deiner Lieblingsmannschaft!'),
                 _buildBulletPoint(
                     'Favorit (WM-Tipp): +10 Punkte für jeden Sieg deiner getippten Weltmeister-Mannschaft!'),
-                _buildBulletPoint(
-                    'Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden.'),
+                _buildBulletPointWithWidget(
+                  RichText(
+                    text: TextSpan(
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      children: [
+                        const TextSpan(
+                          text: 'Hinweis: Diese beiden Teams müssen vor Turnierstart gewählt werden und können im Nachgang nicht mehr geändert werden (du kannst die Mannschaften im ',
+                        ),
+                        TextSpan(
+                          text: 'Profil-Tab',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              Navigator.pop(context);
+                              ref.read(comingFromRulesDialogProvider.notifier).value = true;
+                              context.go('/profile');
+                            },
+                        ),
+                        const TextSpan(
+                          text: ' wählen).',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'WM-Risiko-Tipp'),
                 _buildBulletPoint(
@@ -688,9 +730,9 @@ class _InfoTippspielCard extends StatelessWidget {
                 _buildBulletPoint(
                     'Punkte und Risiko berechnen sich nach den Stärke-Tiers der Mannschaften:'),
                 _buildBulletPoint(
-                    'Favoriten (z.B. Frankreich): Frühes Ausscheiden (Gruppenphase) bringt +30 Punkte bei Erfolg, bei Misserfolg gibt es -30 Punkte. Späteres Ausscheiden (Halbfinale) bringt/kostet +/-10 Punkte.'),
+                    'Favoriten (z.B. Frankreich): Frühes Ausscheiden (Gruppenphase) bringt/kostet +/-70 Punkte bei Erfolg/Misserfolg. Späteres Ausscheiden (Halbfinale) bringt/kostet +/-15 Punkte.'),
                 _buildBulletPoint(
-                    'Gurkentruppen (z.B. Curaçao): Frühes Ausscheiden bringt/kostet +/-5 Punkte. Weites Kommen (Viertelfinale/Halbfinale) bringt/kostet +/-30 Punkte.'),
+                    'Gurkentruppen (z.B. Curaçao): Frühes Ausscheiden bringt/kostet +/-5 Punkte. Weites Kommen (Halbfinale) bringt/kostet +/-65 Punkte.'),
               ],
             ),
           ),
@@ -705,7 +747,7 @@ class _InfoTippspielCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
+  static Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4, top: 8),
       child: Text(
@@ -718,14 +760,18 @@ class _InfoTippspielCard extends StatelessWidget {
     );
   }
 
-  Widget _buildBulletPoint(String text) {
+  static Widget _buildBulletPoint(String text) {
+    return _buildBulletPointWithWidget(Text(text));
+  }
+
+  static Widget _buildBulletPointWithWidget(Widget child) {
     return Padding(
       padding: const EdgeInsets.only(left: 6, bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(child: Text(text)),
+          Expanded(child: child),
         ],
       ),
     );

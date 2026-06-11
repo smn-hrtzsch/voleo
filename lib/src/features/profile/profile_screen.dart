@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
@@ -30,8 +31,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProvider);
+    final comingFromRules = ref.watch(comingFromRulesDialogProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Profil')),
+      appBar: AppBar(
+        title: const Text('Profil'),
+        leading: comingFromRules
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  ref.read(comingFromRulesDialogProvider.notifier).value = false;
+                  ref.read(showRulesDialogProvider.notifier).value = true;
+                  context.go('/home');
+                },
+              )
+            : null,
+      ),
       body: user.when(
         data: (value) {
           if (value == null) {
@@ -563,7 +577,7 @@ class _ProfileAvatar extends StatelessWidget {
     ImageProvider? imageProvider;
     if (photoUrl != null && photoUrl.isNotEmpty) {
       if (photoUrl.startsWith('http')) {
-        imageProvider = NetworkImage(photoUrl);
+        imageProvider = CachedNetworkImageProvider(photoUrl);
       } else {
         final rawPath = photoUrl.startsWith('file://')
             ? Uri.parse(photoUrl).toFilePath()

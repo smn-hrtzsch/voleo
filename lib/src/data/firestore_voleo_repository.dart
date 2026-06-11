@@ -254,11 +254,32 @@ class FirestoreVoleoRepository implements VoleoRepository {
       late StreamController<List<Standing>> controller;
       StreamSubscription? membersSub;
       StreamSubscription? standingsSub;
+      final Map<String, StreamSubscription> userSubs = {};
 
       controller = StreamController<List<Standing>>(
         onListen: () {
           membersSub =
               leagueRef.collection('members').snapshots().listen((membersSnap) {
+            final currentUids = membersSnap.docs.map((doc) => doc.id).toSet();
+            final toCancel =
+                userSubs.keys.where((uid) => !currentUids.contains(uid)).toList();
+            for (final uid in toCancel) {
+              userSubs[uid]?.cancel();
+              userSubs.remove(uid);
+            }
+
+            for (final uid in currentUids) {
+              if (!userSubs.containsKey(uid)) {
+                userSubs[uid] = _firestore
+                    .collection('users')
+                    .doc(uid)
+                    .snapshots()
+                    .listen((_) {}, onError: (e) {
+                  debugPrint('Error caching user $uid: $e');
+                });
+              }
+            }
+
             standingsSub?.cancel();
             standingsSub = leagueRef
                 .collection('standings')
@@ -325,6 +346,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
         onCancel: () {
           membersSub?.cancel();
           standingsSub?.cancel();
+          for (final sub in userSubs.values) {
+            sub.cancel();
+          }
+          userSubs.clear();
         },
       );
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -667,13 +668,17 @@ class _RankAvatar extends StatelessWidget {
     if (hasImage) {
       avatarChild = ClipOval(
         child: photoUrl.startsWith('http')
-            ? Image.network(
-                photoUrl,
+            ? CachedNetworkImage(
+                imageUrl: photoUrl,
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildInitials(context),
+                errorWidget: (context, url, error) => _buildInitials(context),
+                placeholder: (context, url) => const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               )
             : Image.file(
                 File(photoUrl.startsWith('file://')
