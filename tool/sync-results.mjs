@@ -2,82 +2,95 @@ import { createSign } from 'node:crypto';
 
 const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026/2026';
 const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
+const FIXTURES_LIST = [
+  ['A', 'Mexiko', 'Südafrika'],
+  ['A', 'Südkorea', 'Tschechien'],
+  ['B', 'Kanada', 'Bosnien-Herzegowina'],
+  ['D', 'USA', 'Paraguay'],
+  ['B', 'Katar', 'Schweiz'],
+  ['C', 'Brasilien', 'Marokko'],
+  ['C', 'Haiti', 'Schottland'],
+  ['D', 'Australien', 'Türkei'],
+  ['E', 'Deutschland', 'Curaçao'],
+  ['F', 'Niederlande', 'Japan'],
+  ['E', 'Elfenbeinküste', 'Ecuador'],
+  ['F', 'Schweden', 'Tunesien'],
+  ['H', 'Spanien', 'Kap Verde'],
+  ['G', 'Belgien', 'Ägypten'],
+  ['H', 'Saudi-Arabien', 'Uruguay'],
+  ['G', 'Iran', 'Neuseeland'],
+  ['I', 'Frankreich', 'Senegal'],
+  ['I', 'Irak', 'Norwegen'],
+  ['J', 'Argentinien', 'Algerien'],
+  ['J', 'Österreich', 'Jordanien'],
+  ['K', 'Portugal', 'DR Kongo'],
+  ['L', 'England', 'Kroatien'],
+  ['L', 'Ghana', 'Panama'],
+  ['K', 'Usbekistan', 'Kolumbien'],
+  ['A', 'Tschechien', 'Südafrika'],
+  ['B', 'Schweiz', 'Bosnien-Herzegowina'],
+  ['B', 'Kanada', 'Katar'],
+  ['A', 'Mexiko', 'Südkorea'],
+  ['D', 'USA', 'Australien'],
+  ['C', 'Schottland', 'Marokko'],
+  ['C', 'Brasilien', 'Haiti'],
+  ['D', 'Türkei', 'Paraguay'],
+  ['F', 'Niederlande', 'Schweden'],
+  ['E', 'Deutschland', 'Elfenbeinküste'],
+  ['E', 'Ecuador', 'Curaçao'],
+  ['F', 'Tunesien', 'Japan'],
+  ['H', 'Spanien', 'Saudi-Arabien'],
+  ['G', 'Belgien', 'Iran'],
+  ['H', 'Uruguay', 'Kap Verde'],
+  ['G', 'Neuseeland', 'Ägypten'],
+  ['J', 'Argentinien', 'Österreich'],
+  ['I', 'Frankreich', 'Irak'],
+  ['I', 'Norwegen', 'Senegal'],
+  ['J', 'Jordanien', 'Algerien'],
+  ['K', 'Portugal', 'Usbekistan'],
+  ['L', 'England', 'Ghana'],
+  ['L', 'Panama', 'Kroatien'],
+  ['K', 'Kolumbien', 'DR Kongo'],
+  ['B', 'Schweiz', 'Kanada'],
+  ['B', 'Bosnien-Herzegowina', 'Katar'],
+  ['C', 'Marokko', 'Haiti'],
+  ['C', 'Schottland', 'Brasilien'],
+  ['A', 'Südafrika', 'Südkorea'],
+  ['A', 'Tschechien', 'Mexiko'],
+  ['E', 'Curaçao', 'Elfenbeinküste'],
+  ['E', 'Ecuador', 'Deutschland'],
+  ['F', 'Japan', 'Schweden'],
+  ['F', 'Tunesien', 'Niederlande'],
+  ['D', 'Paraguay', 'Australien'],
+  ['D', 'Türkei', 'USA'],
+  ['I', 'Norwegen', 'Frankreich'],
+  ['I', 'Senegal', 'Irak'],
+  ['H', 'Kap Verde', 'Saudi-Arabien'],
+  ['H', 'Uruguay', 'Spanien'],
+  ['G', 'Ägypten', 'Iran'],
+  ['G', 'Neuseeland', 'Belgien'],
+  ['L', 'Kroatien', 'Ghana'],
+  ['L', 'Panama', 'England'],
+  ['K', 'Kolumbien', 'Portugal'],
+  ['K', 'DR Kongo', 'Usbekistan'],
+  ['J', 'Algerien', 'Österreich'],
+  ['J', 'Jordanien', 'Argentinien'],
+];
+
 const GROUP_BY_FIXTURE = new Map(
-  [
-    ['A', 'Mexiko', 'Südafrika'],
-    ['A', 'Südkorea', 'Tschechien'],
-    ['B', 'Kanada', 'Bosnien-Herzegowina'],
-    ['D', 'USA', 'Paraguay'],
-    ['B', 'Katar', 'Schweiz'],
-    ['C', 'Brasilien', 'Marokko'],
-    ['C', 'Haiti', 'Schottland'],
-    ['D', 'Australien', 'Türkei'],
-    ['E', 'Deutschland', 'Curaçao'],
-    ['F', 'Niederlande', 'Japan'],
-    ['E', 'Elfenbeinküste', 'Ecuador'],
-    ['F', 'Schweden', 'Tunesien'],
-    ['H', 'Spanien', 'Kap Verde'],
-    ['G', 'Belgien', 'Ägypten'],
-    ['H', 'Saudi-Arabien', 'Uruguay'],
-    ['G', 'Iran', 'Neuseeland'],
-    ['I', 'Frankreich', 'Senegal'],
-    ['I', 'Irak', 'Norwegen'],
-    ['J', 'Argentinien', 'Algerien'],
-    ['J', 'Österreich', 'Jordanien'],
-    ['K', 'Portugal', 'DR Kongo'],
-    ['L', 'England', 'Kroatien'],
-    ['L', 'Ghana', 'Panama'],
-    ['K', 'Usbekistan', 'Kolumbien'],
-    ['A', 'Tschechien', 'Südafrika'],
-    ['B', 'Schweiz', 'Bosnien-Herzegowina'],
-    ['B', 'Kanada', 'Katar'],
-    ['A', 'Mexiko', 'Südkorea'],
-    ['D', 'USA', 'Australien'],
-    ['C', 'Schottland', 'Marokko'],
-    ['C', 'Brasilien', 'Haiti'],
-    ['D', 'Türkei', 'Paraguay'],
-    ['F', 'Niederlande', 'Schweden'],
-    ['E', 'Deutschland', 'Elfenbeinküste'],
-    ['E', 'Ecuador', 'Curaçao'],
-    ['F', 'Tunesien', 'Japan'],
-    ['H', 'Spanien', 'Saudi-Arabien'],
-    ['G', 'Belgien', 'Iran'],
-    ['H', 'Uruguay', 'Kap Verde'],
-    ['G', 'Neuseeland', 'Ägypten'],
-    ['J', 'Argentinien', 'Österreich'],
-    ['I', 'Frankreich', 'Irak'],
-    ['I', 'Norwegen', 'Senegal'],
-    ['J', 'Jordanien', 'Algerien'],
-    ['K', 'Portugal', 'Usbekistan'],
-    ['L', 'England', 'Ghana'],
-    ['L', 'Panama', 'Kroatien'],
-    ['K', 'Kolumbien', 'DR Kongo'],
-    ['B', 'Schweiz', 'Kanada'],
-    ['B', 'Bosnien-Herzegowina', 'Katar'],
-    ['C', 'Marokko', 'Haiti'],
-    ['C', 'Schottland', 'Brasilien'],
-    ['A', 'Südafrika', 'Südkorea'],
-    ['A', 'Tschechien', 'Mexiko'],
-    ['E', 'Curaçao', 'Elfenbeinküste'],
-    ['E', 'Ecuador', 'Deutschland'],
-    ['F', 'Japan', 'Schweden'],
-    ['F', 'Tunesien', 'Niederlande'],
-    ['D', 'Paraguay', 'Australien'],
-    ['D', 'Türkei', 'USA'],
-    ['I', 'Norwegen', 'Frankreich'],
-    ['I', 'Senegal', 'Irak'],
-    ['H', 'Kap Verde', 'Saudi-Arabien'],
-    ['H', 'Uruguay', 'Spanien'],
-    ['G', 'Ägypten', 'Iran'],
-    ['G', 'Neuseeland', 'Belgien'],
-    ['L', 'Kroatien', 'Ghana'],
-    ['L', 'Panama', 'England'],
-    ['K', 'Kolumbien', 'Portugal'],
-    ['K', 'DR Kongo', 'Usbekistan'],
-    ['J', 'Algerien', 'Österreich'],
-    ['J', 'Jordanien', 'Argentinien'],
-  ].map(([group, home, away]) => [`${teamKey(home)}:${teamKey(away)}`, group]),
+  FIXTURES_LIST.map(([group, home, away]) => [`${teamKey(home)}:${teamKey(away)}`, group])
 );
+
+function getStaticId(homeTeam, awayTeam) {
+  const homeKey = teamKey(homeTeam);
+  const awayKey = teamKey(awayTeam);
+  const index = FIXTURES_LIST.findIndex(([group, home, away]) => teamKey(home) === homeKey && teamKey(away) === awayKey);
+  if (index !== -1) {
+    const group = FIXTURES_LIST[index][0];
+    return `wc2026-g${group.toLowerCase()}-${index + 1}`;
+  }
+  return null;
+}
 const args = new Set(process.argv.slice(2));
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 const dryRun = args.has('--dry-run');
@@ -218,7 +231,7 @@ function normalizeMatch(match) {
   const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
   const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
 
-  const isFinished = match.matchIsFinished;
+  const isFinished = match.matchIsFinished || regResult !== undefined;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
   const status = isFinished ? 'finalResult' : (now > kickoffDate ? 'live' : 'scheduled');
@@ -249,7 +262,19 @@ function normalizeMatch(match) {
 async function recalculateScores(firestore, allMatches, finalMatches) {
   if (finalMatches.length === 0) return;
 
-  const finalMatchById = new Map(finalMatches.map((match) => [match.id, match]));
+  const finalMatchById = new Map();
+  for (const m of finalMatches) {
+    // Keep matches under their original ID (e.g. openligadb-81464)
+    finalMatchById.set(m.id, m);
+    // Also store by the raw number just in case (e.g. 81464)
+    const rawId = m.id.replace('openligadb-', '');
+    finalMatchById.set(rawId, m);
+    // Also store by static ID (e.g. wc2026-ga-1)
+    const staticId = getStaticId(m.homeTeam, m.awayTeam);
+    if (staticId) {
+      finalMatchById.set(staticId, m);
+    }
+  }
   const leagues = await firestore.listDocuments('leagues');
 
   for (const league of leagues) {
@@ -370,7 +395,17 @@ async function recalculateScores(firestore, allMatches, finalMatches) {
       current.totalPoints += extra;
     }
 
-    for (const [uid, standing] of rankStandings([...stats.entries()])) {
+    const activeStats = [...stats.entries()].filter(([uid, current]) => current.leftAt === null);
+
+    for (const [uid, current] of stats.entries()) {
+      if (current.leftAt !== null) {
+        writes.push({
+          delete: `${firestore.baseUrl}/leagues/${encodeURIComponent(leagueId)}/standings/${encodeURIComponent(uid)}`,
+        });
+      }
+    }
+
+    for (const [uid, standing] of rankStandings(activeStats)) {
       writes.push({
         update: firestore.document('leagues', leagueId, 'standings', uid, {
           displayName: stringValue(standing.displayName),

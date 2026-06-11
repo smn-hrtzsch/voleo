@@ -6,7 +6,7 @@ const db = admin.firestore();
 
 const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026/2026';
 
-const GROUP_BY_FIXTURE = new Map([
+const FIXTURES_LIST = [
   ['A', 'Mexiko', 'Südafrika'],
   ['A', 'Südkorea', 'Tschechien'],
   ['B', 'Kanada', 'Bosnien-Herzegowina'],
@@ -79,7 +79,22 @@ const GROUP_BY_FIXTURE = new Map([
   ['K', 'DR Kongo', 'Usbekistan'],
   ['J', 'Algerien', 'Österreich'],
   ['J', 'Jordanien', 'Argentinien'],
-].map(([group, home, away]) => [`${teamKey(home)}:${teamKey(away)}`, group]));
+];
+
+const GROUP_BY_FIXTURE = new Map(
+  FIXTURES_LIST.map(([group, home, away]) => [`${teamKey(home)}:${teamKey(away)}`, group])
+);
+
+function getStaticId(homeTeam, awayTeam) {
+  const homeKey = teamKey(homeTeam);
+  const awayKey = teamKey(awayTeam);
+  const index = FIXTURES_LIST.findIndex(([group, home, away]) => teamKey(home) === homeKey && teamKey(away) === awayKey);
+  if (index !== -1) {
+    const group = FIXTURES_LIST[index][0];
+    return `wc2026-g${group.toLowerCase()}-${index + 1}`;
+  }
+  return null;
+}
 
 function teamKey(value) {
   return String(value || "")
@@ -154,7 +169,7 @@ function normalizeMatch(match) {
   const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
   const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
 
-  const isFinished = match.matchIsFinished;
+  const isFinished = match.matchIsFinished || regResult !== undefined;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
   const status = isFinished ? "finalResult" : (now > kickoffDate ? "live" : "scheduled");
@@ -519,7 +534,15 @@ function rankStandings(entries) {
 
 async function recalculateScores(allMatches, finalMatches) {
   if (finalMatches.length === 0) return;
-  const finalMatchById = new Map(finalMatches.map((m) => [m.id, m]));
+  const finalMatchById = new Map();
+  for (const m of finalMatches) {
+    finalMatchById.set(m.id, m);
+    finalMatchById.set(`openligadb-${m.id}`, m);
+    const staticId = getStaticId(m.homeTeam, m.awayTeam);
+    if (staticId) {
+      finalMatchById.set(staticId, m);
+    }
+  }
 
   const leaguesSnap = await db.collection("leagues").get();
   for (const leagueDoc of leaguesSnap.docs) {
@@ -579,7 +602,8 @@ async function recalculateScores(allMatches, finalMatches) {
       });
     });
 
-    // Score tips
+    // Deduplicate and cleanup tips (e.g. if the user tipped the same match via multiple IDs)
+    const userMatchTips = new Map();
     tipsSnap.forEach((tipDoc) => {
       const data = tipDoc.data();
       const matchId = data.matchId;
@@ -587,13 +611,40 @@ async function recalculateScores(allMatches, finalMatches) {
       if (!match) return;
 
       const uid = data.uid;
-      const current = stats.get(uid);
-      if (!current) return;
+      const key = `${uid}:${match.id}`;
+      const existing = userMatchTips.get(key);
+      if (!existing) {
+        userMatchTips.set(key, { tipDoc, data, match });
+      } else {
+        const parseTime = (val) => {
+          if (!val) return 0;
+          if (val.toDate) return val.toDate().getTime();
+          return new Date(val).getTime();
+        };
+        const curTime = parseTime(data.updatedAt);
+        const prevTime = parseTime(existing.data.updatedAt);
+        
+        if (curTime > prevTime) {
+          // Delete the old duplicate from Firestore
+          batch.delete(existing.tipDoc.ref);
+          userMatchTips.set(key, { tipDoc, data, match });
+        } else {
+          // Delete this duplicate from Firestore
+          batch.delete(tipDoc.ref);
+        }
+      }
+    });
 
-      if (current.leftAt !== null) return;
+    // Score tips
+    for (const { tipDoc, data, match } of userMatchTips.values()) {
+      const uid = data.uid;
+      const current = stats.get(uid);
+      if (!current) continue;
+
+      if (current.leftAt !== null) continue;
 
       const matchKickoff = new Date(match.kickoff);
-      if (matchKickoff < current.joinedAt) return;
+      if (matchKickoff < current.joinedAt) continue;
 
       const actualHome = match.regularHomeScore !== undefined && match.regularHomeScore !== null ? match.regularHomeScore : match.homeScore;
       const actualAway = match.regularAwayScore !== undefined && match.regularAwayScore !== null ? match.regularAwayScore : match.awayScore;
@@ -612,7 +663,7 @@ async function recalculateScores(allMatches, finalMatches) {
       if (score.isExact) current.exactCount += 1;
       if (score.isTendency) current.tendencyCount += 1;
       stats.set(uid, current);
-    });
+    }
 
     // Add extra points for each active user
     for (const [uid, current] of stats.entries()) {
@@ -624,7 +675,17 @@ async function recalculateScores(allMatches, finalMatches) {
     }
 
     // Rank and update standings
-    const ranked = rankStandings([...stats.values()]);
+    const activeStats = [...stats.values()].filter((s) => s.leftAt === null);
+    const ranked = rankStandings(activeStats);
+
+    // Delete standings for members who have left the league
+    for (const standing of stats.values()) {
+      if (standing.leftAt !== null) {
+        const standingRef = db.collection("leagues").doc(leagueId).collection("standings").doc(standing.uid);
+        batch.delete(standingRef);
+      }
+    }
+
     for (const standing of ranked) {
       const standingRef = db.collection("leagues").doc(leagueId).collection("standings").doc(standing.uid);
       batch.set(standingRef, {
