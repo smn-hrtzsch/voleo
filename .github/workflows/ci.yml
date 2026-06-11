@@ -18,23 +18,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore or Stub firebase_options.dart
-        run: |10
+        run: |
           if [ -n "${{ secrets.FIREBASE_OPTIONS_DART }}" ]; then
             echo "${{ secrets.FIREBASE_OPTIONS_DART }}" | base64 --decode > lib/firebase_options.dart
           else
             echo "creating dummy firebase_options.dart"
             mkdir -p lib
-            cat << 'EOF' > lib/firebase_options.dart
-          import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-          class DefaultFirebaseOptions {
-            static FirebaseOptions get currentPlatform => const FirebaseOptions(
-              apiKey: 'dummy',
-              appId: 'dummy',
-              messagingSenderId: 'dummy',
-              projectId: 'dummy',
-            );
-          }
-          EOF
+            echo "import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;" > lib/firebase_options.dart
+            echo "class DefaultFirebaseOptions {" >> lib/firebase_options.dart
+            echo "  static FirebaseOptions get currentPlatform => const FirebaseOptions(" >> lib/firebase_options.dart
+            echo "    apiKey: 'dummy'," >> lib/firebase_options.dart
+            echo "    appId: 'dummy'," >> lib/firebase_options.dart
+            echo "    messagingSenderId: 'dummy'," >> lib/firebase_options.dart
+            echo "    projectId: 'dummy'," >> lib/firebase_options.dart
+            echo "  );" >> lib/firebase_options.dart
+            echo "}" >> lib/firebase_options.dart
           fi
       - uses: subosito/flutter-action@v2
         with:
