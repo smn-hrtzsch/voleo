@@ -354,7 +354,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                         children: [
                           (() {
                             final matchTips = allTips
-                                .where((tip) => tip.matchId == match.id)
+                                .where((tip) =>
+                                    tip.matchId == match.id &&
+                                    displayNames.containsKey(tip.uid))
                                 .toList();
                             if (matchTips.isEmpty) {
                               return const Padding(
