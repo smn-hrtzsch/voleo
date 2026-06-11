@@ -176,9 +176,10 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                         .headlineMedium
                                         ?.copyWith(
                                           fontWeight: FontWeight.bold,
-                                          color: match.status == MatchStatus.live
-                                              ? Colors.green
-                                              : null,
+                                          color:
+                                              match.status == MatchStatus.live
+                                                  ? Colors.green
+                                                  : null,
                                         ),
                                   ),
                                 ),
@@ -272,8 +273,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           child: Icon(
                                             Icons.cancel,
                                             size: 18,
-                                            color:
-                                                Theme.of(context).colorScheme.error,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .error,
                                           ),
                                         ),
                                       ],
@@ -302,10 +304,10 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.15),
+                              color: Colors.green.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                  color: Colors.green, width: 1.2),
+                              border:
+                                  Border.all(color: Colors.green, width: 1.2),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,

@@ -170,13 +170,6 @@ class FirestoreVoleoRepository implements VoleoRepository {
       final staticMatches = buildWc2026GroupStageMatches();
       final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
 
-      print('DEBUG VOLEO: Loaded ${firestoreMatches.length} matches from Firestore.');
-      for (final fm in firestoreMatches) {
-        if (fm.homeTeam == 'Mexiko' || fm.awayTeam == 'Südafrika') {
-          print('DEBUG VOLEO Firestore Match: ID=${fm.id}, teams=${fm.homeTeam}-${fm.awayTeam}, status=${fm.status.name}, kickoff=${fm.kickoff}');
-        }
-      }
-
       final mergedMap = <String, CupMatch>{};
 
       // First, put all static matches into the map by ID
