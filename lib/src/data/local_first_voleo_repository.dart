@@ -784,7 +784,16 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     if (memberIndex != -1) {
       final member = _members[memberIndex];
       // Generate stable mock picks based on uid hash
-      final teams = ['Deutschland', 'Spanien', 'Frankreich', 'England', 'Italien', 'Portugal', 'Argentinien', 'Brasilien'];
+      final teams = [
+        'Deutschland',
+        'Spanien',
+        'Frankreich',
+        'England',
+        'Italien',
+        'Portugal',
+        'Argentinien',
+        'Brasilien'
+      ];
       final fav = teams[uid.hashCode % teams.length];
       final champ = teams[(uid.hashCode + 1) % teams.length];
       final risk = teams[(uid.hashCode + 2) % teams.length];
