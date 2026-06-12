@@ -116,7 +116,7 @@ class _GroupStandingsView extends ConsumerWidget {
 
   final List<CupMatch> matches;
 
-  Set<String> _calculateBestThirds(
+  List<_TeamRow> _getSortedThirds(
       Map<String, List<_TeamRow>> tables, List<String> officialTable) {
     final thirds = <_TeamRow>[];
     for (final group in tables.keys) {
@@ -141,7 +141,15 @@ class _GroupStandingsView extends ConsumerWidget {
       }
       return a.team.compareTo(b.team);
     });
-    return thirds.take(8).map((row) => row.team).toSet();
+    return thirds;
+  }
+
+  Set<String> _calculateBestThirds(
+      Map<String, List<_TeamRow>> tables, List<String> officialTable) {
+    return _getSortedThirds(tables, officialTable)
+        .take(8)
+        .map((row) => row.team)
+        .toSet();
   }
 
   String _normalizeTeamName(String name) {
@@ -258,11 +266,18 @@ class _GroupStandingsView extends ConsumerWidget {
       return const Center(child: Text('Keine Gruppenspiele geladen.'));
     }
     final bestThirds = _calculateBestThirds(tables, officialTable);
+    final sortedThirds = _getSortedThirds(tables, officialTable);
     final user = ref.watch(userProvider).value;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: tables.length,
+      itemCount: tables.length + 1,
       itemBuilder: (context, index) {
+        if (index == tables.length) {
+          return _BestThirdsTableCard(
+            rows: sortedThirds,
+            user: user,
+          );
+        }
         final group = tables.keys.elementAt(index);
         final rows = tables[group]!;
         return _GroupTableCard(
@@ -830,6 +845,198 @@ class _PlaceholderMatchCard extends StatelessWidget {
           'TBD',
           style: TextStyle(
               fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+}
+
+class _BestThirdsTableCard extends StatelessWidget {
+  const _BestThirdsTableCard({
+    required this.rows,
+    required this.user,
+  });
+
+  final List<_TeamRow> rows;
+  final VoleoUser? user;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 20),
+      elevation: 0,
+      color: scheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Beste drittplatzierte Mannschaften',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: scheme.primary,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Table(
+              columnWidths: const {
+                0: FixedColumnWidth(22), // Rank
+                1: FlexColumnWidth(1.0), // Team Name
+                2: FixedColumnWidth(24), // Sp
+                3: FixedColumnWidth(52), // Tore
+                4: FixedColumnWidth(34), // Diff
+                5: FixedColumnWidth(28), // Pkt
+              },
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom:
+                          BorderSide(color: scheme.outlineVariant, width: 1),
+                    ),
+                  ),
+                  children: const [
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('#',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Colors.grey)),
+                    ),
+                    Text('Team',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Sp',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Tore',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Text('Diff',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: Colors.grey)),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text('Pkt',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Colors.grey)),
+                    ),
+                  ],
+                ),
+                for (var i = 0; i < rows.length; i++)
+                  (() {
+                    final row = rows[i];
+                    final flag = CountryFlags.getFlag(row.team);
+                    final isAdvanced = i < 8;
+                    final rankColor =
+                        isAdvanced ? Colors.green : scheme.onSurfaceVariant;
+
+                    return TableRow(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: i == rows.length - 1
+                                ? Colors.transparent
+                                : scheme.outlineVariant.withAlpha(50),
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isAdvanced
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: rankColor,
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Text(flag, style: const TextStyle(fontSize: 16)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: TeamNameWithPicks(
+                                      teamName: row.team,
+                                      user: user,
+                                      isRightAligned: false,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: isAdvanced
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (row.isLive) ...[
+                                    const SizedBox(width: 4),
+                                    const LivePulseDot(),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '${row.played}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        Text(
+                          '${row.goalsFor}:${row.goalsAgainst}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        Text(
+                          '${row.goalDiff > 0 ? "+" : ""}${row.goalDiff}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: row.goalDiff > 0
+                                ? Colors.green
+                                : row.goalDiff < 0
+                                    ? Colors.red
+                                    : null,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${row.points}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isAdvanced ? scheme.primary : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  })(),
+              ],
+            ),
+          ],
         ),
       ),
     );
