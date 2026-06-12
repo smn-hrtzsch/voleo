@@ -136,6 +136,7 @@ for (const doc of existingMatchesDocs) {
       awayScore: awayVal != null ? parseInt(awayVal, 10) : null,
       status: fields.status?.stringValue ?? 'scheduled',
       winner: fields.winner?.stringValue ?? null,
+      resultNote: fields.resultNote?.stringValue ?? null,
     });
   }
 }
@@ -150,21 +151,50 @@ const koMatches = getKnockoutMatches().map((m) => {
       awayScore: existing.awayScore,
       status: existing.status,
       winner: existing.winner ?? null,
+      resultNote: existing.resultNote ?? null,
     };
   }
   return {
     ...m,
     winner: null,
+    resultNote: null,
   };
 });
 
 matches = [...groupMatches, ...koMatches];
 
-await firestore.batchWrite(
-  matches.map((match) => ({
-    update: firestore.document('matches', match.id, fieldsForMatch(match)),
-  })),
-);
+let matchesChanged = false;
+let finalMatchesChanged = false;
+const matchesToUpdate = [];
+
+for (const match of matches) {
+  const existing = existingMatchMap.get(match.id);
+  const changed = !existing ||
+    existing.homeScore !== match.homeScore ||
+    existing.awayScore !== match.awayScore ||
+    existing.status !== match.status ||
+    existing.winner !== match.winner ||
+    existing.resultNote !== match.resultNote;
+
+  if (changed) {
+    matchesChanged = true;
+    if (match.status === 'finalResult' || (existing && existing.status === 'finalResult')) {
+      finalMatchesChanged = true;
+    }
+    matchesToUpdate.push(match);
+  }
+}
+
+if (matchesChanged) {
+  await firestore.batchWrite(
+    matchesToUpdate.map((match) => ({
+      update: firestore.document('matches', match.id, fieldsForMatch(match)),
+    })),
+  );
+  console.log(`Synced ${matchesToUpdate.length} changed matches to Firestore.`);
+} else {
+  console.log('No matches changed. Skipping matches Firestore write.');
+}
 
 if (!dryRun) {
   try {
@@ -173,30 +203,46 @@ if (!dryRun) {
     if (tableResponse.ok) {
       const tableData = await tableResponse.json();
       const officialOrder = tableData.map((t) => t.teamName);
-      await firestore.batchWrite([
-        {
-          update: firestore.document('settings', 'official_table', {
-            teams: {
-              arrayValue: {
-                values: officialOrder.map((team) => ({ stringValue: team })),
+      
+      const existingTableDoc = await firestore.getDocument('settings', 'official_table').catch(() => null);
+      let tableChanged = true;
+      if (existingTableDoc && existingTableDoc.fields?.teams?.arrayValue?.values) {
+        const existingTeams = existingTableDoc.fields.teams.arrayValue.values.map(v => v.stringValue);
+        tableChanged = JSON.stringify(existingTeams) !== JSON.stringify(officialOrder);
+      }
+      
+      if (tableChanged) {
+        await firestore.batchWrite([
+          {
+            update: firestore.document('settings', 'official_table', {
+              teams: {
+                arrayValue: {
+                  values: officialOrder.map((team) => ({ stringValue: team })),
+                },
               },
-            },
-            updatedAt: timestampValue(new Date().toISOString()),
-          }),
-        },
-      ]);
-      console.log('Synced official table to Firestore.');
+              updatedAt: timestampValue(new Date().toISOString()),
+            }),
+          },
+        ]);
+        console.log('Synced official table to Firestore.');
+      } else {
+        console.log('Official table unchanged. Skipping write.');
+      }
     }
   } catch (err) {
     console.error('Failed to fetch/save official table:', err);
   }
 }
 
-await recalculateScores(
-  firestore,
-  matches,
-  matches.filter((match) => match.status === 'finalResult'),
-);
+if (finalMatchesChanged) {
+  await recalculateScores(
+    firestore,
+    matches,
+    matches.filter((match) => match.status === 'finalResult'),
+  );
+} else {
+  console.log('No final matches changed. Skipping scores recalculation.');
+}
 
 console.log(JSON.stringify({ dryRun: false, synced: matches.length }, null, 2));
 
@@ -257,7 +303,7 @@ function normalizeMatch(match) {
   const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
   const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
 
-  const isFinished = match.matchIsFinished || regResult !== undefined;
+  const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
   const status = isFinished ? 'finalResult' : (now > kickoffDate ? 'live' : 'scheduled');

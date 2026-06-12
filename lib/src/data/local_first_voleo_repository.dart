@@ -390,9 +390,13 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           actualAway: actualAway,
         );
         total += result.points;
-        if (result.isExact) exact++;
-        if (result.points == 3) difference++;
-        if (result.isTendency) tendency++;
+        if (result.isExact) {
+          exact++;
+        } else if (result.points == 3) {
+          difference++;
+        } else if (result.isTendency) {
+          tendency++;
+        }
       }
       final extraPoints = calculateExtraPoints(user, _currentMatches);
       total += extraPoints;
@@ -784,7 +788,16 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     if (memberIndex != -1) {
       final member = _members[memberIndex];
       // Generate stable mock picks based on uid hash
-      final teams = ['Deutschland', 'Spanien', 'Frankreich', 'England', 'Italien', 'Portugal', 'Argentinien', 'Brasilien'];
+      final teams = [
+        'Deutschland',
+        'Spanien',
+        'Frankreich',
+        'England',
+        'Italien',
+        'Portugal',
+        'Argentinien',
+        'Brasilien'
+      ];
       final fav = teams[uid.hashCode % teams.length];
       final champ = teams[(uid.hashCode + 1) % teams.length];
       final risk = teams[(uid.hashCode + 2) % teams.length];

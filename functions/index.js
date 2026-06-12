@@ -169,7 +169,7 @@ function normalizeMatch(match) {
   const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
   const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
 
-  const isFinished = match.matchIsFinished || regResult !== undefined;
+  const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
   const status = isFinished ? "finalResult" : (now > kickoffDate ? "live" : "scheduled");
@@ -664,9 +664,13 @@ async function recalculateScores(allMatches, finalMatches) {
       batch.update(tipDoc.ref, { points: score.points });
 
       current.totalPoints += score.points;
-      if (score.isExact) current.exactCount += 1;
-      if (score.points === 3) current.differenceCount = (current.differenceCount ?? 0) + 1;
-      if (score.isTendency) current.tendencyCount += 1;
+      if (score.isExact) {
+        current.exactCount += 1;
+      } else if (score.points === 3) {
+        current.differenceCount = (current.differenceCount ?? 0) + 1;
+      } else if (score.isTendency) {
+        current.tendencyCount += 1;
+      }
       stats.set(uid, current);
     }
 
@@ -761,26 +765,50 @@ exports.syncResults = functions.region("europe-west3").runWith({
 
     const allMatches = [...groupMatches, ...koMatches];
 
+    let matchesChanged = false;
+    let finalMatchesChanged = false;
+
     const matchBatch = db.batch();
     for (const match of allMatches) {
-      const docRef = db.collection("matches").doc(match.id);
-      matchBatch.set(docRef, {
-        homeTeam: match.homeTeam,
-        awayTeam: match.awayTeam,
-        kickoff: admin.firestore.Timestamp.fromDate(new Date(match.kickoff)),
-        stage: match.stage,
-        group: match.group,
-        status: match.status,
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
-        winner: match.winner ?? null,
-        resultNote: match.resultNote ?? null,
-        source: "openligadb",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      const existing = existingMatchMap.get(match.id);
+      
+      const changed = !existing ||
+        existing.homeScore !== match.homeScore ||
+        existing.awayScore !== match.awayScore ||
+        existing.status !== match.status ||
+        existing.winner !== match.winner ||
+        existing.resultNote !== match.resultNote;
+
+      if (changed) {
+        matchesChanged = true;
+        if (match.status === "finalResult" || (existing && existing.status === "finalResult")) {
+          finalMatchesChanged = true;
+        }
+        
+        const docRef = db.collection("matches").doc(match.id);
+        matchBatch.set(docRef, {
+          homeTeam: match.homeTeam,
+          awayTeam: match.awayTeam,
+          kickoff: admin.firestore.Timestamp.fromDate(new Date(match.kickoff)),
+          stage: match.stage,
+          group: match.group,
+          status: match.status,
+          homeScore: match.homeScore,
+          awayScore: match.awayScore,
+          winner: match.winner ?? null,
+          resultNote: match.resultNote ?? null,
+          source: "openligadb",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
     }
-    await matchBatch.commit();
-    console.log(`Synced ${allMatches.length} matches to Firestore.`);
+
+    if (matchesChanged) {
+      await matchBatch.commit();
+      console.log(`Synced changed matches to Firestore.`);
+    } else {
+      console.log("No matches changed. Skipping matches Firestore write.");
+    }
 
     try {
       console.log("Fetching official table from OpenLigaDB...");
@@ -788,11 +816,20 @@ exports.syncResults = functions.region("europe-west3").runWith({
       if (tableResponse.ok) {
         const tableData = await tableResponse.json();
         const officialOrder = tableData.map((t) => t.teamName);
-        await db.collection("settings").doc("official_table").set({
-          teams: officialOrder,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        console.log("Synced official table to Firestore.");
+        
+        const existingTableSnap = await db.collection("settings").doc("official_table").get();
+        const existingTeams = existingTableSnap.exists ? existingTableSnap.data().teams : [];
+        const tableChanged = JSON.stringify(existingTeams) !== JSON.stringify(officialOrder);
+        
+        if (tableChanged) {
+          await db.collection("settings").doc("official_table").set({
+            teams: officialOrder,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          console.log("Synced official table to Firestore.");
+        } else {
+          console.log("Official table unchanged. Skipping write.");
+        }
       } else {
         console.warn(`Failed to fetch official table: ${tableResponse.status}`);
       }
@@ -800,9 +837,11 @@ exports.syncResults = functions.region("europe-west3").runWith({
       console.error("Failed to fetch/save official table:", err);
     }
 
-    const finalMatches = allMatches.filter((m) => m.status === "finalResult");
-    if (finalMatches.length > 0) {
+    if (finalMatchesChanged) {
+      const finalMatches = allMatches.filter((m) => m.status === "finalResult");
       await recalculateScores(allMatches, finalMatches);
+    } else {
+      console.log("No final matches changed. Skipping scores recalculation.");
     }
     console.log("syncResults job completed successfully.");
   } catch (error) {

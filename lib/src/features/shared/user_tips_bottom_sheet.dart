@@ -322,18 +322,19 @@ class _UserTipsBottomSheetContentState
           for (final match in filteredMatches) ...[
             (() {
               final tip = widget.userTips.cast<Tip?>().firstWhere(
-                    (t) {
-                      if (t == null) return false;
-                      if (t.matchId == match.id) return true;
-                      if (match.originalId != null) {
-                        final cleanTipId = t.matchId.replaceAll('openligadb-', '');
-                        final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
-                        if (cleanTipId == cleanOrigId) return true;
-                      }
-                      return false;
-                    },
-                    orElse: () => null,
-                  );
+                (t) {
+                  if (t == null) return false;
+                  if (t.matchId == match.id) return true;
+                  if (match.originalId != null) {
+                    final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+                    final cleanOrigId =
+                        match.originalId!.replaceAll('openligadb-', '');
+                    if (cleanTipId == cleanOrigId) return true;
+                  }
+                  return false;
+                },
+                orElse: () => null,
+              );
               final isMatchLocked = match.status != MatchStatus.scheduled ||
                   VoleoClock.now.isAfter(match.kickoff);
               final showTip = widget.isCurrentUser || isMatchLocked;
