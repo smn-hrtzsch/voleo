@@ -5,11 +5,11 @@ import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
 import '../../domain/flags.dart';
-import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
 import '../shared/live_pulse_dot.dart';
+import '../shared/team_name_with_picks.dart';
 
 class MatchesScreen extends ConsumerStatefulWidget {
   const MatchesScreen({super.key});
@@ -449,7 +449,7 @@ class _DayMatchCard extends StatelessWidget {
             for (final match in matches)
               _MatchRow(
                 match: match,
-                tip: _tipForMatch(tips, match.id),
+                tip: _tipForMatch(tips, match),
                 user: user,
               ),
           ],
@@ -613,8 +613,13 @@ class _TeamSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = _buildTeamName(context, teamName, user,
-        isRightAligned: isHome, isWinner: isWinner, isLoser: isLoser);
+    final name = TeamNameWithPicks(
+      teamName: teamName,
+      user: user,
+      isRightAligned: isHome,
+      isWinner: isWinner,
+      isLoser: isLoser,
+    );
     final flagText = Text(flag, style: const TextStyle(fontSize: 21));
     final children = isHome
         ? <Widget>[
@@ -728,89 +733,16 @@ String _formatDay(DateTime day) {
   return '${weekdays[day.weekday - 1]}, ${DateFormat('dd.MM.').format(day)}';
 }
 
-Tip? _tipForMatch(List<Tip> tips, String matchId) {
+Tip? _tipForMatch(List<Tip> tips, CupMatch match) {
   for (final tip in tips) {
-    if (tip.matchId == matchId) return tip;
+    if (tip.matchId == match.id) return tip;
+    if (match.originalId != null) {
+      final cleanTipId = tip.matchId.replaceAll('openligadb-', '');
+      final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
+      if (cleanTipId == cleanOrigId) return tip;
+    }
   }
   return null;
-}
-
-Widget _buildTeamName(
-  BuildContext context,
-  String teamName,
-  VoleoUser? user, {
-  required bool isRightAligned,
-  bool isWinner = false,
-  bool isLoser = false,
-}) {
-  final List<Widget> markers = [];
-  if (user != null) {
-    if (user.favoriteTeam != null && isSameTeam(user.favoriteTeam!, teamName)) {
-      markers.add(
-        const Icon(
-          Icons.star,
-          color: Colors.amber,
-          size: 14,
-        ),
-      );
-    }
-    if (user.predictedChampion != null &&
-        isSameTeam(user.predictedChampion!, teamName)) {
-      markers.add(
-        const Icon(
-          Icons.sports_soccer,
-          color: Colors.blue,
-          size: 14,
-        ),
-      );
-    }
-    if (user.riskTeam != null && isSameTeam(user.riskTeam!, teamName)) {
-      markers.add(
-        const Icon(
-          Icons.close,
-          color: Colors.red,
-          size: 14,
-        ),
-      );
-    }
-  }
-
-  final textWidget = Text(
-    teamName,
-    textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
-    maxLines: 2,
-    softWrap: true,
-    overflow: TextOverflow.ellipsis,
-    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-  );
-
-  if (markers.isEmpty) {
-    return textWidget;
-  }
-
-  final List<Widget> children = [];
-  if (isRightAligned) {
-    for (var i = 0; i < markers.length; i++) {
-      children.add(markers[i]);
-      children.add(const SizedBox(width: 2));
-    }
-    children.add(Flexible(child: textWidget));
-  } else {
-    children.add(Flexible(child: textWidget));
-    for (var i = 0; i < markers.length; i++) {
-      children.add(const SizedBox(width: 2));
-      children.add(markers[i]);
-    }
-  }
-
-  return Row(
-    mainAxisAlignment:
-        isRightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: children,
-  );
 }
 
 Widget _buildScoreProgression(

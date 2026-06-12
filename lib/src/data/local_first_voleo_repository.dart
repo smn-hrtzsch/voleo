@@ -97,6 +97,11 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
+  Stream<List<String>> watchOfficialTable() {
+    return Stream.value(const <String>[]);
+  }
+
+  @override
   Future<void> startSession({
     required String nickname,
     String? inviteCode,
@@ -366,6 +371,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     if (user != null) {
       var total = 0;
       var exact = 0;
+      var difference = 0;
       var tendency = 0;
       for (final tip in _currentTips) {
         final match =
@@ -385,6 +391,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
         );
         total += result.points;
         if (result.isExact) exact++;
+        if (result.points == 3) difference++;
         if (result.isTendency) tendency++;
       }
       final extraPoints = calculateExtraPoints(user, _currentMatches);
@@ -395,6 +402,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           displayName: user.nickname,
           totalPoints: total,
           exactCount: exact,
+          differenceCount: difference,
           tendencyCount: tendency,
           rank: 0,
           photoUrl: user.photoUrl,
@@ -771,6 +779,25 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   @override
   Future<VoleoUser?> getUser(String uid) async {
     if (_currentUser?.uid == uid) return _currentUser;
+    // Look up in _members for mock/local data
+    final memberIndex = _members.indexWhere((m) => m.uid == uid);
+    if (memberIndex != -1) {
+      final member = _members[memberIndex];
+      // Generate stable mock picks based on uid hash
+      final teams = ['Deutschland', 'Spanien', 'Frankreich', 'England', 'Italien', 'Portugal', 'Argentinien', 'Brasilien'];
+      final fav = teams[uid.hashCode % teams.length];
+      final champ = teams[(uid.hashCode + 1) % teams.length];
+      final risk = teams[(uid.hashCode + 2) % teams.length];
+      return VoleoUser(
+        uid: uid,
+        nickname: member.displayName,
+        isAnonymous: true,
+        favoriteTeam: fav,
+        predictedChampion: champ,
+        riskTeam: risk,
+        riskStage: 'Achtelfinale',
+      );
+    }
     return null;
   }
 }

@@ -12,11 +12,16 @@ on:
       - "pubspec.lock"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - name: Restore or Stub firebase_options.dart
         run: |
           if [ -n "${{ secrets.FIREBASE_OPTIONS_DART }}" ]; then
@@ -39,6 +44,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart format --set-exit-if-changed .
+      - name: Format code
+        run: dart format lib/ test/
+      - name: Auto-commit formatted code
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto-format Dart code"
       - run: flutter analyze
       - run: flutter test

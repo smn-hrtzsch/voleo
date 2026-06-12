@@ -45,6 +45,10 @@ final standingsProvider = StreamProvider<List<Standing>>((ref) {
   return ref.watch(repositoryProvider).watchStandings();
 });
 
+final officialTableProvider = StreamProvider<List<String>>((ref) {
+  return ref.watch(repositoryProvider).watchOfficialTable();
+});
+
 class CachedInviteCode extends Notifier<String?> {
   @override
   String? build() => null;

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 class LivePulseDot extends StatefulWidget {
-  const LivePulseDot({super.key});
+  const LivePulseDot({super.key, this.size = 8.0});
+
+  final double size;
 
   @override
   State<LivePulseDot> createState() => _LivePulseDotState();
@@ -33,8 +35,8 @@ class _LivePulseDotState extends State<LivePulseDot>
     return FadeTransition(
       opacity: _animation,
       child: Container(
-        width: 8,
-        height: 8,
+        width: widget.size,
+        height: widget.size,
         decoration: const BoxDecoration(
           color: Colors.green,
           shape: BoxShape.circle,

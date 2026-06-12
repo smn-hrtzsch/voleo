@@ -66,6 +66,7 @@ List<Standing> rankStandings(List<Standing> standings) {
           displayName: current.displayName,
           totalPoints: current.totalPoints,
           exactCount: current.exactCount,
+          differenceCount: current.differenceCount,
           tendencyCount: current.tendencyCount,
           rank: rank,
           photoUrl: current.photoUrl,
@@ -390,6 +391,69 @@ String getEvaluationLabel({
   required CupMatch match,
 }) {
   final winner = getMatchWinner(match);
+  final isFavWin = winner != null &&
+      favoriteTeam != null &&
+      isSameTeam(favoriteTeam, winner);
+  final isChampWin = winner != null &&
+      predictedChampion != null &&
+      isSameTeam(predictedChampion, winner);
+
+  final baseLabel = tipPoints == 4
+      ? 'exakt'
+      : tipPoints == 3
+          ? 'Differenz'
+          : tipPoints == 2
+              ? 'Tendenz'
+              : 'falsch';
+
+  final boosters = <String>[];
+  if (isFavWin) boosters.add('Lieblings-Team');
+  if (isChampWin) boosters.add('Favorit-Booster');
+
+  if (boosters.isEmpty) return baseLabel;
+  return '$baseLabel\n+ ${boosters.join('\n+ ')}';
+}
+
+String? getLiveMatchWinner(CupMatch match) {
+  if (match.winner != null && match.winner!.isNotEmpty) {
+    return match.winner;
+  }
+  final hs = match.homeScore;
+  final as = match.awayScore;
+  if (hs == null || as == null) return null;
+  if (hs > as) return match.homeTeam;
+  if (as > hs) return match.awayTeam;
+  return null;
+}
+
+int getLiveMatchTotalPoints({
+  required int tipPoints,
+  required String? favoriteTeam,
+  required String? predictedChampion,
+  required CupMatch match,
+}) {
+  final winner = getLiveMatchWinner(match);
+  var total = tipPoints;
+  if (winner != null &&
+      favoriteTeam != null &&
+      isSameTeam(favoriteTeam, winner)) {
+    total += 10;
+  }
+  if (winner != null &&
+      predictedChampion != null &&
+      isSameTeam(predictedChampion, winner)) {
+    total += 10;
+  }
+  return total;
+}
+
+String getLiveEvaluationLabel({
+  required int tipPoints,
+  required String? favoriteTeam,
+  required String? predictedChampion,
+  required CupMatch match,
+}) {
+  final winner = getLiveMatchWinner(match);
   final isFavWin = winner != null &&
       favoriteTeam != null &&
       isSameTeam(favoriteTeam, winner);

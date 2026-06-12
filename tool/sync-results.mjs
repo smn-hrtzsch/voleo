@@ -166,6 +166,32 @@ await firestore.batchWrite(
   })),
 );
 
+if (!dryRun) {
+  try {
+    console.log('Fetching official table from OpenLigaDB...');
+    const tableResponse = await fetch('https://api.openligadb.de/getbltable/wm2026/2026');
+    if (tableResponse.ok) {
+      const tableData = await tableResponse.json();
+      const officialOrder = tableData.map((t) => t.teamName);
+      await firestore.batchWrite([
+        {
+          update: firestore.document('settings', 'official_table', {
+            teams: {
+              arrayValue: {
+                values: officialOrder.map((team) => ({ stringValue: team })),
+              },
+            },
+            updatedAt: timestampValue(new Date().toISOString()),
+          }),
+        },
+      ]);
+      console.log('Synced official table to Firestore.');
+    }
+  } catch (err) {
+    console.error('Failed to fetch/save official table:', err);
+  }
+}
+
 await recalculateScores(
   firestore,
   matches,

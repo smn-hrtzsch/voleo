@@ -217,7 +217,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
           final sm = entry.value;
           if (normalizeTeam(sm.homeTeam) == normalizeTeam(fm.homeTeam) &&
               normalizeTeam(sm.awayTeam) == normalizeTeam(fm.awayTeam) &&
-              sm.kickoff.difference(fm.kickoff).abs() < const Duration(hours: 12)) {
+              sm.kickoff.difference(fm.kickoff).abs() <
+                  const Duration(hours: 12)) {
             duplicateId = entry.key;
             break;
           }
@@ -227,10 +228,13 @@ class FirestoreVoleoRepository implements VoleoRepository {
           final existing = mergedMap[duplicateId]!;
           if (statusPriority(fm.status) >= statusPriority(existing.status)) {
             // Keep the static match ID, but update with firestore data
-            mergedMap[duplicateId] = fm.copyWith(id: duplicateId);
+            mergedMap[duplicateId] = fm.copyWith(
+              id: duplicateId,
+              originalId: fm.id,
+            );
           }
         } else {
-          mergedMap[fm.id] = fm;
+          mergedMap[fm.id] = fm.copyWith(originalId: fm.id);
         }
       }
 
@@ -302,6 +306,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
                 displayName: displayName,
                 totalPoints: s.totalPoints,
                 exactCount: s.exactCount,
+                differenceCount: s.differenceCount,
                 tendencyCount: s.tendencyCount,
                 rank: s.rank,
                 photoUrl: photoUrl,
@@ -328,6 +333,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
                       'Spieler',
                   totalPoints: memberData['totalPoints'] as int? ?? 0,
                   exactCount: memberData['exactCount'] as int? ?? 0,
+                  differenceCount: memberData['differenceCount'] as int? ?? 0,
                   tendencyCount: memberData['tendencyCount'] as int? ?? 0,
                   rank: 0,
                   photoUrl: memberData['photoUrl'] as String? ??
@@ -400,6 +406,22 @@ class FirestoreVoleoRepository implements VoleoRepository {
       );
 
       return controller.stream;
+    });
+  }
+
+  @override
+  Stream<List<String>> watchOfficialTable() {
+    return _firestore
+        .collection('settings')
+        .doc('official_table')
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists) return const <String>[];
+      final data = doc.data();
+      if (data == null) return const <String>[];
+      final teamsRaw = data['teams'] as List<dynamic>?;
+      if (teamsRaw == null) return const <String>[];
+      return teamsRaw.cast<String>();
     });
   }
 
@@ -1306,6 +1328,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       otAwayScore: data['otAwayScore'] as int?,
       penaltyHomeScore: data['penaltyHomeScore'] as int?,
       penaltyAwayScore: data['penaltyAwayScore'] as int?,
+      originalId: doc.id,
     );
   }
 
@@ -1328,6 +1351,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       displayName: data['displayName'] as String,
       totalPoints: data['totalPoints'] as int? ?? 0,
       exactCount: data['exactCount'] as int? ?? 0,
+      differenceCount: data['differenceCount'] as int? ?? 0,
       tendencyCount: data['tendencyCount'] as int? ?? 0,
       rank: data['rank'] as int? ?? 0,
       photoUrl: data['photoUrl'] as String?,

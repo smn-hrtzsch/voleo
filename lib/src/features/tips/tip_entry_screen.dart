@@ -52,7 +52,8 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
         title: const Text('Tipp'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.canPop() ? context.pop() : context.go(widget.returnPath),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(widget.returnPath),
         ),
       ),
       body: SafeArea(
@@ -69,7 +70,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                     const Text('Spiel wurde nicht gefunden.'),
                     const SizedBox(height: 16),
                     FilledButton(
-                      onPressed: () => context.canPop() ? context.pop() : context.go(widget.returnPath),
+                      onPressed: () => context.canPop()
+                          ? context.pop()
+                          : context.go(widget.returnPath),
                       child: const Text('Zurück'),
                     ),
                   ],
@@ -78,7 +81,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
             }
             final existingTip = _tipForMatch(
               ref.watch(tipsProvider).value ?? const <Tip>[],
-              match.id,
+              match,
             );
             final allTips =
                 ref.watch(leagueTipsProvider).value ?? const <Tip>[];
@@ -293,6 +296,37 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                 ),
                               ),
                             ],
+                            if (match.status == MatchStatus.live &&
+                                existingTip != null) ...[
+                              const SizedBox(height: 8),
+                              (() {
+                                final user = ref.watch(userProvider).value;
+                                final previewScore = scoreTip(
+                                  predictedHome: existingTip.predictedHome,
+                                  predictedAway: existingTip.predictedAway,
+                                  actualHome: match.homeScore ?? 0,
+                                  actualAway: match.awayScore ?? 0,
+                                );
+                                final pts = getLiveMatchTotalPoints(
+                                  tipPoints: previewScore.points,
+                                  favoriteTeam: user?.favoriteTeam,
+                                  predictedChampion: user?.predictedChampion,
+                                  match: match,
+                                );
+                                return Center(
+                                  child: Chip(
+                                    avatar: const LivePulseDot(),
+                                    label: Text(
+                                      'Voraussichtlich: +$pts (${_scoreLabel(previewScore)})',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              })(),
+                            ],
                           ],
                         ),
                       ),
@@ -393,7 +427,10 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           (() {
                             final matchTips = allTips
                                 .where((tip) =>
-                                    tip.matchId == match.id &&
+                                    (tip.matchId == match.id ||
+                                        (match.originalId != null &&
+                                            tip.matchId.replaceAll('openligadb-', '') ==
+                                                match.originalId!.replaceAll('openligadb-', ''))) &&
                                     displayNames.containsKey(tip.uid))
                                 .toList();
                             if (matchTips.isEmpty) {
@@ -476,6 +513,30 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                     final userProfile = _loadedUsers[tip.uid];
                                     final isPlaceholder =
                                         userProfile?.nickname.isEmpty ?? true;
+                                    final isLive =
+                                        match.status == MatchStatus.live;
+                                    final liveTipPoints = isLive
+                                        ? scoreTip(
+                                            predictedHome: tip.predictedHome,
+                                            predictedAway: tip.predictedAway,
+                                            actualHome: match.homeScore ?? 0,
+                                            actualAway: match.awayScore ?? 0,
+                                          ).points
+                                        : 0;
+
+                                    final liveTotalPts = isLive
+                                        ? getLiveMatchTotalPoints(
+                                            tipPoints: liveTipPoints,
+                                            favoriteTeam: isPlaceholder
+                                                ? null
+                                                : userProfile?.favoriteTeam,
+                                            predictedChampion: isPlaceholder
+                                                ? null
+                                                : userProfile
+                                                    ?.predictedChampion,
+                                            match: match,
+                                          )
+                                        : 0;
 
                                     final totalPts = getMatchTotalPoints(
                                       tipPoints: tip.points,
@@ -498,6 +559,20 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           : userProfile?.predictedChampion,
                                       match: match,
                                     );
+
+                                    final liveEvalStr = isLive
+                                        ? getLiveEvaluationLabel(
+                                            tipPoints: liveTipPoints,
+                                            favoriteTeam: isPlaceholder
+                                                ? null
+                                                : userProfile?.favoriteTeam,
+                                            predictedChampion: isPlaceholder
+                                                ? null
+                                                : userProfile
+                                                    ?.predictedChampion,
+                                            match: match,
+                                          )
+                                        : '';
 
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
@@ -546,28 +621,55 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                                               .withAlpha(38)
                                                           : Colors.grey
                                                               .withAlpha(38))
-                                                      : Colors.blue
-                                                          .withAlpha(38),
+                                                      : match.status ==
+                                                              MatchStatus.live
+                                                          ? Colors.green
+                                                              .withAlpha(38)
+                                                          : Colors.blue
+                                                              .withAlpha(38),
                                                   borderRadius:
                                                       BorderRadius.circular(6),
                                                 ),
-                                                child: Text(
-                                                  match.status ==
-                                                          MatchStatus
-                                                              .finalResult
-                                                      ? '+$totalPts'
-                                                      : '-',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: match.status ==
-                                                            MatchStatus
-                                                                .finalResult
-                                                        ? (totalPts > 0
-                                                            ? Colors.green
-                                                            : Colors.grey)
-                                                        : Colors.blue,
-                                                  ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      match.status ==
+                                                              MatchStatus
+                                                                  .finalResult
+                                                          ? '+$totalPts'
+                                                          : match.status ==
+                                                                  MatchStatus
+                                                                      .live
+                                                              ? '+$liveTotalPts'
+                                                              : '-',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: match.status ==
+                                                                MatchStatus
+                                                                    .finalResult
+                                                            ? (totalPts > 0
+                                                                ? Colors.green
+                                                                : Colors.grey)
+                                                            : match.status ==
+                                                                    MatchStatus
+                                                                        .live
+                                                                ? Colors.green
+                                                                : Colors.blue,
+                                                      ),
+                                                    ),
+                                                    if (match.status ==
+                                                        MatchStatus.live) ...[
+                                                      const SizedBox(width: 4),
+                                                      const LivePulseDot(
+                                                          size: 6),
+                                                    ],
+                                                  ],
                                                 ),
                                               ),
                                             ),
@@ -578,16 +680,35 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                               match.status ==
                                                       MatchStatus.finalResult
                                                   ? evalStr
-                                                  : '-',
+                                                  : match.status ==
+                                                          MatchStatus.live
+                                                      ? liveEvalStr
+                                                      : '-',
                                               textAlign: TextAlign.right,
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                color: totalPts > 0
-                                                    ? Colors.green
-                                                    : Colors.grey,
-                                                fontWeight: totalPts > 0
-                                                    ? FontWeight.w500
-                                                    : FontWeight.normal,
+                                                color: match.status ==
+                                                        MatchStatus.finalResult
+                                                    ? (totalPts > 0
+                                                        ? Colors.green
+                                                        : Colors.grey)
+                                                    : match.status ==
+                                                            MatchStatus.live
+                                                        ? (liveTotalPts > 0
+                                                            ? Colors.green
+                                                            : Colors.grey)
+                                                        : Colors.grey,
+                                                fontWeight: match.status ==
+                                                        MatchStatus.finalResult
+                                                    ? (totalPts > 0
+                                                        ? FontWeight.w500
+                                                        : FontWeight.normal)
+                                                    : match.status ==
+                                                            MatchStatus.live
+                                                        ? (liveTotalPts > 0
+                                                            ? FontWeight.w500
+                                                            : FontWeight.normal)
+                                                        : FontWeight.normal,
                                               ),
                                             ),
                                           ),
@@ -733,9 +854,14 @@ class _MatchupTeamLabel extends StatelessWidget {
   }
 }
 
-Tip? _tipForMatch(List<Tip> tips, String matchId) {
+Tip? _tipForMatch(List<Tip> tips, CupMatch match) {
   for (final tip in tips) {
-    if (tip.matchId == matchId) return tip;
+    if (tip.matchId == match.id) return tip;
+    if (match.originalId != null) {
+      final cleanTipId = tip.matchId.replaceAll('openligadb-', '');
+      final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
+      if (cleanTipId == cleanOrigId) return tip;
+    }
   }
   return null;
 }
