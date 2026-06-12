@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../../domain/flags.dart';
 import '../../domain/clock.dart';
 import '../../domain/voleo_models.dart';
+import '../../domain/scoring.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
 import '../shared/live_pulse_dot.dart';
@@ -229,7 +230,112 @@ class _TopThreeCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final topThree = standings.take(3).toList();
+    final user = ref.watch(userProvider).value;
+    final liveMatches =
+        matches.where((m) => m.status == MatchStatus.live).toList();
+
+    final List<_LiveStanding> liveStandings = standings.map((s) {
+      int total = s.totalPoints;
+      int exact = s.exactCount;
+      int diff = s.differenceCount;
+      int tendency = s.tendencyCount;
+      bool updated = false;
+
+      final userTips = tips.where((t) => t.uid == s.uid).toList();
+
+      for (final match in liveMatches) {
+        final tip = userTips.cast<Tip?>().firstWhere(
+          (t) {
+            if (t == null) return false;
+            if (t.matchId == match.id) return true;
+            if (match.originalId != null) {
+              final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+              final cleanOrigId =
+                  match.originalId!.replaceAll('openligadb-', '');
+              return cleanTipId == cleanOrigId;
+            }
+            return false;
+          },
+          orElse: () => null,
+        );
+        if (tip != null) {
+          final score = scoreTip(
+            predictedHome: tip.predictedHome,
+            predictedAway: tip.predictedAway,
+            actualHome: match.homeScore ?? 0,
+            actualAway: match.awayScore ?? 0,
+          );
+
+          int pts = score.points;
+          if (s.uid == user?.uid) {
+            pts = getLiveMatchTotalPoints(
+              tipPoints: score.points,
+              favoriteTeam: user?.favoriteTeam,
+              predictedChampion: user?.predictedChampion,
+              match: match,
+            );
+          }
+
+          total += pts;
+          updated = true;
+          if (score.isExact) {
+            exact++;
+          } else if (score.points == 3) {
+            diff++;
+          } else if (score.isTendency) {
+            tendency++;
+          }
+        }
+      }
+
+      return _LiveStanding(
+        standing: s,
+        totalPoints: total,
+        exactCount: exact,
+        differenceCount: diff,
+        tendencyCount: tendency,
+        rank: s.rank,
+        hasLiveUpdates: updated,
+      );
+    }).toList();
+
+    liveStandings.sort((a, b) {
+      final pts = b.totalPoints.compareTo(a.totalPoints);
+      if (pts != 0) return pts;
+      final ex = b.exactCount.compareTo(a.exactCount);
+      if (ex != 0) return ex;
+      final df = b.differenceCount.compareTo(a.differenceCount);
+      if (df != 0) return df;
+      return b.tendencyCount.compareTo(a.tendencyCount);
+    });
+
+    final List<_LiveStanding> rankedLiveStandings = [];
+    int currentRank = 1;
+    _LiveStanding? prevRank;
+    for (int i = 0; i < liveStandings.length; i++) {
+      final cur = liveStandings[i];
+      if (prevRank != null) {
+        final samePoints = cur.totalPoints == prevRank.totalPoints &&
+            cur.exactCount == prevRank.exactCount &&
+            cur.differenceCount == prevRank.differenceCount &&
+            cur.tendencyCount == prevRank.tendencyCount;
+        if (!samePoints) {
+          currentRank = i + 1;
+        }
+      }
+      rankedLiveStandings.add(_LiveStanding(
+        standing: cur.standing,
+        totalPoints: cur.totalPoints,
+        exactCount: cur.exactCount,
+        differenceCount: cur.differenceCount,
+        tendencyCount: cur.tendencyCount,
+        rank: currentRank,
+        hasLiveUpdates: cur.hasLiveUpdates,
+      ));
+      prevRank = cur;
+    }
+
+    final topThree = rankedLiveStandings.take(3).toList();
     final scheme = Theme.of(context).colorScheme;
     return Card(
       color: scheme.surfaceContainerHighest.withValues(alpha: 0.62),
@@ -256,26 +362,49 @@ class _TopThreeCard extends ConsumerWidget {
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: _StandingAvatar(standing: standing),
+                  leading: _StandingAvatar(
+                    standing: standing.standing,
+                    overrideRank: standing.rank,
+                  ),
                   title: Text(
-                    standing.displayName,
+                    standing.standing.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: Text(
-                    '${standing.totalPoints} Pkt.',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (standing.hasLiveUpdates) ...[
+                        const LivePulseDot(),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        '${standing.totalPoints} Pkt.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              color:
+                                  standing.hasLiveUpdates ? Colors.green : null,
+                              fontWeight: standing.hasLiveUpdates
+                                  ? FontWeight.bold
+                                  : null,
+                            ),
+                      ),
+                    ],
                   ),
                   onTap: () {
-                    final userTips =
-                        tips.where((tip) => tip.uid == standing.uid).toList();
+                    final userTips = tips
+                        .where((tip) => tip.uid == standing.standing.uid)
+                        .toList();
                     showUserTipsBottomSheet(
                       context: context,
                       ref: ref,
-                      displayName: standing.displayName,
+                      displayName: standing.standing.displayName,
                       matches: matches,
                       userTips: userTips,
-                      standing: standing,
+                      standing: standing.standing,
                     );
                   },
                 ),
@@ -287,9 +416,10 @@ class _TopThreeCard extends ConsumerWidget {
 }
 
 class _StandingAvatar extends StatelessWidget {
-  const _StandingAvatar({required this.standing});
+  const _StandingAvatar({required this.standing, this.overrideRank});
 
   final Standing standing;
+  final int? overrideRank;
 
   @override
   Widget build(BuildContext context) {
@@ -328,7 +458,7 @@ class _StandingAvatar extends StatelessWidget {
       avatarChild = _buildInitials(context);
     }
 
-    final rank = standing.rank;
+    final rank = overrideRank ?? standing.rank;
     final Color badgeBg;
     final Color badgeFg;
     if (rank == 1) {
@@ -846,4 +976,24 @@ Widget _buildTeamName(
       ],
     ],
   );
+}
+
+class _LiveStanding {
+  const _LiveStanding({
+    required this.standing,
+    required this.totalPoints,
+    required this.exactCount,
+    required this.differenceCount,
+    required this.tendencyCount,
+    required this.rank,
+    required this.hasLiveUpdates,
+  });
+
+  final Standing standing;
+  final int totalPoints;
+  final int exactCount;
+  final int differenceCount;
+  final int tendencyCount;
+  final int rank;
+  final bool hasLiveUpdates;
 }

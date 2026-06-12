@@ -390,9 +390,13 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           actualAway: actualAway,
         );
         total += result.points;
-        if (result.isExact) exact++;
-        if (result.points == 3) difference++;
-        if (result.isTendency) tendency++;
+        if (result.isExact) {
+          exact++;
+        } else if (result.points == 3) {
+          difference++;
+        } else if (result.isTendency) {
+          tendency++;
+        }
       }
       final extraPoints = calculateExtraPoints(user, _currentMatches);
       total += extraPoints;

@@ -11,6 +11,8 @@ import '../../providers.dart';
 import '../shared/async_value_view.dart';
 import '../shared/app_toast.dart';
 import '../shared/user_tips_bottom_sheet.dart';
+import '../../domain/scoring.dart';
+import '../shared/live_pulse_dot.dart';
 
 class LeagueScreen extends ConsumerStatefulWidget {
   const LeagueScreen({super.key});
@@ -36,6 +38,111 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
         data: (standings) {
           final sortedMatches = [...matches]
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+
+          final liveMatches =
+              matches.where((m) => m.status == MatchStatus.live).toList();
+
+          final List<_LiveStanding> liveStandings = standings.map((s) {
+            int total = s.totalPoints;
+            int exact = s.exactCount;
+            int diff = s.differenceCount;
+            int tendency = s.tendencyCount;
+            bool updated = false;
+
+            final userTips = leagueTips.where((t) => t.uid == s.uid).toList();
+
+            for (final match in liveMatches) {
+              final tip = userTips.cast<Tip?>().firstWhere(
+                (t) {
+                  if (t == null) return false;
+                  if (t.matchId == match.id) return true;
+                  if (match.originalId != null) {
+                    final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+                    final cleanOrigId =
+                        match.originalId!.replaceAll('openligadb-', '');
+                    return cleanTipId == cleanOrigId;
+                  }
+                  return false;
+                },
+                orElse: () => null,
+              );
+              if (tip != null) {
+                final score = scoreTip(
+                  predictedHome: tip.predictedHome,
+                  predictedAway: tip.predictedAway,
+                  actualHome: match.homeScore ?? 0,
+                  actualAway: match.awayScore ?? 0,
+                );
+
+                int pts = score.points;
+                if (s.uid == user?.uid) {
+                  pts = getLiveMatchTotalPoints(
+                    tipPoints: score.points,
+                    favoriteTeam: user?.favoriteTeam,
+                    predictedChampion: user?.predictedChampion,
+                    match: match,
+                  );
+                }
+
+                total += pts;
+                updated = true;
+                if (score.isExact) {
+                  exact++;
+                } else if (score.points == 3) {
+                  diff++;
+                } else if (score.isTendency) {
+                  tendency++;
+                }
+              }
+            }
+
+            return _LiveStanding(
+              standing: s,
+              totalPoints: total,
+              exactCount: exact,
+              differenceCount: diff,
+              tendencyCount: tendency,
+              rank: s.rank,
+              hasLiveUpdates: updated,
+            );
+          }).toList();
+
+          liveStandings.sort((a, b) {
+            final pts = b.totalPoints.compareTo(a.totalPoints);
+            if (pts != 0) return pts;
+            final ex = b.exactCount.compareTo(a.exactCount);
+            if (ex != 0) return ex;
+            final df = b.differenceCount.compareTo(a.differenceCount);
+            if (df != 0) return df;
+            return b.tendencyCount.compareTo(a.tendencyCount);
+          });
+
+          final List<_LiveStanding> rankedLiveStandings = [];
+          int currentRank = 1;
+          _LiveStanding? prev;
+          for (int i = 0; i < liveStandings.length; i++) {
+            final cur = liveStandings[i];
+            if (prev != null) {
+              final samePoints = cur.totalPoints == prev.totalPoints &&
+                  cur.exactCount == prev.exactCount &&
+                  cur.differenceCount == prev.differenceCount &&
+                  cur.tendencyCount == prev.tendencyCount;
+              if (!samePoints) {
+                currentRank = i + 1;
+              }
+            }
+            rankedLiveStandings.add(_LiveStanding(
+              standing: cur.standing,
+              totalPoints: cur.totalPoints,
+              exactCount: cur.exactCount,
+              differenceCount: cur.differenceCount,
+              tendencyCount: cur.tendencyCount,
+              rank: currentRank,
+              hasLiveUpdates: cur.hasLiveUpdates,
+            ));
+            prev = cur;
+          }
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -62,31 +169,55 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
               ],
               Text('Tabelle', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              if (standings.isEmpty)
+              if (rankedLiveStandings.isEmpty)
                 const Text('Noch keine Spieler in dieser Runde.')
               else
-                for (final standing in standings) ...[
+                for (final liveStanding in rankedLiveStandings) ...[
                   Card(
                     child: ListTile(
-                      leading: _RankAvatar(standing: standing),
-                      title: Text(standing.displayName),
-                      subtitle: Text(
-                        '${standing.exactCount} exakt · ${standing.differenceCount} Diff. · ${standing.tendencyCount} Tend.',
+                      leading: _RankAvatar(
+                        standing: liveStanding.standing,
+                        overrideRank: liveStanding.rank,
                       ),
-                      trailing: Text(
-                        '${standing.totalPoints}',
-                        style: Theme.of(context).textTheme.titleLarge,
+                      title: Text(liveStanding.standing.displayName),
+                      subtitle: Text(
+                        '${liveStanding.exactCount} exakt · ${liveStanding.differenceCount} Diff. · ${liveStanding.tendencyCount} Tend.',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (liveStanding.hasLiveUpdates) ...[
+                            const LivePulseDot(),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(
+                            '${liveStanding.totalPoints}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  color: liveStanding.hasLiveUpdates
+                                      ? Colors.green
+                                      : null,
+                                  fontWeight: liveStanding.hasLiveUpdates
+                                      ? FontWeight.bold
+                                      : null,
+                                ),
+                          ),
+                        ],
                       ),
                       onTap: () {
                         final userTips = leagueTips
-                            .where((tip) => tip.uid == standing.uid)
+                            .where(
+                                (tip) => tip.uid == liveStanding.standing.uid)
                             .toList();
                         _showUserTips(
                           context,
-                          standing.displayName,
+                          liveStanding.standing.displayName,
                           sortedMatches,
                           userTips,
-                          standing,
+                          liveStanding.standing,
                         );
                       },
                     ),
@@ -654,9 +785,10 @@ class _LeagueSetupCard extends StatelessWidget {
 }
 
 class _RankAvatar extends StatelessWidget {
-  const _RankAvatar({required this.standing});
+  const _RankAvatar({required this.standing, this.overrideRank});
 
   final Standing standing;
+  final int? overrideRank;
 
   @override
   Widget build(BuildContext context) {
@@ -695,7 +827,7 @@ class _RankAvatar extends StatelessWidget {
       avatarChild = _buildInitials(context);
     }
 
-    final rank = standing.rank;
+    final rank = overrideRank ?? standing.rank;
     final Color badgeBg;
     final Color badgeFg;
     if (rank == 1) {
@@ -759,4 +891,24 @@ class _RankAvatar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LiveStanding {
+  const _LiveStanding({
+    required this.standing,
+    required this.totalPoints,
+    required this.exactCount,
+    required this.differenceCount,
+    required this.tendencyCount,
+    required this.rank,
+    required this.hasLiveUpdates,
+  });
+
+  final Standing standing;
+  final int totalPoints;
+  final int exactCount;
+  final int differenceCount;
+  final int tendencyCount;
+  final int rank;
+  final bool hasLiveUpdates;
 }

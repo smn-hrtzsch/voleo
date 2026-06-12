@@ -303,15 +303,9 @@ function normalizeMatch(match) {
   const homeScore = penaltyHomeScore !== null ? penaltyHomeScore : (otHomeScore !== null ? otHomeScore : (regularHomeScore !== null ? regularHomeScore : null));
   const awayScore = penaltyAwayScore !== null ? penaltyAwayScore : (otAwayScore !== null ? otAwayScore : (regularAwayScore !== null ? regularAwayScore : null));
 
+  const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
-  const elapsedMinutes = (now.getTime() - kickoffDate.getTime()) / 60000;
-  const isGroupStage = match.group?.groupName && 
-    (match.group.groupName.includes('Gruppe') || 
-     match.group.groupName.includes('Runde') || 
-     match.group.groupName.includes('Round'));
-  const expectedDuration = isGroupStage ? 125 : 195;
-  const isFinished = match.matchIsFinished || (regResult !== undefined && elapsedMinutes > expectedDuration);
   const status = isFinished ? 'finalResult' : (now > kickoffDate ? 'live' : 'scheduled');
 
   return {

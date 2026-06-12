@@ -169,15 +169,9 @@ function normalizeMatch(match) {
   const penaltyHomeScore = penResult !== undefined ? penResult.pointsTeam1 : null;
   const penaltyAwayScore = penResult !== undefined ? penResult.pointsTeam2 : null;
 
+  const isFinished = match.matchIsFinished;
   const kickoffDate = new Date(kickoff);
   const now = new Date();
-  const elapsedMinutes = (now.getTime() - kickoffDate.getTime()) / 60000;
-  const isGroupStage = match.group?.groupName && 
-    (match.group.groupName.includes("Gruppe") || 
-     match.group.groupName.includes("Runde") || 
-     match.group.groupName.includes("Round"));
-  const expectedDuration = isGroupStage ? 125 : 195;
-  const isFinished = match.matchIsFinished || (regResult !== undefined && elapsedMinutes > expectedDuration);
   const status = isFinished ? "finalResult" : (now > kickoffDate ? "live" : "scheduled");
 
   let homeScore = null;
@@ -670,9 +664,13 @@ async function recalculateScores(allMatches, finalMatches) {
       batch.update(tipDoc.ref, { points: score.points });
 
       current.totalPoints += score.points;
-      if (score.isExact) current.exactCount += 1;
-      if (score.points === 3) current.differenceCount = (current.differenceCount ?? 0) + 1;
-      if (score.isTendency) current.tendencyCount += 1;
+      if (score.isExact) {
+        current.exactCount += 1;
+      } else if (score.points === 3) {
+        current.differenceCount = (current.differenceCount ?? 0) + 1;
+      } else if (score.isTendency) {
+        current.tendencyCount += 1;
+      }
       stats.set(uid, current);
     }
 
