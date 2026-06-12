@@ -144,6 +144,17 @@ class _GroupStandingsView extends ConsumerWidget {
     return thirds.take(8).map((row) => row.team).toSet();
   }
 
+  String _normalizeTeamName(String name) {
+    final lower = name.toLowerCase().trim();
+    if (lower == 'bosnia and herzegovina' ||
+        lower == 'bosnien und herzegowina' ||
+        lower == 'bosnien-herzegowina' ||
+        lower == 'bosnien herzegowina') {
+      return 'Bosnien-Herzegowina';
+    }
+    return name;
+  }
+
   Map<String, List<_TeamRow>> _calculateGroupTables(
       List<String> officialTable) {
     final groupMatches = matches
@@ -156,9 +167,9 @@ class _GroupStandingsView extends ConsumerWidget {
 
     for (final m in groupMatches) {
       if (m.group.isNotEmpty) {
-        groupTeams
-            .putIfAbsent(m.group, () => <String>{})
-            .addAll([m.homeTeam, m.awayTeam]);
+        final home = _normalizeTeamName(m.homeTeam);
+        final away = _normalizeTeamName(m.awayTeam);
+        groupTeams.putIfAbsent(m.group, () => <String>{}).addAll([home, away]);
       }
     }
 
@@ -179,8 +190,10 @@ class _GroupStandingsView extends ConsumerWidget {
         final hs = m.homeScore;
         final as = m.awayScore;
         if (hs != null && as != null) {
-          final homeRow = groupTable[m.homeTeam] ?? _TeamRow(team: m.homeTeam);
-          final awayRow = groupTable[m.awayTeam] ?? _TeamRow(team: m.awayTeam);
+          final home = _normalizeTeamName(m.homeTeam);
+          final away = _normalizeTeamName(m.awayTeam);
+          final homeRow = groupTable[home] ?? _TeamRow(team: home);
+          final awayRow = groupTable[away] ?? _TeamRow(team: away);
 
           if (m.status == MatchStatus.live) {
             homeRow.isLive = true;
@@ -205,8 +218,8 @@ class _GroupStandingsView extends ConsumerWidget {
             awayRow.drawn++;
           }
 
-          groupTable[m.homeTeam] = homeRow;
-          groupTable[m.awayTeam] = awayRow;
+          groupTable[home] = homeRow;
+          groupTable[away] = awayRow;
         }
       }
     }

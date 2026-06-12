@@ -17,7 +17,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
     (
       group: 'B',
       home: 'Kanada',
-      away: 'Bosnien und Herzegowina',
+      away: 'Bosnien-Herzegowina',
       kickoff: DateTime(2026, 6, 12, 21)
     ),
     (
@@ -155,7 +155,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
     (
       group: 'B',
       home: 'Schweiz',
-      away: 'Bosnien und Herzegowina',
+      away: 'Bosnien-Herzegowina',
       kickoff: DateTime(2026, 6, 18, 21)
     ),
     (group: 'B', home: 'Kanada', away: 'Katar', kickoff: DateTime(2026, 6, 19)),
@@ -293,7 +293,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
     ),
     (
       group: 'B',
-      home: 'Bosnien und Herzegowina',
+      home: 'Bosnien-Herzegowina',
       away: 'Katar',
       kickoff: DateTime(2026, 6, 24, 21)
     ),

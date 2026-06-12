@@ -313,11 +313,27 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                   predictedChampion: user?.predictedChampion,
                                   match: match,
                                 );
+                                String labelText;
+                                if (pts == 0) {
+                                  labelText = 'Voraussichtlich: +0';
+                                } else {
+                                  String detail = '';
+                                  if (previewScore.isExact) {
+                                    detail = 'exaktes Ergebnis';
+                                  } else if (previewScore.points == 3) {
+                                    detail = 'richtige Tordifferenz';
+                                  } else if (previewScore.isTendency) {
+                                    detail = 'richtige Tendenz';
+                                  }
+                                  labelText = detail.isNotEmpty
+                                      ? 'Voraussichtlich: +$pts ($detail)'
+                                      : 'Voraussichtlich: +$pts';
+                                }
                                 return Center(
                                   child: Chip(
                                     avatar: const LivePulseDot(),
                                     label: Text(
-                                      'Voraussichtlich: +$pts (${_scoreLabel(previewScore)})',
+                                      labelText,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: Colors.green,
@@ -425,14 +441,30 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                       child: Column(
                         children: [
                           (() {
-                            final matchTips = allTips
+                            final rawTips = allTips
                                 .where((tip) =>
                                     (tip.matchId == match.id ||
                                         (match.originalId != null &&
-                                            tip.matchId.replaceAll('openligadb-', '') ==
-                                                match.originalId!.replaceAll('openligadb-', ''))) &&
+                                            tip.matchId.replaceAll(
+                                                    'openligadb-', '') ==
+                                                match.originalId!.replaceAll(
+                                                    'openligadb-', ''))) &&
                                     displayNames.containsKey(tip.uid))
                                 .toList();
+                            final Map<String, Tip> uniqueTips = {};
+                            for (final tip in rawTips) {
+                              final existing = uniqueTips[tip.uid];
+                              if (existing == null) {
+                                uniqueTips[tip.uid] = tip;
+                              } else {
+                                if (tip.matchId.startsWith('openligadb-') &&
+                                    !existing.matchId
+                                        .startsWith('openligadb-')) {
+                                  uniqueTips[tip.uid] = tip;
+                                }
+                              }
+                            }
+                            final matchTips = uniqueTips.values.toList();
                             if (matchTips.isEmpty) {
                               return const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 8),
