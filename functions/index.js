@@ -517,13 +517,15 @@ function rankStandings(entries) {
     if (points !== 0) return points;
     const exact = b.exactCount - a.exactCount;
     if (exact !== 0) return exact;
+    const difference = (b.differenceCount ?? 0) - (a.differenceCount ?? 0);
+    if (difference !== 0) return difference;
     return a.displayName.localeCompare(b.displayName);
   });
 
   let rank = 0;
   let previous = "";
   return sorted.map((standing, index) => {
-    const key = `${standing.totalPoints}:${standing.exactCount}`;
+    const key = `${standing.totalPoints}:${standing.exactCount}:${standing.differenceCount ?? 0}`;
     if (key !== previous) {
       rank = index + 1;
       previous = key;
@@ -588,6 +590,7 @@ async function recalculateScores(allMatches, finalMatches) {
 
       const frozenPoints = data.frozenPoints ?? 0;
       const frozenExactCount = data.frozenExactCount ?? 0;
+      const frozenDifferenceCount = data.frozenDifferenceCount ?? 0;
       const frozenTendencyCount = data.frozenTendencyCount ?? 0;
 
       stats.set(uid, {
@@ -596,6 +599,7 @@ async function recalculateScores(allMatches, finalMatches) {
         photoUrl: photoUrls.get(uid) ?? null,
         totalPoints: leftAt !== null ? frozenPoints : frozenPoints,
         exactCount: leftAt !== null ? frozenExactCount : frozenExactCount,
+        differenceCount: leftAt !== null ? frozenDifferenceCount : frozenDifferenceCount,
         tendencyCount: leftAt !== null ? frozenTendencyCount : frozenTendencyCount,
         joinedAt,
         leftAt,
@@ -661,6 +665,7 @@ async function recalculateScores(allMatches, finalMatches) {
 
       current.totalPoints += score.points;
       if (score.isExact) current.exactCount += 1;
+      if (score.points === 3) current.differenceCount = (current.differenceCount ?? 0) + 1;
       if (score.isTendency) current.tendencyCount += 1;
       stats.set(uid, current);
     }
@@ -692,6 +697,7 @@ async function recalculateScores(allMatches, finalMatches) {
         displayName: standing.displayName,
         totalPoints: standing.totalPoints,
         exactCount: standing.exactCount,
+        differenceCount: standing.differenceCount ?? 0,
         tendencyCount: standing.tendencyCount,
         rank: standing.rank,
         photoUrl: standing.photoUrl,
@@ -775,6 +781,24 @@ exports.syncResults = functions.region("europe-west3").runWith({
     }
     await matchBatch.commit();
     console.log(`Synced ${allMatches.length} matches to Firestore.`);
+
+    try {
+      console.log("Fetching official table from OpenLigaDB...");
+      const tableResponse = await fetch("https://api.openligadb.de/getbltable/wm2026/2026");
+      if (tableResponse.ok) {
+        const tableData = await tableResponse.json();
+        const officialOrder = tableData.map((t) => t.teamName);
+        await db.collection("settings").doc("official_table").set({
+          teams: officialOrder,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log("Synced official table to Firestore.");
+      } else {
+        console.warn(`Failed to fetch official table: ${tableResponse.status}`);
+      }
+    } catch (err) {
+      console.error("Failed to fetch/save official table:", err);
+    }
 
     const finalMatches = allMatches.filter((m) => m.status === "finalResult");
     if (finalMatches.length > 0) {

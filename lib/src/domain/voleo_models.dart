@@ -88,6 +88,7 @@ class CupMatch {
     this.otAwayScore,
     this.penaltyHomeScore,
     this.penaltyAwayScore,
+    this.originalId,
   });
 
   final String id;
@@ -108,6 +109,7 @@ class CupMatch {
   final int? otAwayScore;
   final int? penaltyHomeScore;
   final int? penaltyAwayScore;
+  final String? originalId;
 
   bool get isLocked => VoleoClock.now.isAfter(kickoff);
 
@@ -124,6 +126,7 @@ class CupMatch {
     int? otAwayScore,
     int? penaltyHomeScore,
     int? penaltyAwayScore,
+    String? originalId,
   }) {
     return CupMatch(
       id: id ?? this.id,
@@ -144,6 +147,7 @@ class CupMatch {
       otAwayScore: otAwayScore ?? this.otAwayScore,
       penaltyHomeScore: penaltyHomeScore ?? this.penaltyHomeScore,
       penaltyAwayScore: penaltyAwayScore ?? this.penaltyAwayScore,
+      originalId: originalId ?? this.originalId,
     );
   }
 }
@@ -183,6 +187,7 @@ class Standing {
     required this.displayName,
     required this.totalPoints,
     required this.exactCount,
+    required this.differenceCount,
     required this.tendencyCount,
     required this.rank,
     this.photoUrl,
@@ -192,6 +197,7 @@ class Standing {
   final String displayName;
   final int totalPoints;
   final int exactCount;
+  final int differenceCount;
   final int tendencyCount;
   final int rank;
   final String? photoUrl;

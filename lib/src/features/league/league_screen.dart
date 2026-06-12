@@ -71,7 +71,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                       leading: _RankAvatar(standing: standing),
                       title: Text(standing.displayName),
                       subtitle: Text(
-                        '${standing.exactCount} exakt · ${standing.tendencyCount} Tendenzen',
+                        '${standing.exactCount} exakt · ${standing.differenceCount} Diff. · ${standing.tendencyCount} Tend.',
                       ),
                       trailing: Text(
                         '${standing.totalPoints}',

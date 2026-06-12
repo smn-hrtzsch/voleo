@@ -10,6 +10,7 @@ import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import 'live_pulse_dot.dart';
+import 'team_name_with_picks.dart';
 
 void showUserTipsBottomSheet({
   required BuildContext context,
@@ -283,7 +284,7 @@ class _UserTipsBottomSheetContentState
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                const SizedBox(width: 36),
+                const SizedBox(width: 54),
                 const SizedBox(width: 4),
                 const Expanded(flex: 3, child: SizedBox.shrink()),
                 const SizedBox(width: 4),
@@ -292,7 +293,7 @@ class _UserTipsBottomSheetContentState
                 const Expanded(flex: 3, child: SizedBox.shrink()),
                 const SizedBox(width: 4),
                 SizedBox(
-                  width: 36,
+                  width: 54,
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Text(
@@ -321,7 +322,16 @@ class _UserTipsBottomSheetContentState
           for (final match in filteredMatches) ...[
             (() {
               final tip = widget.userTips.cast<Tip?>().firstWhere(
-                    (t) => t?.matchId == match.id,
+                    (t) {
+                      if (t == null) return false;
+                      if (t.matchId == match.id) return true;
+                      if (match.originalId != null) {
+                        final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+                        final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
+                        if (cleanTipId == cleanOrigId) return true;
+                      }
+                      return false;
+                    },
                     orElse: () => null,
                   );
               final isMatchLocked = match.status != MatchStatus.scheduled ||
@@ -336,6 +346,26 @@ class _UserTipsBottomSheetContentState
 
               if (showTip) {
                 if (tip != null) {
+                  final isLive = match.status == MatchStatus.live;
+                  final liveTipPoints = isLive
+                      ? scoreTip(
+                          predictedHome: tip.predictedHome,
+                          predictedAway: tip.predictedAway,
+                          actualHome: match.homeScore ?? 0,
+                          actualAway: match.awayScore ?? 0,
+                        ).points
+                      : 0;
+
+                  final liveTotalPts = isLive
+                      ? getLiveMatchTotalPoints(
+                          tipPoints: liveTipPoints,
+                          favoriteTeam: widget.userProfile?.favoriteTeam,
+                          predictedChampion:
+                              widget.userProfile?.predictedChampion,
+                          match: match,
+                        )
+                      : 0;
+
                   final totalPts = getMatchTotalPoints(
                     tipPoints: tip.points,
                     favoriteTeam: widget.userProfile?.favoriteTeam,
@@ -352,14 +382,56 @@ class _UserTipsBottomSheetContentState
 
                   final isCompleted = match.status == MatchStatus.finalResult;
 
-                  tipWidget = Text(
-                    isCompleted
-                        ? 'Tipp: ${tip.predictedHome}:${tip.predictedAway} ($fullEval)'
-                        : 'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  );
+                  if (isCompleted) {
+                    tipWidget = Text(
+                      'Tipp: ${tip.predictedHome}:${tip.predictedAway} ($fullEval)',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    );
+                  } else if (isLive) {
+                    final liveEval = getLiveEvaluationLabel(
+                      tipPoints: liveTipPoints,
+                      favoriteTeam: widget.userProfile?.favoriteTeam,
+                      predictedChampion: widget.userProfile?.predictedChampion,
+                      match: match,
+                    ).replaceAll('\n', ' ');
+                    tipWidget = Text(
+                      'Tipp: ${tip.predictedHome}:${tip.predictedAway} (Voraussichtlich: $liveEval)',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.green),
+                    );
+                  } else {
+                    tipWidget = Text(
+                      'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    );
+                  }
 
-                  if (match.status != MatchStatus.scheduled) {
+                  if (isLive) {
+                    trailingWidget = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withAlpha(38),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '+$liveTotalPts',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const LivePulseDot(size: 6),
+                      ],
+                    );
+                  } else if (isCompleted) {
                     trailingWidget = Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 3),
@@ -405,7 +477,7 @@ class _UserTipsBottomSheetContentState
                 );
               }
               final pointsWidget = SizedBox(
-                width: 36,
+                width: 40,
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: trailingWidget ?? const SizedBox.shrink(),
@@ -463,21 +535,20 @@ class _UserTipsBottomSheetContentState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 36),
+                        const SizedBox(width: 40),
                         const SizedBox(width: 4),
                         // Home Team Name (Right aligned)
                         Expanded(
                           flex: 3,
-                          child: Text(
-                            match.homeTeam,
-                            textAlign: TextAlign.right,
+                          child: TeamNameWithPicks(
+                            teamName: match.homeTeam,
+                            user: widget.userProfile,
+                            isRightAligned: true,
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
-                            maxLines: 2,
-                            softWrap: true,
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -487,9 +558,9 @@ class _UserTipsBottomSheetContentState
                           children: [
                             Text(homeFlag,
                                 style: const TextStyle(fontSize: 20)),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             SizedBox(
-                              width: 44,
+                              width: 36,
                               child: Text(
                                 match.status == MatchStatus.finalResult ||
                                         match.status == MatchStatus.live
@@ -505,7 +576,7 @@ class _UserTipsBottomSheetContentState
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             Text(awayFlag,
                                 style: const TextStyle(fontSize: 20)),
                           ],
@@ -514,16 +585,15 @@ class _UserTipsBottomSheetContentState
                         // Away Team Name (Left aligned)
                         Expanded(
                           flex: 3,
-                          child: Text(
-                            match.awayTeam,
-                            textAlign: TextAlign.left,
+                          child: TeamNameWithPicks(
+                            teamName: match.awayTeam,
+                            user: widget.userProfile,
+                            isRightAligned: false,
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
-                            maxLines: 2,
-                            softWrap: true,
                           ),
                         ),
                         const SizedBox(width: 4),

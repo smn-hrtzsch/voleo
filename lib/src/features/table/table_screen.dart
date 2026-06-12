@@ -9,6 +9,7 @@ import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
 import '../shared/live_pulse_dot.dart';
+import '../shared/team_name_with_picks.dart';
 
 bool isPlaceholderTeam(String name) {
   final lower = name.toLowerCase();
@@ -110,12 +111,13 @@ class _TableScreenState extends ConsumerState<TableScreen>
   }
 }
 
-class _GroupStandingsView extends StatelessWidget {
+class _GroupStandingsView extends ConsumerWidget {
   const _GroupStandingsView({required this.matches});
 
   final List<CupMatch> matches;
 
-  Set<String> _calculateBestThirds(Map<String, List<_TeamRow>> tables) {
+  Set<String> _calculateBestThirds(
+      Map<String, List<_TeamRow>> tables, List<String> officialTable) {
     final thirds = <_TeamRow>[];
     for (final group in tables.keys) {
       final rows = tables[group]!;
@@ -130,12 +132,20 @@ class _GroupStandingsView extends StatelessWidget {
       if (diff != 0) return diff;
       final goals = b.goalsFor.compareTo(a.goalsFor);
       if (goals != 0) return goals;
+      if (officialTable.isNotEmpty) {
+        final idxA = officialTable.indexOf(a.team);
+        final idxB = officialTable.indexOf(b.team);
+        if (idxA != -1 && idxB != -1) {
+          return idxA.compareTo(idxB);
+        }
+      }
       return a.team.compareTo(b.team);
     });
     return thirds.take(8).map((row) => row.team).toSet();
   }
 
-  Map<String, List<_TeamRow>> _calculateGroupTables() {
+  Map<String, List<_TeamRow>> _calculateGroupTables(
+      List<String> officialTable) {
     final groupMatches = matches
         .where((m) =>
             m.stage.startsWith('Gruppe') ||
@@ -172,6 +182,11 @@ class _GroupStandingsView extends StatelessWidget {
           final homeRow = groupTable[m.homeTeam] ?? _TeamRow(team: m.homeTeam);
           final awayRow = groupTable[m.awayTeam] ?? _TeamRow(team: m.awayTeam);
 
+          if (m.status == MatchStatus.live) {
+            homeRow.isLive = true;
+            awayRow.isLive = true;
+          }
+
           homeRow.played++;
           awayRow.played++;
           homeRow.goalsFor += hs;
@@ -206,6 +221,13 @@ class _GroupStandingsView extends StatelessWidget {
         if (diff != 0) return diff;
         final goals = b.goalsFor.compareTo(a.goalsFor);
         if (goals != 0) return goals;
+        if (officialTable.isNotEmpty) {
+          final idxA = officialTable.indexOf(a.team);
+          final idxB = officialTable.indexOf(b.team);
+          if (idxA != -1 && idxB != -1) {
+            return idxA.compareTo(idxB);
+          }
+        }
         return a.team.compareTo(b.team);
       });
       sortedTables[group] = teamRows;
@@ -215,12 +237,15 @@ class _GroupStandingsView extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final tables = _calculateGroupTables();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final officialTableAsync = ref.watch(officialTableProvider);
+    final officialTable = officialTableAsync.value ?? const <String>[];
+    final tables = _calculateGroupTables(officialTable);
     if (tables.isEmpty) {
       return const Center(child: Text('Keine Gruppenspiele geladen.'));
     }
-    final bestThirds = _calculateBestThirds(tables);
+    final bestThirds = _calculateBestThirds(tables, officialTable);
+    final user = ref.watch(userProvider).value;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: tables.length,
@@ -228,7 +253,11 @@ class _GroupStandingsView extends StatelessWidget {
         final group = tables.keys.elementAt(index);
         final rows = tables[group]!;
         return _GroupTableCard(
-            group: group, rows: rows, bestThirds: bestThirds);
+          group: group,
+          rows: rows,
+          bestThirds: bestThirds,
+          user: user,
+        );
       },
     );
   }
@@ -246,6 +275,7 @@ class _TeamRow {
   int lost = 0;
   int goalsFor = 0;
   int goalsAgainst = 0;
+  bool isLive = false;
 
   int get points => won * 3 + drawn;
   int get goalDiff => goalsFor - goalsAgainst;
@@ -256,11 +286,13 @@ class _GroupTableCard extends StatelessWidget {
     required this.group,
     required this.rows,
     required this.bestThirds,
+    required this.user,
   });
 
   final String group;
   final List<_TeamRow> rows;
   final Set<String> bestThirds;
+  final VoleoUser? user;
 
   @override
   Widget build(BuildContext context) {
@@ -383,15 +415,28 @@ class _GroupTableCard extends StatelessWidget {
                             Text(flag, style: const TextStyle(fontSize: 16)),
                             const SizedBox(width: 4),
                             Expanded(
-                              child: Text(
-                                row.team,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: (isTopTwo || isAdvancedThird)
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: TeamNameWithPicks(
+                                      teamName: row.team,
+                                      user: user,
+                                      isRightAligned: false,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight:
+                                            (isTopTwo || isAdvancedThird)
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (row.isLive) ...[
+                                    const SizedBox(width: 4),
+                                    const LivePulseDot(),
+                                  ],
+                                ],
                               ),
                             ),
                           ],
@@ -567,6 +612,7 @@ class _TournamentMatchCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final user = ref.watch(userProvider).value;
     final isLive = match.status == MatchStatus.live;
     final isFinal = match.status == MatchStatus.finalResult;
     final isScheduled = match.status == MatchStatus.scheduled;
@@ -579,8 +625,19 @@ class _TournamentMatchCard extends ConsumerWidget {
 
     // Own tip
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
-    final tip =
-        tips.cast<Tip?>().where((t) => t?.matchId == match.id).firstOrNull;
+    final tip = tips.cast<Tip?>().firstWhere(
+      (t) {
+        if (t == null) return false;
+        if (t.matchId == match.id) return true;
+        if (match.originalId != null) {
+          final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+          final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
+          if (cleanTipId == cleanOrigId) return true;
+        }
+        return false;
+      },
+      orElse: () => null,
+    );
     final hasTip = tip != null;
 
     return GestureDetector(
@@ -647,10 +704,10 @@ class _TournamentMatchCard extends ConsumerWidget {
                 Text(homeFlag, style: const TextStyle(fontSize: 14)),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(
-                    match.homeTeam,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: TeamNameWithPicks(
+                    teamName: match.homeTeam,
+                    user: user,
+                    isRightAligned: false,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight:
@@ -677,10 +734,10 @@ class _TournamentMatchCard extends ConsumerWidget {
                 Text(awayFlag, style: const TextStyle(fontSize: 14)),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(
-                    match.awayTeam,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: TeamNameWithPicks(
+                    teamName: match.awayTeam,
+                    user: user,
+                    isRightAligned: false,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight:
