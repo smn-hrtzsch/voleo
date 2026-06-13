@@ -259,11 +259,19 @@ class FirestoreVoleoRepository implements VoleoRepository {
       if (league == null) return Stream.value(const <Tip>[]);
       final tipsRef =
           _firestore.collection('leagues').doc(league.id).collection('tips');
-      return watchMatches().asyncExpand((matches) {
-        return tipsRef.snapshots().map((snapshot) {
-          final tips = snapshot.docs.map(_tipFromDoc).toList();
-          return _dedupeTips(tips, matches);
-        });
+      return tipsRef.snapshots().map((snapshot) {
+        final tips = snapshot.docs.map(_tipFromDoc).toList();
+        final uniqueTips = <String, Tip>{};
+        for (final tip in tips) {
+          final key = '${tip.uid}:${tip.matchId}';
+          final existing = uniqueTips[key];
+          if (existing == null ||
+              (tip.updatedAt?.millisecondsSinceEpoch ?? 0) >
+                  (existing.updatedAt?.millisecondsSinceEpoch ?? 0)) {
+            uniqueTips[key] = tip;
+          }
+        }
+        return uniqueTips.values.toList();
       });
     });
   }
@@ -1024,18 +1032,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
     }
 
     final batch = _firestore.batch();
-    final equivalentMatchIds = _equivalentMatchIds(match);
     for (final league in leaguesSnapshot.docs) {
       final tipRef =
           league.reference.collection('tips').doc('${user.uid}_$matchId');
-      for (final equivalentMatchId in equivalentMatchIds) {
-        if (equivalentMatchId == matchId) continue;
-        batch.delete(
-          league.reference
-              .collection('tips')
-              .doc('${user.uid}_$equivalentMatchId'),
-        );
-      }
       batch.set(
           tipRef,
           {
@@ -1071,14 +1070,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
     }
 
     final batch = _firestore.batch();
-    final equivalentMatchIds = _equivalentMatchIds(match);
     for (final league in leaguesSnapshot.docs) {
-      for (final equivalentMatchId in equivalentMatchIds) {
-        final tipRef = league.reference
-            .collection('tips')
-            .doc('${user.uid}_$equivalentMatchId');
-        batch.delete(tipRef);
-      }
+      final tipRef =
+          league.reference.collection('tips').doc('${user.uid}_$matchId');
+      batch.delete(tipRef);
     }
     await batch.commit();
   }
@@ -1358,56 +1353,6 @@ class FirestoreVoleoRepository implements VoleoRepository {
       points: data['points'] as int? ?? 0,
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
-  }
-
-  List<Tip> _dedupeTips(List<Tip> tips, List<CupMatch> matches) {
-    final uniqueTips = <String, Tip>{};
-    for (final tip in tips) {
-      final key = '${tip.uid}:${_canonicalMatchId(tip.matchId, matches)}';
-      final existing = uniqueTips[key];
-      if (existing == null || _isNewerTip(tip, existing)) {
-        uniqueTips[key] = tip;
-      }
-    }
-    return uniqueTips.values.toList();
-  }
-
-  bool _isNewerTip(Tip tip, Tip existing) {
-    final tipTime = tip.updatedAt?.millisecondsSinceEpoch ?? 0;
-    final existingTime = existing.updatedAt?.millisecondsSinceEpoch ?? 0;
-    if (tipTime != existingTime) return tipTime > existingTime;
-    return tip.matchId.startsWith('openligadb-') &&
-        !existing.matchId.startsWith('openligadb-');
-  }
-
-  String _canonicalMatchId(String matchId, List<CupMatch> matches) {
-    for (final match in matches) {
-      if (_isEquivalentMatchId(matchId, match)) return match.id;
-    }
-    return matchId.replaceAll('openligadb-', '');
-  }
-
-  bool _isEquivalentMatchId(String matchId, CupMatch match) {
-    if (matchId == match.id) return true;
-    final originalId = match.originalId;
-    if (originalId == null) return false;
-    return matchId.replaceAll('openligadb-', '') ==
-        originalId.replaceAll('openligadb-', '');
-  }
-
-  Set<String> _equivalentMatchIds(CupMatch match) {
-    final ids = <String>{match.id};
-    final originalId = match.originalId;
-    if (originalId != null && originalId.isNotEmpty) {
-      ids.add(originalId);
-      final cleanOriginalId = originalId.replaceAll('openligadb-', '');
-      ids.add(cleanOriginalId);
-      ids.add('openligadb-$cleanOriginalId');
-    }
-    final cleanMatchId = match.id.replaceAll('openligadb-', '');
-    ids.add(cleanMatchId);
-    ids.add('openligadb-$cleanMatchId');
-    return ids;
   }
 
   Standing _standingFromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {

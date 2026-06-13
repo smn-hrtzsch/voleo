@@ -17,7 +17,8 @@
 - [ ] Authenticate GitHub CLI and create private remote repository.
 - [x] Stabilize Firebase-backed app flow after enabling Firebase integration.
 - [ ] Ensure tips are evaluated correctly and consistently for all users.
-- [ ] Automatically update match results so points are recalculated from current results.
+- [x] Automatically update match results so points are recalculated from current results.
+- [x] Delete empty leagues and stale test league data after members leave or accounts are removed.
 - [ ] Keep the friends league state correct and consistent across devices and sessions.
 - [x] Show other league participants' tips and points inside the league.
 - [ ] In the match overview, show point breakdown details when a match is selected.

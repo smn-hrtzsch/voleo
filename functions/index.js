@@ -5,6 +5,64 @@ admin.initializeApp();
 const db = admin.firestore();
 
 const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026/2026';
+const FOOTBALL_DATA_WC_MATCHES_URL = 'https://api.football-data.org/v4/competitions/WC/matches?season=2026';
+
+const TEAM_ALIASES = new Map(Object.entries({
+  qatar: 'katar',
+  switzerland: 'schweiz',
+  brazil: 'brasilien',
+  morocco: 'marokko',
+  haiti: 'haiti',
+  scotland: 'schottland',
+  australia: 'australien',
+  turkiye: 'turkei',
+  turkey: 'turkei',
+  germany: 'deutschland',
+  curacao: 'curacao',
+  netherlands: 'niederlande',
+  japan: 'japan',
+  coteivoire: 'elfenbeinkuste',
+  ivorycoast: 'elfenbeinkuste',
+  ecuador: 'ecuador',
+  sweden: 'schweden',
+  tunisia: 'tunesien',
+  spain: 'spanien',
+  capeverde: 'kapverde',
+  belgium: 'belgien',
+  egypt: 'agypten',
+  saudiarabia: 'saudiarabien',
+  uruguay: 'uruguay',
+  iran: 'iran',
+  newzealand: 'neuseeland',
+  france: 'frankreich',
+  senegal: 'senegal',
+  iraq: 'irak',
+  norway: 'norwegen',
+  argentina: 'argentinien',
+  algeria: 'algerien',
+  austria: 'osterreich',
+  jordan: 'jordanien',
+  portugal: 'portugal',
+  drcongo: 'drkongo',
+  congodr: 'drkongo',
+  england: 'england',
+  croatia: 'kroatien',
+  ghana: 'ghana',
+  panama: 'panama',
+  uzbekistan: 'usbekistan',
+  colombia: 'kolumbien',
+  canada: 'kanada',
+  bosniaherzegovina: 'bosnienherzegowina',
+  bosniaandherzegovina: 'bosnienherzegowina',
+  mexico: 'mexiko',
+  southafrica: 'sudafrika',
+  southkorea: 'sudkorea',
+  czechia: 'tschechien',
+  czechrepublic: 'tschechien',
+  unitedstates: 'usa',
+  usa: 'usa',
+  paraguay: 'paraguay',
+}));
 
 const FIXTURES_LIST = [
   ['A', 'Mexiko', 'Südafrika'],
@@ -97,12 +155,13 @@ function getStaticId(homeTeam, awayTeam) {
 }
 
 function teamKey(value) {
-  return String(value || "")
+  const key = String(value || "")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .replace(/&/g, "und")
     .replace(/[^a-z0-9]/g, "");
+  return TEAM_ALIASES.get(key) ?? key;
 }
 
 function groupKey(groupName) {
@@ -151,11 +210,12 @@ function determineResultNote(match) {
 }
 
 function normalizeMatch(match) {
-  const id = String(match.matchID ?? match.matchId ?? "");
   const homeTeam = match.team1?.teamName;
   const awayTeam = match.team2?.teamName;
   const kickoff = match.matchDateTimeUTC ?? match.matchDateTime;
-  if (!id || !homeTeam || !awayTeam || !kickoff) return null;
+  if (!homeTeam || !awayTeam || !kickoff) return null;
+  const id = getStaticId(homeTeam, awayTeam) || String(match.matchID ?? match.matchId ?? "");
+  if (!id) return null;
 
   const results = match.matchResults ?? [];
   const regResult = results.find(r => r.resultTypeID === 2 || r.resultTypeName === "Endergebnis");
@@ -212,6 +272,183 @@ function normalizeMatch(match) {
     penaltyHomeScore,
     penaltyAwayScore,
   };
+}
+
+function matchKey(homeTeam, awayTeam) {
+  return `${teamKey(homeTeam)}:${teamKey(awayTeam)}`;
+}
+
+function isLiveWindow(match, now = new Date()) {
+  const kickoff = new Date(match.kickoff);
+  const startsSoon = kickoff.getTime() - now.getTime() <= 60 * 60 * 1000;
+  const notTooOld = now.getTime() - kickoff.getTime() <= 4 * 60 * 60 * 1000;
+  return startsSoon && notTooOld && match.status !== "finalResult";
+}
+
+function normalizeFootballDataMatch(match) {
+  const homeTeam = match.homeTeam?.name;
+  const awayTeam = match.awayTeam?.name;
+  const kickoff = match.utcDate;
+  if (!homeTeam || !awayTeam || !kickoff) return null;
+
+  let status = "scheduled";
+  if (["IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT"].includes(match.status)) {
+    status = "live";
+  } else if (["FINISHED", "AWARDED"].includes(match.status)) {
+    status = "finalResult";
+  }
+
+  const fullTime = match.score?.fullTime ?? {};
+  const halfTime = match.score?.halfTime ?? {};
+  return {
+    providerId: String(match.id),
+    homeTeam,
+    awayTeam,
+    kickoff,
+    status,
+    rawStatus: match.status,
+    minute: match.minute ?? null,
+    homeScore: fullTime.home ?? null,
+    awayScore: fullTime.away ?? null,
+    halfHomeScore: halfTime.home ?? null,
+    halfAwayScore: halfTime.away ?? null,
+    lastUpdated: match.lastUpdated ?? null,
+  };
+}
+
+async function fetchOpenLigaMatches() {
+  const response = await fetch(OPENLIGADB_URL);
+  if (!response.ok) {
+    throw new Error(`OpenLigaDB request failed with ${response.status}`);
+  }
+  return (await response.json()).map(normalizeMatch).filter(Boolean);
+}
+
+async function fetchFirestoreMatches() {
+  const matchesSnap = await db.collection("matches").get();
+  const statusRank = { finalResult: 3, live: 2, scheduled: 1 };
+  const byMatch = new Map();
+
+  for (const doc of matchesSnap.docs) {
+    const data = doc.data();
+    const kickoff = data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff;
+    if (!data.homeTeam || !data.awayTeam || !kickoff) continue;
+
+    const match = {
+      id: doc.id,
+      homeTeam: data.homeTeam,
+      awayTeam: data.awayTeam,
+      kickoff,
+      stage: data.stage,
+      group: data.group,
+      status: data.status ?? "scheduled",
+      homeScore: data.homeScore ?? null,
+      awayScore: data.awayScore ?? null,
+      winner: data.winner ?? null,
+      resultNote: data.resultNote ?? null,
+      source: data.source ?? "firestore",
+      tipsCanonicalizedAt: data.tipsCanonicalizedAt ?? null,
+    };
+    const key = matchKey(match.homeTeam, match.awayTeam);
+    const existing = byMatch.get(key);
+    const rank = (statusRank[match.status] ?? 0) + (match.source === "football-data" ? 1 : 0);
+    const existingRank = existing ? (statusRank[existing.status] ?? 0) + (existing.source === "football-data" ? 1 : 0) : -1;
+    if (!existing || rank > existingRank || (!existing.tipsCanonicalizedAt && match.tipsCanonicalizedAt)) {
+      byMatch.set(key, match);
+    }
+  }
+
+  return [...byMatch.values()];
+}
+
+async function fetchFootballDataMatches() {
+  const token = process.env.FOOTBALL_DATA_TOKEN;
+  if (!token) {
+    console.warn("FOOTBALL_DATA_TOKEN secret is not configured. Skipping football-data.org live overlay.");
+    return { matches: [], headers: {}, status: 0 };
+  }
+
+  let response;
+  try {
+    response = await fetch(FOOTBALL_DATA_WC_MATCHES_URL, {
+      headers: { "X-Auth-Token": token },
+    });
+  } catch (error) {
+    console.warn("football-data.org request failed before receiving a response.", error);
+    return { matches: [], headers: {}, status: 0 };
+  }
+  const headers = {
+    apiVersion: response.headers.get("x-api-version"),
+    authenticatedClient: response.headers.get("x-authenticated-client"),
+    requestCounterReset: response.headers.get("x-requestcounter-reset"),
+    requestsAvailable: response.headers.get("x-requestsavailable"),
+  };
+
+  if (response.status === 429) {
+    console.warn("football-data.org rate limit reached.", headers);
+    return { matches: [], headers, status: response.status };
+  }
+  if (!response.ok) {
+    console.warn(`football-data.org request failed with ${response.status}.`, headers);
+    return { matches: [], headers, status: response.status };
+  }
+
+  const data = await response.json();
+  const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
+  return { matches, headers, status: response.status };
+}
+
+function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
+  if (!footballDataMatch) return openLigaMatch;
+  if (footballDataMatch.status !== "scheduled" &&
+      (footballDataMatch.homeScore === null || footballDataMatch.awayScore === null)) {
+    return openLigaMatch;
+  }
+
+  return {
+    ...openLigaMatch,
+    status: footballDataMatch.status,
+    homeScore: footballDataMatch.homeScore,
+    awayScore: footballDataMatch.awayScore,
+    source: "football-data",
+    providerStatus: footballDataMatch.rawStatus,
+    providerUpdatedAt: footballDataMatch.lastUpdated,
+    minute: footballDataMatch.minute,
+  };
+}
+
+function mergeFootballDataOverlay(openLigaMatches, footballDataMatches, { liveOnly = false } = {}) {
+  const footballByMatch = new Map(footballDataMatches.map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
+  const now = new Date();
+  return openLigaMatches.map((match) => {
+    if (liveOnly && !isLiveWindow(match, now)) return match;
+    return applyFootballDataOverlay(match, footballByMatch.get(matchKey(match.homeTeam, match.awayTeam)));
+  });
+}
+
+function logLiveProviderComparison(openLigaMatches, footballDataMatches, footballHeaders) {
+  const footballByMatch = new Map(footballDataMatches.map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
+  const now = new Date();
+  const relevant = openLigaMatches.filter((match) => isLiveWindow(match, now));
+  console.log(`Live provider check: ${relevant.length} relevant match(es). football-data headers: ${JSON.stringify(footballHeaders)}`);
+  for (const match of relevant) {
+    const fd = footballByMatch.get(matchKey(match.homeTeam, match.awayTeam));
+    console.log("Live provider comparison", JSON.stringify({
+      match: `${match.homeTeam} - ${match.awayTeam}`,
+      kickoff: match.kickoff,
+      openLiga: {
+        status: match.status,
+        score: `${match.homeScore ?? "-"}:${match.awayScore ?? "-"}`,
+      },
+      footballData: fd ? {
+        status: fd.rawStatus,
+        normalizedStatus: fd.status,
+        minute: fd.minute,
+        score: `${fd.homeScore ?? "-"}:${fd.awayScore ?? "-"}`,
+        lastUpdated: fd.lastUpdated,
+      } : null,
+    }));
+  }
 }
 
 function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
@@ -772,114 +1009,223 @@ async function cleanupDuplicateTips(allMatches) {
   }
 }
 
-exports.syncResults = functions.region("europe-west3").runWith({
-  timeoutSeconds: 300,
-  memory: "256MB",
-}).pubsub.schedule("*/5 * * * *").onRun(async (context) => {
-  try {
-    const configSnap = await db.collection("settings").doc("sync_config").get();
-    if (configSnap.exists && configSnap.data().disabled === true) {
-      console.log("Sync is disabled via settings/sync_config.");
-      return null;
-    }
-    console.log("Starting syncResults job...");
-    const response = await fetch(OPENLIGADB_URL);
-    if (!response.ok) {
-      throw new Error(`OpenLigaDB request failed with ${response.status}`);
-    }
-    const rawMatches = await response.json();
-    const groupMatches = rawMatches.map(normalizeMatch).filter(Boolean);
+function equivalentTipMatchIds(match) {
+  const ids = new Set([match.id, `openligadb-${match.id}`]);
+  const staticId = getStaticId(match.homeTeam, match.awayTeam);
+  if (staticId) ids.add(staticId);
+  return [...ids];
+}
 
-    const matchesSnap = await db.collection("matches").get();
-    const existingMatchMap = new Map();
-    matchesSnap.forEach((doc) => {
-      const data = doc.data();
+function targetTipMatchId(match) {
+  return getStaticId(match.homeTeam, match.awayTeam) ?? match.id;
+}
+
+async function canonicalizeTipsForMatch(match) {
+  const parseTime = (val) => {
+    if (!val) return 0;
+    if (val.toDate) return val.toDate().getTime();
+    return new Date(val).getTime();
+  };
+
+  const ids = new Set(equivalentTipMatchIds(match));
+  const targetMatchId = targetTipMatchId(match);
+  let updatedCount = 0;
+  let deletedCount = 0;
+  const leaguesSnap = await db.collection("leagues").get();
+
+  for (const leagueDoc of leaguesSnap.docs) {
+    const tipsSnap = await leagueDoc.ref.collection("tips").get();
+    if (tipsSnap.empty) continue;
+
+    const uniqueTips = new Map();
+    const batch = db.batch();
+    let leagueChangedCount = 0;
+
+    tipsSnap.forEach((tipDoc) => {
+      const data = tipDoc.data();
+      if (!ids.has(data.matchId)) return;
+
+      const key = `${data.uid}:${targetMatchId}`;
+      const existing = uniqueTips.get(key);
+      if (!existing) {
+        uniqueTips.set(key, { tipDoc, data });
+        return;
+      }
+
+      const curTime = parseTime(data.updatedAt);
+      const prevTime = parseTime(existing.data.updatedAt);
+      if (curTime > prevTime) {
+        batch.delete(existing.tipDoc.ref);
+        uniqueTips.set(key, { tipDoc, data });
+      } else {
+        batch.delete(tipDoc.ref);
+      }
+      leagueChangedCount += 1;
+      deletedCount += 1;
+    });
+
+    for (const { tipDoc, data } of uniqueTips.values()) {
+      if (data.matchId !== targetMatchId) {
+        batch.update(tipDoc.ref, {
+          matchId: targetMatchId,
+          updatedAt: data.updatedAt ?? admin.firestore.FieldValue.serverTimestamp(),
+        });
+        leagueChangedCount += 1;
+        updatedCount += 1;
+      }
+    }
+
+    if (leagueChangedCount > 0) {
+      await batch.commit();
+    }
+  }
+
+  console.log(`Canonicalized tips for ${match.homeTeam} - ${match.awayTeam} to ${targetMatchId}: updated ${updatedCount}, deleted ${deletedCount}.`);
+  return { updatedCount, deletedCount };
+}
+
+async function canonicalizeKickoffTips(liveCandidates, now) {
+  for (const match of liveCandidates) {
+    const kickoff = new Date(match.kickoff);
+    const msSinceKickoff = now.getTime() - kickoff.getTime();
+    if (msSinceKickoff < 30 * 1000) continue;
+
+    const matchRef = db.collection("matches").doc(match.id);
+    const matchSnap = await matchRef.get();
+    const currentTargetMatchId = targetTipMatchId(match);
+    if (matchSnap.exists && matchSnap.data().tipsCanonicalizedMatchId === currentTargetMatchId) continue;
+
+    await canonicalizeTipsForMatch(match);
+    await matchRef.set({
+      tipsCanonicalizedAt: admin.firestore.FieldValue.serverTimestamp(),
+      tipsCanonicalizedMatchId: currentTargetMatchId,
+    }, { merge: true });
+  }
+}
+
+async function isSyncDisabled() {
+  const configSnap = await db.collection("settings").doc("sync_config").get();
+  return configSnap.exists && configSnap.data().disabled === true;
+}
+
+async function syncFullResults({ includeTable = true, includeCleanup = false, forceRecalculate = false, reason = "scheduled" } = {}) {
+  console.log(`Starting full syncResults job (${reason})...`);
+  const groupMatches = await fetchOpenLigaMatches();
+
+  const matchesSnap = await db.collection("matches").get();
+  const existingMatchMap = new Map();
+  matchesSnap.forEach((doc) => {
+    const data = doc.data();
       existingMatchMap.set(doc.id, {
         homeScore: data.homeScore ?? null,
         awayScore: data.awayScore ?? null,
         status: data.status ?? "scheduled",
         winner: data.winner ?? null,
         resultNote: data.resultNote ?? null,
+        source: data.source ?? "openligadb",
       });
-    });
+  });
 
-    const koMatches = getKnockoutMatches().map((m) => {
-      const existing = existingMatchMap.get(m.id);
-      if (existing) {
-        return {
-          ...m,
-          homeScore: existing.homeScore,
-          awayScore: existing.awayScore,
-          status: existing.status,
-          winner: existing.winner ?? null,
-          resultNote: existing.resultNote ?? null,
-        };
-      }
+  const koMatches = getKnockoutMatches().map((m) => {
+    const existing = existingMatchMap.get(m.id);
+    if (existing) {
       return {
         ...m,
-        winner: null,
-        resultNote: null,
+        homeScore: existing.homeScore,
+        awayScore: existing.awayScore,
+        status: existing.status,
+        winner: existing.winner ?? null,
+        resultNote: existing.resultNote ?? null,
       };
-    });
+    }
+    return {
+      ...m,
+      winner: null,
+      resultNote: null,
+    };
+  });
 
-    const allMatches = [...groupMatches, ...koMatches];
+  const allMatches = [...groupMatches, ...koMatches];
 
-    let matchesChanged = false;
-    let finalMatchesChanged = false;
+  let matchesChanged = false;
+  let finalMatchesChanged = false;
+  const effectiveAllMatches = [];
 
-    const matchBatch = db.batch();
-    for (const match of allMatches) {
-      const existing = existingMatchMap.get(match.id);
-      
-      const changed = !existing ||
-        existing.homeScore !== match.homeScore ||
-        existing.awayScore !== match.awayScore ||
-        existing.status !== match.status ||
-        existing.winner !== match.winner ||
-        existing.resultNote !== match.resultNote;
+  const matchBatch = db.batch();
+  for (const rawMatch of allMatches) {
+    let match = rawMatch;
+    const existing = existingMatchMap.get(match.id);
+    if (existing?.status === "finalResult" && match.status !== "finalResult") {
+      match = {
+        ...match,
+        status: existing.status,
+        homeScore: existing.homeScore,
+        awayScore: existing.awayScore,
+        winner: existing.winner ?? match.winner ?? null,
+        resultNote: existing.resultNote ?? match.resultNote ?? null,
+        source: existing.source,
+      };
+    } else if (existing?.source === "football-data" && isLiveWindow(match) && match.status !== "finalResult") {
+      match = {
+        ...match,
+        status: existing.status,
+        homeScore: existing.homeScore,
+        awayScore: existing.awayScore,
+        source: existing.source,
+      };
+    }
+    effectiveAllMatches.push(match);
+    const changed = !existing ||
+      existing.homeScore !== match.homeScore ||
+      existing.awayScore !== match.awayScore ||
+      existing.status !== match.status ||
+      existing.winner !== match.winner ||
+      existing.resultNote !== match.resultNote ||
+      existing.source !== (match.source ?? "openligadb");
 
-      if (changed) {
-        matchesChanged = true;
-        if (match.status === "finalResult" || (existing && existing.status === "finalResult")) {
-          finalMatchesChanged = true;
-        }
-        
-        const docRef = db.collection("matches").doc(match.id);
-        matchBatch.set(docRef, {
-          homeTeam: match.homeTeam,
-          awayTeam: match.awayTeam,
-          kickoff: admin.firestore.Timestamp.fromDate(new Date(match.kickoff)),
-          stage: match.stage,
-          group: match.group,
-          status: match.status,
-          homeScore: match.homeScore,
-          awayScore: match.awayScore,
-          winner: match.winner ?? null,
-          resultNote: match.resultNote ?? null,
-          source: "openligadb",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+    if (changed) {
+      matchesChanged = true;
+      if (match.status === "finalResult" || (existing && existing.status !== "finalResult" && match.status === "finalResult")) {
+        finalMatchesChanged = true;
       }
-    }
 
-    if (matchesChanged) {
-      await matchBatch.commit();
-      console.log(`Synced changed matches to Firestore.`);
-    } else {
-      console.log("No matches changed. Skipping matches Firestore write.");
+      const docRef = db.collection("matches").doc(match.id);
+      matchBatch.set(docRef, {
+        homeTeam: match.homeTeam,
+        awayTeam: match.awayTeam,
+        kickoff: admin.firestore.Timestamp.fromDate(new Date(match.kickoff)),
+        stage: match.stage,
+        group: match.group,
+        status: match.status,
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        winner: match.winner ?? null,
+        resultNote: match.resultNote ?? null,
+        source: match.source ?? "openligadb",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
     }
+  }
 
+  if (matchesChanged) {
+    await matchBatch.commit();
+    console.log("Synced changed matches to Firestore.");
+  } else {
+    console.log("No matches changed. Skipping matches Firestore write.");
+  }
+
+  if (includeTable) {
     try {
       console.log("Fetching official table from OpenLigaDB...");
       const tableResponse = await fetch("https://api.openligadb.de/getbltable/wm2026/2026");
       if (tableResponse.ok) {
         const tableData = await tableResponse.json();
         const officialOrder = tableData.map((t) => t.teamName);
-        
+
         const existingTableSnap = await db.collection("settings").doc("official_table").get();
         const existingTeams = existingTableSnap.exists ? existingTableSnap.data().teams : [];
         const tableChanged = JSON.stringify(existingTeams) !== JSON.stringify(officialOrder);
-        
+
         if (tableChanged) {
           await db.collection("settings").doc("official_table").set({
             teams: officialOrder,
@@ -895,17 +1241,191 @@ exports.syncResults = functions.region("europe-west3").runWith({
     } catch (err) {
       console.error("Failed to fetch/save official table:", err);
     }
+  }
 
+  if (includeCleanup) {
     await cleanupDuplicateTips(allMatches);
+  }
 
-    if (finalMatchesChanged) {
-      const finalMatches = allMatches.filter((m) => m.status === "finalResult");
-      await recalculateScores(allMatches, finalMatches);
-    } else {
-      console.log("No final matches changed. Skipping scores recalculation.");
+  if (forceRecalculate || finalMatchesChanged) {
+    const finalMatches = effectiveAllMatches.filter((m) => m.status === "finalResult");
+    await recalculateScores(effectiveAllMatches, finalMatches);
+  } else {
+    console.log("No final matches changed. Skipping scores recalculation.");
+  }
+  console.log("Full syncResults job completed successfully.");
+}
+
+async function deleteQuerySnapshot(snapshot) {
+  if (snapshot.empty) return 0;
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+  return snapshot.size;
+}
+
+async function deleteSubcollection(collectionRef) {
+  let deletedCount = 0;
+  while (true) {
+    const snapshot = await collectionRef.limit(450).get();
+    if (snapshot.empty) break;
+    deletedCount += await deleteQuerySnapshot(snapshot);
+  }
+  return deletedCount;
+}
+
+async function deleteLeagueTree(leagueRef) {
+  const [tipsDeleted, standingsDeleted, membersDeleted] = await Promise.all([
+    deleteSubcollection(leagueRef.collection("tips")),
+    deleteSubcollection(leagueRef.collection("standings")),
+    deleteSubcollection(leagueRef.collection("members")),
+  ]);
+  await leagueRef.delete();
+  console.log(`Deleted empty league ${leagueRef.id}: tips=${tipsDeleted}, standings=${standingsDeleted}, members=${membersDeleted}.`);
+}
+
+function hasNoActiveMembers(leagueData) {
+  const memberIds = leagueData?.memberIds;
+  return Array.isArray(memberIds) && memberIds.length === 0;
+}
+
+exports.deleteEmptyLeague = functions.region("europe-west3").firestore
+  .document("leagues/{leagueId}")
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null;
+    if (!hasNoActiveMembers(change.after.data())) return null;
+
+    await deleteLeagueTree(change.after.ref);
+    return null;
+  });
+
+exports.cleanupEmptyLeagues = functions.region("europe-west3").runWith({
+  timeoutSeconds: 300,
+  memory: "256MB",
+}).pubsub.schedule("0 * * * *").onRun(async () => {
+  const leaguesSnap = await db.collection("leagues").get();
+  let deletedCount = 0;
+
+  for (const leagueDoc of leaguesSnap.docs) {
+    if (!hasNoActiveMembers(leagueDoc.data())) continue;
+    await deleteLeagueTree(leagueDoc.ref);
+    deletedCount += 1;
+  }
+
+  console.log(`cleanupEmptyLeagues deleted ${deletedCount} empty league(s).`);
+  return null;
+});
+
+exports.syncLiveResults = functions.region("europe-west3").runWith({
+  timeoutSeconds: 120,
+  memory: "256MB",
+  secrets: ["FOOTBALL_DATA_TOKEN"],
+}).pubsub.schedule("* * * * *").onRun(async (context) => {
+  try {
+    if (await isSyncDisabled()) {
+      console.log("Sync is disabled via settings/sync_config.");
+      return null;
     }
-    console.log("syncResults job completed successfully.");
+
+    let openLigaMatches;
+    try {
+      openLigaMatches = await fetchOpenLigaMatches();
+    } catch (error) {
+      console.warn("OpenLigaDB live request failed. Falling back to Firestore matches.", error);
+      openLigaMatches = await fetchFirestoreMatches();
+    }
+    const liveCandidates = openLigaMatches.filter((match) => isLiveWindow(match));
+    if (liveCandidates.length === 0) {
+      console.log("No live-window matches. Skipping fast live write.");
+      return null;
+    }
+
+    const now = new Date();
+    await canonicalizeKickoffTips(liveCandidates, now);
+
+    const footballData = await fetchFootballDataMatches();
+    logLiveProviderComparison(openLigaMatches, footballData.matches, footballData.headers);
+    const overlayMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches, { liveOnly: true })
+      .filter((match) => isLiveWindow(match) || match.source === "football-data");
+
+    let changedCount = 0;
+    let finalTransition = false;
+    const batch = db.batch();
+    for (const match of overlayMatches) {
+      const docRef = db.collection("matches").doc(match.id);
+      const existingDoc = await docRef.get();
+      const existing = existingDoc.data() ?? {};
+      const changed = !existingDoc.exists ||
+        (existing.homeScore ?? null) !== match.homeScore ||
+        (existing.awayScore ?? null) !== match.awayScore ||
+        (existing.status ?? "scheduled") !== match.status ||
+        (existing.source ?? "openligadb") !== (match.source ?? "openligadb");
+      if (!changed) continue;
+
+      if ((existing.status ?? "scheduled") !== "finalResult" && match.status === "finalResult") {
+        finalTransition = true;
+      }
+      changedCount += 1;
+      batch.set(docRef, {
+        homeTeam: match.homeTeam,
+        awayTeam: match.awayTeam,
+        kickoff: admin.firestore.Timestamp.fromDate(new Date(match.kickoff)),
+        stage: match.stage,
+        group: match.group,
+        status: match.status,
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        winner: match.status === "finalResult" ? match.winner ?? null : null,
+        resultNote: match.resultNote ?? null,
+        source: match.source ?? "openligadb",
+        providerStatus: match.providerStatus ?? null,
+        providerUpdatedAt: match.providerUpdatedAt ?? null,
+        minute: match.minute ?? null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    if (changedCount > 0) {
+      await batch.commit();
+      console.log(`Fast live sync wrote ${changedCount} changed match document(s).`);
+    } else {
+      console.log("Fast live sync found no Firestore changes.");
+    }
+
+    if (finalTransition) {
+      try {
+        await syncFullResults({ includeTable: true, includeCleanup: false, forceRecalculate: true, reason: "live-final-transition" });
+      } catch (error) {
+        console.warn("Skipping immediate full recalculation after live final transition.", error);
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("syncLiveResults job failed with error:", error);
+    return null;
+  }
+});
+
+exports.syncResults = functions.region("europe-west3").runWith({
+  timeoutSeconds: 300,
+  memory: "256MB",
+}).pubsub.schedule("0 * * * *").onRun(async (context) => {
+  try {
+    if (await isSyncDisabled()) {
+      console.log("Sync is disabled via settings/sync_config.");
+      return null;
+    }
+    const now = new Date();
+    await syncFullResults({
+      includeTable: true,
+      includeCleanup: now.getUTCHours() === 0,
+      forceRecalculate: false,
+      reason: "hourly",
+    });
+    return null;
   } catch (error) {
     console.error("syncResults job failed with error:", error);
+    return null;
   }
 });

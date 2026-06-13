@@ -53,19 +53,9 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
 
             for (final match in liveMatches) {
               final tip = userTips.cast<Tip?>().firstWhere(
-                (t) {
-                  if (t == null) return false;
-                  if (t.matchId == match.id) return true;
-                  if (match.originalId != null) {
-                    final cleanTipId = t.matchId.replaceAll('openligadb-', '');
-                    final cleanOrigId =
-                        match.originalId!.replaceAll('openligadb-', '');
-                    return cleanTipId == cleanOrigId;
-                  }
-                  return false;
-                },
-                orElse: () => null,
-              );
+                    (t) => t?.matchId == match.id,
+                    orElse: () => null,
+                  );
               if (tip != null) {
                 final score = scoreTip(
                   predictedHome: tip.predictedHome,
