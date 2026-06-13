@@ -713,6 +713,65 @@ async function recalculateScores(allMatches, finalMatches) {
   }
 }
 
+async function cleanupDuplicateTips(allMatches) {
+  const matchByKnownId = new Map();
+  for (const match of allMatches) {
+    matchByKnownId.set(match.id, match);
+    matchByKnownId.set(`openligadb-${match.id}`, match);
+    const staticId = getStaticId(match.homeTeam, match.awayTeam);
+    if (staticId) {
+      matchByKnownId.set(staticId, match);
+    }
+  }
+
+  const parseTime = (val) => {
+    if (!val) return 0;
+    if (val.toDate) return val.toDate().getTime();
+    return new Date(val).getTime();
+  };
+
+  let deletedCount = 0;
+  const leaguesSnap = await db.collection("leagues").get();
+  for (const leagueDoc of leaguesSnap.docs) {
+    const tipsSnap = await leagueDoc.ref.collection("tips").get();
+    const userMatchTips = new Map();
+    const batch = db.batch();
+    let leagueDeletedCount = 0;
+
+    tipsSnap.forEach((tipDoc) => {
+      const data = tipDoc.data();
+      const match = matchByKnownId.get(data.matchId);
+      if (!match) return;
+
+      const key = `${data.uid}:${match.id}`;
+      const existing = userMatchTips.get(key);
+      if (!existing) {
+        userMatchTips.set(key, { tipDoc, data });
+        return;
+      }
+
+      const curTime = parseTime(data.updatedAt);
+      const prevTime = parseTime(existing.data.updatedAt);
+      if (curTime > prevTime) {
+        batch.delete(existing.tipDoc.ref);
+        userMatchTips.set(key, { tipDoc, data });
+      } else {
+        batch.delete(tipDoc.ref);
+      }
+      leagueDeletedCount += 1;
+      deletedCount += 1;
+    });
+
+    if (leagueDeletedCount > 0) {
+      await batch.commit();
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`Cleaned up ${deletedCount} duplicate tip document(s).`);
+  }
+}
+
 exports.syncResults = functions.region("europe-west3").runWith({
   timeoutSeconds: 300,
   memory: "256MB",
@@ -836,6 +895,8 @@ exports.syncResults = functions.region("europe-west3").runWith({
     } catch (err) {
       console.error("Failed to fetch/save official table:", err);
     }
+
+    await cleanupDuplicateTips(allMatches);
 
     if (finalMatchesChanged) {
       const finalMatches = allMatches.filter((m) => m.status === "finalResult");

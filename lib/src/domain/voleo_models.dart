@@ -160,6 +160,7 @@ class Tip {
     required this.predictedAway,
     required this.lockedAt,
     required this.points,
+    this.updatedAt,
   });
 
   final String uid;
@@ -168,6 +169,7 @@ class Tip {
   final int predictedAway;
   final DateTime lockedAt;
   final int points;
+  final DateTime? updatedAt;
 
   Tip copyWith({int? predictedHome, int? predictedAway, int? points}) {
     return Tip(
@@ -177,6 +179,7 @@ class Tip {
       predictedAway: predictedAway ?? this.predictedAway,
       lockedAt: lockedAt,
       points: points ?? this.points,
+      updatedAt: updatedAt,
     );
   }
 }
