@@ -278,6 +278,47 @@ function matchKey(homeTeam, awayTeam) {
   return `${teamKey(homeTeam)}:${teamKey(awayTeam)}`;
 }
 
+const STATUS_RANK = { scheduled: 1, live: 2, finalResult: 3 };
+
+function statusRank(status) {
+  return STATUS_RANK[status] ?? 0;
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (value.toDate) return value.toDate().getTime();
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function shouldKeepExistingMatch(existing, nextMatch) {
+  if (!existing) return false;
+
+  const existingStatus = existing.status ?? "scheduled";
+  const nextStatus = nextMatch.status ?? "scheduled";
+  const existingSource = existing.source ?? "openligadb";
+  const nextSource = nextMatch.source ?? "openligadb";
+
+  if (statusRank(nextStatus) < statusRank(existingStatus)) return true;
+  if (existingSource === "football-data" &&
+      nextSource !== "football-data" &&
+      existingStatus !== "scheduled") {
+    return true;
+  }
+
+  if (existingSource === "football-data" && nextSource === "football-data") {
+    const existingProviderUpdatedAt = timestampMillis(existing.providerUpdatedAt);
+    const nextProviderUpdatedAt = timestampMillis(nextMatch.providerUpdatedAt);
+    if (existingProviderUpdatedAt > 0 &&
+        nextProviderUpdatedAt > 0 &&
+        nextProviderUpdatedAt < existingProviderUpdatedAt) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function isLiveWindow(match, now = new Date()) {
   const kickoff = new Date(match.kickoff);
   const startsSoon = kickoff.getTime() - now.getTime() <= 60 * 60 * 1000;
@@ -776,7 +817,18 @@ function rankStandings(entries) {
 }
 
 async function recalculateScores(allMatches, finalMatches) {
-  if (finalMatches.length === 0) return;
+  const audit = {
+    leagueCount: 0,
+    activeMembers: 0,
+    finalMatches: finalMatches.length,
+    scoredTips: 0,
+    duplicateTipsDeleted: 0,
+    orphanTipsDeleted: 0,
+    standingsWritten: 0,
+    standingsDeleted: 0,
+    issues: [],
+  };
+  if (finalMatches.length === 0) return audit;
   const finalMatchById = new Map();
   for (const m of finalMatches) {
     finalMatchById.set(m.id, m);
@@ -789,6 +841,7 @@ async function recalculateScores(allMatches, finalMatches) {
 
   const leaguesSnap = await db.collection("leagues").get();
   for (const leagueDoc of leaguesSnap.docs) {
+    audit.leagueCount += 1;
     const leagueId = leagueDoc.id;
     const membersSnap = await db.collection("leagues").doc(leagueId).collection("members").get();
     
@@ -877,6 +930,7 @@ async function recalculateScores(allMatches, finalMatches) {
           // Delete this duplicate from Firestore
           batch.delete(tipDoc.ref);
         }
+        audit.duplicateTipsDeleted += 1;
       }
     });
 
@@ -884,7 +938,11 @@ async function recalculateScores(allMatches, finalMatches) {
     for (const { tipDoc, data, match } of userMatchTips.values()) {
       const uid = data.uid;
       const current = stats.get(uid);
-      if (!current) continue;
+      if (!current) {
+        batch.delete(tipDoc.ref);
+        audit.orphanTipsDeleted += 1;
+        continue;
+      }
 
       if (current.leftAt !== null) continue;
 
@@ -901,8 +959,10 @@ async function recalculateScores(allMatches, finalMatches) {
         actualAway
       );
 
-      // Update tip points in Firestore
-      batch.update(tipDoc.ref, { points: score.points });
+      if (data.points !== score.points) {
+        batch.update(tipDoc.ref, { points: score.points });
+      }
+      audit.scoredTips += 1;
 
       current.totalPoints += score.points;
       if (score.isExact) {
@@ -926,6 +986,7 @@ async function recalculateScores(allMatches, finalMatches) {
 
     // Rank and update standings
     const activeStats = [...stats.values()].filter((s) => s.leftAt === null);
+    audit.activeMembers += activeStats.length;
     const ranked = rankStandings(activeStats);
 
     // Delete standings for members who have left the league
@@ -933,6 +994,7 @@ async function recalculateScores(allMatches, finalMatches) {
       if (standing.leftAt !== null) {
         const standingRef = db.collection("leagues").doc(leagueId).collection("standings").doc(standing.uid);
         batch.delete(standingRef);
+        audit.standingsDeleted += 1;
       }
     }
 
@@ -948,10 +1010,13 @@ async function recalculateScores(allMatches, finalMatches) {
         photoUrl: standing.photoUrl,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      audit.standingsWritten += 1;
     }
 
     await batch.commit();
   }
+  console.log("Score recalculation audit", JSON.stringify(audit));
+  return audit;
 }
 
 async function cleanupDuplicateTips(allMatches) {
@@ -1112,6 +1177,20 @@ async function isSyncDisabled() {
   return configSnap.exists && configSnap.data().disabled === true;
 }
 
+async function writeSyncStatus(kind, data) {
+  try {
+    await db.collection("settings").doc("sync_status").set({
+      [kind]: {
+        ...data,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn(`Failed to write sync status for ${kind}.`, error);
+  }
+}
+
 async function syncFullResults({ includeTable = true, includeCleanup = false, forceRecalculate = false, reason = "scheduled" } = {}) {
   console.log(`Starting full syncResults job (${reason})...`);
   const groupMatches = await fetchOpenLigaMatches();
@@ -1127,6 +1206,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         winner: data.winner ?? null,
         resultNote: data.resultNote ?? null,
         source: data.source ?? "openligadb",
+        providerUpdatedAt: data.providerUpdatedAt ?? null,
       });
   });
 
@@ -1159,7 +1239,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
   for (const rawMatch of allMatches) {
     let match = rawMatch;
     const existing = existingMatchMap.get(match.id);
-    if (existing?.status === "finalResult" && match.status !== "finalResult") {
+    if (shouldKeepExistingMatch(existing, match)) {
       match = {
         ...match,
         status: existing.status,
@@ -1167,14 +1247,6 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         awayScore: existing.awayScore,
         winner: existing.winner ?? match.winner ?? null,
         resultNote: existing.resultNote ?? match.resultNote ?? null,
-        source: existing.source,
-      };
-    } else if (existing?.source === "football-data" && isLiveWindow(match) && match.status !== "finalResult") {
-      match = {
-        ...match,
-        status: existing.status,
-        homeScore: existing.homeScore,
-        awayScore: existing.awayScore,
         source: existing.source,
       };
     }
@@ -1253,10 +1325,23 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
 
   if (forceRecalculate || finalMatchesChanged) {
     const finalMatches = effectiveAllMatches.filter((m) => m.status === "finalResult");
-    await recalculateScores(effectiveAllMatches, finalMatches);
+    const audit = await recalculateScores(effectiveAllMatches, finalMatches);
+    await writeSyncStatus("scoreAudit", {
+      reason,
+      ...audit,
+      ok: (audit?.issues ?? []).length === 0,
+    });
   } else {
     console.log("No final matches changed. Skipping scores recalculation.");
   }
+  await writeSyncStatus("full", {
+    reason,
+    ok: true,
+    matchesChanged,
+    finalMatchesChanged,
+    groupMatches: groupMatches.length,
+    totalMatches: effectiveAllMatches.length,
+  });
   console.log("Full syncResults job completed successfully.");
 }
 
@@ -1329,6 +1414,10 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
   try {
     if (await isSyncDisabled()) {
       console.log("Sync is disabled via settings/sync_config.");
+      await writeSyncStatus("live", {
+        ok: true,
+        disabled: true,
+      });
       return null;
     }
 
@@ -1342,6 +1431,14 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     const liveCandidates = openLigaMatches.filter((match) => isLiveWindow(match));
     if (liveCandidates.length === 0) {
       console.log("No live-window matches. Skipping fast live write.");
+      await writeSyncStatus("live", {
+        ok: true,
+        changedCount: 0,
+        finalTransition: false,
+        skippedStaleCount: 0,
+        liveCandidates: 0,
+        overlayMatches: 0,
+      });
       return null;
     }
 
@@ -1355,6 +1452,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
 
     let changedCount = 0;
     let finalTransition = false;
+    let skippedStaleCount = 0;
     const batch = db.batch();
     for (const match of overlayMatches) {
       const docRef = db.collection("matches").doc(match.id);
@@ -1363,8 +1461,10 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       const existingStatus = existing.status ?? "scheduled";
       const existingSource = existing.source ?? "openligadb";
       const matchSource = match.source ?? "openligadb";
-      if (existingStatus === "finalResult" && match.status !== "finalResult") continue;
-      if (existingSource === "football-data" && matchSource !== "football-data" && existingStatus !== "scheduled") continue;
+      if (shouldKeepExistingMatch(existingDoc.exists ? existing : null, match)) {
+        skippedStaleCount += 1;
+        continue;
+      }
       const changed = !existingDoc.exists ||
         (existing.homeScore ?? null) !== match.homeScore ||
         (existing.awayScore ?? null) !== match.awayScore ||
@@ -1402,6 +1502,18 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       console.log("Fast live sync found no Firestore changes.");
     }
 
+    await writeSyncStatus("live", {
+      ok: true,
+      changedCount,
+      finalTransition,
+      skippedStaleCount,
+      liveCandidates: liveCandidates.length,
+      overlayMatches: overlayMatches.length,
+      footballDataStatus: footballData.status,
+      footballDataMatches: footballData.matches.length,
+      footballDataHeaders: footballData.headers,
+    });
+
     if (finalTransition) {
       try {
         await syncFullResults({ includeTable: true, includeCleanup: false, forceRecalculate: true, reason: "live-final-transition" });
@@ -1412,6 +1524,10 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     return null;
   } catch (error) {
     console.error("syncLiveResults job failed with error:", error);
+    await writeSyncStatus("live", {
+      ok: false,
+      error: String(error?.message ?? error),
+    });
     return null;
   }
 });
@@ -1423,18 +1539,28 @@ exports.syncResults = functions.region("europe-west3").runWith({
   try {
     if (await isSyncDisabled()) {
       console.log("Sync is disabled via settings/sync_config.");
+      await writeSyncStatus("full", {
+        ok: true,
+        disabled: true,
+        reason: "hourly",
+      });
       return null;
     }
     const now = new Date();
     await syncFullResults({
       includeTable: true,
       includeCleanup: now.getUTCHours() === 0,
-      forceRecalculate: false,
+      forceRecalculate: true,
       reason: "hourly",
     });
     return null;
   } catch (error) {
     console.error("syncResults job failed with error:", error);
+    await writeSyncStatus("full", {
+      ok: false,
+      reason: "hourly",
+      error: String(error?.message ?? error),
+    });
     return null;
   }
 });

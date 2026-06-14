@@ -16,6 +16,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/leagues/$(leagueId)).data.ownerUid == request.auth.uid;
     }
 
+    function isAdmin() {
+      return signedIn()
+        && request.auth.uid in ['SKqNUlbDAhblyfAXpM8Sk1kf2Vt2'];
+    }
+
     function onlyUpdatesOwnLeagueMembership() {
       return signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
@@ -35,6 +40,12 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow read: if signedIn();
+      allow write: if false;
+    }
+    match /settings/{settingId} {
+      allow read: if signedIn() && (
+        settingId == 'official_table' || (settingId == 'sync_status' && isAdmin())
+      );
       allow write: if false;
     }
     match /leagues/{leagueId} {

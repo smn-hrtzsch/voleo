@@ -111,6 +111,8 @@
 - [x] Use Google profile photo from GoogleSignIn when Firebase Auth has not populated it yet.
 - [x] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
 - [x] Add a date-mode switch for games with swipe navigation and current-day initial focus.
+- [x] Harden P0 cloud sync stability with stale-provider guards, hourly score audits, and sync status reporting.
+- [x] Add an admin-only sync debug screen for live matchday monitoring.
 
 ## MVP
 
