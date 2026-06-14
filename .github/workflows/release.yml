@@ -80,25 +80,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          branch="${{ steps.release_pr.outputs.branch }}"
-
-          gh workflow run ci.yml --ref "$branch"
-          sleep 15
-
-          run_id=$(gh run list \
-            --workflow ci.yml \
-            --branch "$branch" \
-            --event workflow_dispatch \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
-
-          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
-            echo "Could not find CI run for release branch ${branch}."
-            exit 1
-          fi
-
-          gh run watch "$run_id" --exit-status
+          gh pr checks "${{ steps.release_pr.outputs.pr_url }}" --watch --required
 
       - name: Merge release pull request
         env:
