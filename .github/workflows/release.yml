@@ -6,10 +6,9 @@ on:
       release_type:
         description: "Type of release"
         required: true
-        default: "current"
+        default: "patch"
         type: choice
         options:
-          - current
           - patch
           - minor
           - major
@@ -18,11 +17,18 @@ on:
         required: false
         type: string
 
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+
 jobs:
-  bump-version:
+  release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       new_version: ${{ steps.bump_version.outputs.new_version }}
       new_version_full: ${{ steps.bump_version.outputs.new_version_full }}
@@ -30,53 +36,92 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
-      - name: Bump Version
+      - name: Bump version
         id: bump_version
+        run: python3 scripts/bump_version.py "${{ inputs.release_type }}"
+
+      - name: Create release pull request
+        id: release_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ inputs.release_type }}" = "current" ]; then
-            version_full=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-            version="${version_full%%+*}"
-            echo "Using current version: ${version_full}"
-            echo "new_version=${version}" >> "$GITHUB_OUTPUT"
-            echo "new_version_full=${version_full}" >> "$GITHUB_OUTPUT"
-          else
-            python3 scripts/bump_version.py "${{ inputs.release_type }}"
+          set -euo pipefail
+          version="${{ steps.bump_version.outputs.new_version }}"
+          version_full="${{ steps.bump_version.outputs.new_version_full }}"
+          branch="release/v${version}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add pubspec.yaml
+          git commit -m "chore: bump version to ${version_full}"
+          git push origin "$branch"
+
+          pr_url=$(gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore: bump version to ${version_full}" \
+            --body "Automated release version bump for v${version}.")
+
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
+
+      - name: Run CI for release pull request
+        id: release_ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="${{ steps.release_pr.outputs.branch }}"
+
+          gh workflow run ci.yml --ref "$branch"
+          sleep 15
+
+          run_id=$(gh run list \
+            --workflow ci.yml \
+            --branch "$branch" \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "Could not find CI run for release branch ${branch}."
+            exit 1
           fi
 
-      - name: Commit Version Bump & Tag
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          if [ "${{ inputs.release_type }}" != "current" ]; then
-            git add pubspec.yaml
-            git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version_full }}"
-            git push origin main
-          fi
-          git tag "v${{ steps.bump_version.outputs.new_version }}"
-          git push origin "v${{ steps.bump_version.outputs.new_version }}"
+          gh run watch "$run_id" --exit-status
 
-  build-android:
-    needs: bump-version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: v${{ needs.bump-version.outputs.new_version }}
+      - name: Merge release pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr merge "${{ steps.release_pr.outputs.pr_url }}" --squash --delete-branch
+          git fetch origin main --tags
+          git checkout main
+          git reset --hard origin/main
+
+      - name: Tag release
+        run: |
+          set -euo pipefail
+          version="${{ steps.bump_version.outputs.new_version }}"
+          git tag "v${version}"
+          git push origin "v${version}"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -94,8 +139,7 @@ jobs:
         run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
 
       - name: Restore keystore
-        run: |
-          echo "${{ secrets.VOLEO_KEYSTORE }}" | base64 --decode > /tmp/voleo.keystore
+        run: echo "${{ secrets.VOLEO_KEYSTORE }}" | base64 --decode > /tmp/voleo.keystore
 
       - name: Build Android Release APK
         env:
@@ -103,38 +147,19 @@ jobs:
           VOLEO_KEY_ALIAS: ${{ secrets.VOLEO_KEY_ALIAS }}
           VOLEO_STORE_PASSWORD: ${{ secrets.VOLEO_STORE_PASSWORD }}
           VOLEO_KEY_PASSWORD: ${{ secrets.VOLEO_KEY_PASSWORD }}
-        run: |
-          flutter build apk --release
+        run: flutter build apk --release
 
       - name: Rename APK
         run: |
           mkdir dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Voleo-android-v${{ needs.bump-version.outputs.new_version }}.apk
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: dist/Voleo-android-v${{ needs.bump-version.outputs.new_version }}.apk
-
-  publish-release:
-    needs: [bump-version, build-android]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download Android Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: android-apk
-          path: release-assets
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Voleo-android-v${{ steps.bump_version.outputs.new_version }}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.bump-version.outputs.new_version }}
-          name: ${{ inputs.release_title != '' && inputs.release_title || format('Release v{0}', needs.bump-version.outputs.new_version) }}
-          files: release-assets/*
+          tag_name: v${{ steps.bump_version.outputs.new_version }}
+          name: ${{ inputs.release_title != '' && inputs.release_title || format('Release v{0}', steps.bump_version.outputs.new_version) }}
+          files: dist/Voleo-android-v${{ steps.bump_version.outputs.new_version }}.apk
           generate_release_notes: true
           draft: false
           prerelease: false
