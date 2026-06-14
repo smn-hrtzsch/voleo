@@ -230,7 +230,6 @@ class _TopThreeCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(userProvider).value;
     final liveMatches =
         matches.where((m) => m.status == MatchStatus.live).toList();
 
@@ -266,15 +265,12 @@ class _TopThreeCard extends ConsumerWidget {
             actualAway: match.awayScore ?? 0,
           );
 
-          int pts = score.points;
-          if (s.uid == user?.uid) {
-            pts = getLiveMatchTotalPoints(
-              tipPoints: score.points,
-              favoriteTeam: user?.favoriteTeam,
-              predictedChampion: user?.predictedChampion,
-              match: match,
-            );
-          }
+          final pts = getLiveMatchTotalPoints(
+            tipPoints: score.points,
+            favoriteTeam: s.favoriteTeam,
+            predictedChampion: s.predictedChampion,
+            match: match,
+          );
 
           total += pts;
           updated = true;

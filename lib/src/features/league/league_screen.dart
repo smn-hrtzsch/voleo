@@ -64,15 +64,12 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                   actualAway: match.awayScore ?? 0,
                 );
 
-                int pts = score.points;
-                if (s.uid == user?.uid) {
-                  pts = getLiveMatchTotalPoints(
-                    tipPoints: score.points,
-                    favoriteTeam: user?.favoriteTeam,
-                    predictedChampion: user?.predictedChampion,
-                    match: match,
-                  );
-                }
+                final pts = getLiveMatchTotalPoints(
+                  tipPoints: score.points,
+                  favoriteTeam: s.favoriteTeam,
+                  predictedChampion: s.predictedChampion,
+                  match: match,
+                );
 
                 total += pts;
                 updated = true;

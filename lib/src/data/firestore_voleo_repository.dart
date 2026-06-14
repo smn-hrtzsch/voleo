@@ -320,6 +320,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
                 tendencyCount: s.tendencyCount,
                 rank: s.rank,
                 photoUrl: photoUrl,
+                favoriteTeam:
+                    userData?['favoriteTeam'] as String? ?? s.favoriteTeam,
+                predictedChampion: userData?['predictedChampion'] as String? ??
+                    s.predictedChampion,
               );
             }).toList();
 
@@ -348,6 +352,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
                   rank: 0,
                   photoUrl: memberData['photoUrl'] as String? ??
                       userData?['photoUrl'] as String?,
+                  favoriteTeam: userData?['favoriteTeam'] as String?,
+                  predictedChampion: userData?['predictedChampion'] as String?,
                 ));
                 addedAny = true;
               }
@@ -1366,6 +1372,8 @@ class FirestoreVoleoRepository implements VoleoRepository {
       tendencyCount: data['tendencyCount'] as int? ?? 0,
       rank: data['rank'] as int? ?? 0,
       photoUrl: data['photoUrl'] as String?,
+      favoriteTeam: data['favoriteTeam'] as String?,
+      predictedChampion: data['predictedChampion'] as String?,
     );
   }
 

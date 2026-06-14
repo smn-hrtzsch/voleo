@@ -11,6 +11,7 @@
 - [x] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
 - [x] Improve rules dialog: change subtitle to "Regeln, Punktevergabe & Team-Picks", fix "Tendenz" example, add link to Profile Screen under booster notice with back-routing, and update risk tip points to match app logic.
 - [x] Fix local/offline caching of profile pictures, points, and picks for all league members and the current user.
+- [x] Fix live standings preview to include Lieblingsmannschaft/Favorit points for all league members.
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
 - [x] Replace local-first repository wiring with Firebase repository after config exists.
