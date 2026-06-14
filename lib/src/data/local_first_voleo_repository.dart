@@ -410,6 +410,8 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           tendencyCount: tendency,
           rank: 0,
           photoUrl: user.photoUrl,
+          favoriteTeam: user.favoriteTeam,
+          predictedChampion: user.predictedChampion,
         ),
       );
     }

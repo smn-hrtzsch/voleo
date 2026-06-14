@@ -70,6 +70,8 @@ List<Standing> rankStandings(List<Standing> standings) {
           tendencyCount: current.tendencyCount,
           rank: rank,
           photoUrl: current.photoUrl,
+          favoriteTeam: current.favoriteTeam,
+          predictedChampion: current.predictedChampion,
         );
       }(),
   ];

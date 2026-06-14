@@ -194,6 +194,8 @@ class Standing {
     required this.tendencyCount,
     required this.rank,
     this.photoUrl,
+    this.favoriteTeam,
+    this.predictedChampion,
   });
 
   final String uid;
@@ -204,4 +206,6 @@ class Standing {
   final int tendencyCount;
   final int rank;
   final String? photoUrl;
+  final String? favoriteTeam;
+  final String? predictedChampion;
 }

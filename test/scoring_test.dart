@@ -107,6 +107,25 @@ void main() {
     expect(ranked.map((standing) => standing.rank), [1, 2, 3]);
   });
 
+  test('keeps team picks when ranking standings', () {
+    final ranked = rankStandings([
+      const Standing(
+        uid: 'a',
+        displayName: 'Ana',
+        totalPoints: 4,
+        exactCount: 1,
+        differenceCount: 0,
+        tendencyCount: 1,
+        rank: 0,
+        favoriteTeam: 'Deutschland',
+        predictedChampion: 'Frankreich',
+      ),
+    ]);
+
+    expect(ranked.single.favoriteTeam, 'Deutschland');
+    expect(ranked.single.predictedChampion, 'Frankreich');
+  });
+
   group('calculateRiskPoints', () {
     test('awards points when team exits earlier than predicted', () {
       final points = calculateRiskPoints(
