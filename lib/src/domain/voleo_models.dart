@@ -4,6 +4,47 @@ enum MatchStatus { scheduled, live, finalResult }
 
 enum MemberRole { owner, member }
 
+class OfficialTables {
+  const OfficialTables({
+    this.teams = const [],
+    this.groups = const {},
+    this.fairPlayScores = const {},
+  });
+
+  final List<String> teams;
+  final Map<String, List<OfficialTeamStanding>> groups;
+  final Map<String, int> fairPlayScores;
+
+  bool get hasGroups => groups.isNotEmpty;
+  bool get hasFairPlayScores => fairPlayScores.isNotEmpty;
+}
+
+class OfficialTeamStanding {
+  const OfficialTeamStanding({
+    required this.position,
+    required this.team,
+    required this.played,
+    required this.won,
+    required this.drawn,
+    required this.lost,
+    required this.goalsFor,
+    required this.goalsAgainst,
+    required this.goalDifference,
+    required this.points,
+  });
+
+  final int position;
+  final String team;
+  final int played;
+  final int won;
+  final int drawn;
+  final int lost;
+  final int goalsFor;
+  final int goalsAgainst;
+  final int goalDifference;
+  final int points;
+}
+
 class VoleoUser {
   const VoleoUser({
     required this.uid,

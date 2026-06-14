@@ -6,6 +6,7 @@ const db = admin.firestore();
 
 const OPENLIGADB_URL = 'https://api.openligadb.de/getmatchdata/wm2026/2026';
 const FOOTBALL_DATA_WC_MATCHES_URL = 'https://api.football-data.org/v4/competitions/WC/matches?season=2026';
+const FOOTBALL_DATA_WC_STANDINGS_URL = 'https://api.football-data.org/v4/competitions/WC/standings?season=2026';
 
 const TEAM_ALIASES = new Map(Object.entries({
   qatar: 'katar',
@@ -22,12 +23,14 @@ const TEAM_ALIASES = new Map(Object.entries({
   netherlands: 'niederlande',
   japan: 'japan',
   coteivoire: 'elfenbeinkuste',
+  cotedivoire: 'elfenbeinkuste',
   ivorycoast: 'elfenbeinkuste',
   ecuador: 'ecuador',
   sweden: 'schweden',
   tunisia: 'tunesien',
   spain: 'spanien',
   capeverde: 'kapverde',
+  capeverdeislands: 'kapverde',
   belgium: 'belgien',
   egypt: 'agypten',
   saudiarabia: 'saudiarabien',
@@ -57,6 +60,7 @@ const TEAM_ALIASES = new Map(Object.entries({
   mexico: 'mexiko',
   southafrica: 'sudafrika',
   southkorea: 'sudkorea',
+  korearepublic: 'sudkorea',
   czechia: 'tschechien',
   czechrepublic: 'tschechien',
   unitedstates: 'usa',
@@ -162,6 +166,13 @@ function teamKey(value) {
     .replace(/&/g, "und")
     .replace(/[^a-z0-9]/g, "");
   return TEAM_ALIASES.get(key) ?? key;
+}
+
+function displayTeamName(value) {
+  const key = teamKey(value);
+  const fixture = FIXTURES_LIST.find(([, home, away]) => teamKey(home) === key || teamKey(away) === key);
+  if (!fixture) return String(value || "");
+  return teamKey(fixture[1]) === key ? fixture[1] : fixture[2];
 }
 
 function groupKey(groupName) {
@@ -441,6 +452,147 @@ async function fetchFootballDataMatches() {
   const data = await response.json();
   const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
   return { matches, headers, status: response.status };
+}
+
+async function fetchFootballDataStandings() {
+  const token = process.env.FOOTBALL_DATA_TOKEN;
+  if (!token) {
+    console.warn("FOOTBALL_DATA_TOKEN secret is not configured. Skipping football-data.org standings.");
+    return { groups: {}, teams: [], headers: {}, status: 0 };
+  }
+
+  let response;
+  try {
+    response = await fetch(FOOTBALL_DATA_WC_STANDINGS_URL, {
+      headers: { "X-Auth-Token": token },
+    });
+  } catch (error) {
+    console.warn("football-data.org standings request failed before receiving a response.", error);
+    return { groups: {}, teams: [], headers: {}, status: 0 };
+  }
+
+  const headers = {
+    apiVersion: response.headers.get("x-api-version"),
+    authenticatedClient: response.headers.get("x-authenticated-client"),
+    requestCounterReset: response.headers.get("x-requestcounter-reset"),
+    requestsAvailable: response.headers.get("x-requestsavailable"),
+  };
+
+  if (response.status === 429) {
+    console.warn("football-data.org standings rate limit reached.", headers);
+    return { groups: {}, teams: [], headers, status: response.status };
+  }
+  if (!response.ok) {
+    console.warn(`football-data.org standings request failed with ${response.status}.`, headers);
+    return { groups: {}, teams: [], headers, status: response.status };
+  }
+
+  const data = await response.json();
+  const groups = {};
+  const teams = [];
+  for (const standing of data.standings ?? []) {
+    if (standing.type && standing.type !== "TOTAL") continue;
+    const group = groupKey(standing.group);
+    const rows = [];
+    for (const row of standing.table ?? []) {
+      const team = displayTeamName(row.team?.name);
+      if (!team) continue;
+      rows.push({
+        position: Number(row.position ?? 0),
+        team,
+        played: Number(row.playedGames ?? 0),
+        won: Number(row.won ?? 0),
+        drawn: Number(row.draw ?? 0),
+        lost: Number(row.lost ?? 0),
+        goalsFor: Number(row.goalsFor ?? 0),
+        goalsAgainst: Number(row.goalsAgainst ?? 0),
+        goalDifference: Number(row.goalDifference ?? 0),
+        points: Number(row.points ?? 0),
+      });
+      teams.push(team);
+    }
+    if (group && rows.length > 0) {
+      rows.sort((a, b) => a.position - b.position);
+      groups[group] = rows;
+    }
+  }
+
+  return { groups, teams, headers, status: response.status };
+}
+
+async function syncOfficialTable({ allowOpenLigaFallback = true } = {}) {
+  let tableSource = "none";
+  let tableStatus = 0;
+  let tableChanged = false;
+
+  try {
+    console.log("Fetching official group standings from football-data.org...");
+    const standings = await fetchFootballDataStandings();
+    tableStatus = standings.status;
+    if (standings.teams.length > 0) {
+      tableSource = "football-data";
+
+      const existingTableSnap = await db.collection("settings").doc("official_table").get();
+      const existingData = existingTableSnap.exists ? existingTableSnap.data() : {};
+      tableChanged =
+        JSON.stringify(existingData.teams ?? []) !== JSON.stringify(standings.teams) ||
+        JSON.stringify(existingData.groups ?? {}) !== JSON.stringify(standings.groups);
+
+      if (tableChanged) {
+        await db.collection("settings").doc("official_table").set({
+          teams: standings.teams,
+          groups: standings.groups,
+          source: tableSource,
+          providerStatus: standings.status,
+          providerHeaders: standings.headers,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        console.log("Synced football-data.org official table order to Firestore.");
+      } else {
+        console.log("Official table order unchanged. Skipping write.");
+      }
+      return { tableSource, tableStatus, tableChanged };
+    }
+
+    if (!allowOpenLigaFallback) {
+      console.log("No football-data.org group standings available. Keeping existing official table.");
+      return { tableSource, tableStatus, tableChanged };
+    }
+
+    console.log("Fetching official table from OpenLigaDB as fallback...");
+    const tableResponse = await fetch("https://api.openligadb.de/getbltable/wm2026/2026");
+    tableStatus = tableResponse.status;
+    if (tableResponse.ok) {
+      tableSource = "openligadb";
+      const tableData = await tableResponse.json();
+      const officialOrder = tableData.map((t) => displayTeamName(t.teamName));
+
+      const existingTableSnap = await db.collection("settings").doc("official_table").get();
+      const existingData = existingTableSnap.exists ? existingTableSnap.data() : {};
+      tableChanged =
+        JSON.stringify(existingData.teams ?? []) !== JSON.stringify(officialOrder) ||
+        Object.keys(existingData.groups ?? {}).length > 0;
+
+      if (tableChanged) {
+        await db.collection("settings").doc("official_table").set({
+          teams: officialOrder,
+          groups: {},
+          source: tableSource,
+          providerStatus: tableResponse.status,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        console.log("Synced OpenLigaDB official table fallback to Firestore.");
+      } else {
+        console.log("Official table fallback unchanged. Skipping write.");
+      }
+    } else {
+      console.warn(`Failed to fetch official table fallback: ${tableResponse.status}`);
+    }
+  } catch (err) {
+    console.error("Failed to fetch/save official table:", err);
+  }
+
+  return { tableSource, tableStatus, tableChanged };
 }
 
 function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
@@ -1290,33 +1442,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     console.log("No matches changed. Skipping matches Firestore write.");
   }
 
+  let tableSource = "none";
+  let tableStatus = 0;
   if (includeTable) {
-    try {
-      console.log("Fetching official table from OpenLigaDB...");
-      const tableResponse = await fetch("https://api.openligadb.de/getbltable/wm2026/2026");
-      if (tableResponse.ok) {
-        const tableData = await tableResponse.json();
-        const officialOrder = tableData.map((t) => t.teamName);
-
-        const existingTableSnap = await db.collection("settings").doc("official_table").get();
-        const existingTeams = existingTableSnap.exists ? existingTableSnap.data().teams : [];
-        const tableChanged = JSON.stringify(existingTeams) !== JSON.stringify(officialOrder);
-
-        if (tableChanged) {
-          await db.collection("settings").doc("official_table").set({
-            teams: officialOrder,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log("Synced official table to Firestore.");
-        } else {
-          console.log("Official table unchanged. Skipping write.");
-        }
-      } else {
-        console.warn(`Failed to fetch official table: ${tableResponse.status}`);
-      }
-    } catch (err) {
-      console.error("Failed to fetch/save official table:", err);
-    }
+    const tableResult = await syncOfficialTable({ allowOpenLigaFallback: true });
+    tableSource = tableResult.tableSource;
+    tableStatus = tableResult.tableStatus;
   }
 
   if (includeCleanup) {
@@ -1341,6 +1472,8 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     finalMatchesChanged,
     groupMatches: groupMatches.length,
     totalMatches: effectiveAllMatches.length,
+    tableSource,
+    tableStatus,
   });
   console.log("Full syncResults job completed successfully.");
 }
@@ -1453,6 +1586,9 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     let changedCount = 0;
     let finalTransition = false;
     let skippedStaleCount = 0;
+    let tableSource = "none";
+    let tableStatus = 0;
+    let tableChanged = false;
     const batch = db.batch();
     for (const match of overlayMatches) {
       const docRef = db.collection("matches").doc(match.id);
@@ -1498,6 +1634,10 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     if (changedCount > 0) {
       await batch.commit();
       console.log(`Fast live sync wrote ${changedCount} changed match document(s).`);
+      const tableResult = await syncOfficialTable({ allowOpenLigaFallback: false });
+      tableSource = tableResult.tableSource;
+      tableStatus = tableResult.tableStatus;
+      tableChanged = tableResult.tableChanged;
     } else {
       console.log("Fast live sync found no Firestore changes.");
     }
@@ -1512,6 +1652,9 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       footballDataStatus: footballData.status,
       footballDataMatches: footballData.matches.length,
       footballDataHeaders: footballData.headers,
+      tableSource,
+      tableStatus,
+      tableChanged,
     });
 
     if (finalTransition) {
@@ -1535,6 +1678,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
 exports.syncResults = functions.region("europe-west3").runWith({
   timeoutSeconds: 300,
   memory: "256MB",
+  secrets: ["FOOTBALL_DATA_TOKEN"],
 }).pubsub.schedule("0 * * * *").onRun(async (context) => {
   try {
     if (await isSyncDisabled()) {
