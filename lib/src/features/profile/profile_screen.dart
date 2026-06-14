@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../admin/admin_debug_screen.dart';
 import '../../domain/flags.dart';
 import '../../domain/clock.dart';
 import '../../domain/scoring.dart';
@@ -74,6 +75,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 16),
                   _BoosterAndRiskPicksCard(user: value),
+                  if (adminDebugUids.contains(value.uid)) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => context.push('/profile/admin-debug'),
+                      icon: const Icon(Icons.monitor_heart),
+                      label: const Text('Sync Status'),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Text(
                     'Anmeldemethoden',

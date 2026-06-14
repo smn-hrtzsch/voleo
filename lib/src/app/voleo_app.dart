@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/league/join_league_screen.dart';
+import '../features/admin/admin_debug_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/league/league_screen.dart';
 import '../features/matches/matches_screen.dart';
@@ -175,6 +176,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
+              routes: [
+                GoRoute(
+                  path: 'admin-debug',
+                  builder: (context, state) => const AdminDebugScreen(),
+                ),
+              ],
             ),
           ]),
         ],
