@@ -291,11 +291,15 @@ function normalizeFootballDataMatch(match) {
   const kickoff = match.utcDate;
   if (!homeTeam || !awayTeam || !kickoff) return null;
 
+  const kickoffDate = new Date(kickoff);
+  const now = new Date();
   let status = "scheduled";
   if (["IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT"].includes(match.status)) {
     status = "live";
   } else if (["FINISHED", "AWARDED"].includes(match.status)) {
     status = "finalResult";
+  } else if (now > kickoffDate) {
+    status = "live";
   }
 
   const fullTime = match.score?.fullTime ?? {};
@@ -1356,14 +1360,19 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       const docRef = db.collection("matches").doc(match.id);
       const existingDoc = await docRef.get();
       const existing = existingDoc.data() ?? {};
+      const existingStatus = existing.status ?? "scheduled";
+      const existingSource = existing.source ?? "openligadb";
+      const matchSource = match.source ?? "openligadb";
+      if (existingStatus === "finalResult" && match.status !== "finalResult") continue;
+      if (existingSource === "football-data" && matchSource !== "football-data" && existingStatus !== "scheduled") continue;
       const changed = !existingDoc.exists ||
         (existing.homeScore ?? null) !== match.homeScore ||
         (existing.awayScore ?? null) !== match.awayScore ||
-        (existing.status ?? "scheduled") !== match.status ||
-        (existing.source ?? "openligadb") !== (match.source ?? "openligadb");
+        existingStatus !== match.status ||
+        existingSource !== matchSource;
       if (!changed) continue;
 
-      if ((existing.status ?? "scheduled") !== "finalResult" && match.status === "finalResult") {
+      if (existingStatus !== "finalResult" && match.status === "finalResult") {
         finalTransition = true;
       }
       changedCount += 1;
