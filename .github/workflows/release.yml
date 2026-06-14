@@ -6,9 +6,10 @@ on:
       release_type:
         description: "Type of release"
         required: true
-        default: "patch"
+        default: "current"
         type: choice
         options:
+          - current
           - patch
           - minor
           - major
@@ -39,16 +40,26 @@ jobs:
       - name: Bump Version
         id: bump_version
         run: |
-          python3 scripts/bump_version.py "${{ inputs.release_type }}"
+          if [ "${{ inputs.release_type }}" = "current" ]; then
+            version_full=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+            version="${version_full%%+*}"
+            echo "Using current version: ${version_full}"
+            echo "new_version=${version}" >> "$GITHUB_OUTPUT"
+            echo "new_version_full=${version_full}" >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/bump_version.py "${{ inputs.release_type }}"
+          fi
 
       - name: Commit Version Bump & Tag
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          git add pubspec.yaml
-          git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version_full }}"
+          if [ "${{ inputs.release_type }}" != "current" ]; then
+            git add pubspec.yaml
+            git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version_full }}"
+            git push origin main
+          fi
           git tag "v${{ steps.bump_version.outputs.new_version }}"
-          git push origin main
           git push origin "v${{ steps.bump_version.outputs.new_version }}"
 
   build-android:
