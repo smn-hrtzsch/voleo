@@ -114,6 +114,7 @@
 - [x] Add a date-mode switch for games with swipe navigation and current-day initial focus.
 - [x] Harden P0 cloud sync stability with stale-provider guards, hourly score audits, and sync status reporting.
 - [x] Add an admin-only sync debug screen for live matchday monitoring.
+- [x] Sort displayed group tables with FIFA-style tiebreakers and manual Fair Play fallback.
 
 ## MVP
 

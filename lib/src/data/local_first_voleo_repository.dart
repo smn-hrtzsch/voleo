@@ -97,8 +97,8 @@ class LocalFirstVoleoRepository implements VoleoRepository {
   }
 
   @override
-  Stream<List<String>> watchOfficialTable() {
-    return Stream.value(const <String>[]);
+  Stream<OfficialTables> watchOfficialTables() {
+    return Stream.value(const OfficialTables());
   }
 
   @override

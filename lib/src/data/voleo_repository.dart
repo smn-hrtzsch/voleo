@@ -10,7 +10,7 @@ abstract class VoleoRepository {
   Stream<List<Tip>> watchTips();
   Stream<List<Tip>> watchLeagueTips();
   Stream<List<Standing>> watchStandings();
-  Stream<List<String>> watchOfficialTable();
+  Stream<OfficialTables> watchOfficialTables();
 
   Future<void> startSession({
     required String nickname,

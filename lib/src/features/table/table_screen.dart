@@ -117,7 +117,7 @@ class _GroupStandingsView extends ConsumerWidget {
   final List<CupMatch> matches;
 
   List<_TeamRow> _getSortedThirds(
-      Map<String, List<_TeamRow>> tables, List<String> officialTable) {
+      Map<String, List<_TeamRow>> tables, OfficialTables officialTables) {
     final thirds = <_TeamRow>[];
     for (final group in tables.keys) {
       final rows = tables[group]!;
@@ -132,21 +132,23 @@ class _GroupStandingsView extends ConsumerWidget {
       if (diff != 0) return diff;
       final goals = b.goalsFor.compareTo(a.goalsFor);
       if (goals != 0) return goals;
-      if (officialTable.isNotEmpty) {
-        final idxA = officialTable.indexOf(a.team);
-        final idxB = officialTable.indexOf(b.team);
-        if (idxA != -1 && idxB != -1) {
-          return idxA.compareTo(idxB);
-        }
+      if (officialTables.hasFairPlayScores) {
+        final fairPlay = (officialTables.fairPlayScores[b.team] ?? 0)
+            .compareTo(officialTables.fairPlayScores[a.team] ?? 0);
+        if (fairPlay != 0) return fairPlay;
       }
+      final rankA = _fifaRanking[a.team] ?? 999;
+      final rankB = _fifaRanking[b.team] ?? 999;
+      final ranking = rankA.compareTo(rankB);
+      if (ranking != 0) return ranking;
       return a.team.compareTo(b.team);
     });
     return thirds;
   }
 
   Set<String> _calculateBestThirds(
-      Map<String, List<_TeamRow>> tables, List<String> officialTable) {
-    return _getSortedThirds(tables, officialTable)
+      Map<String, List<_TeamRow>> tables, OfficialTables officialTables) {
+    return _getSortedThirds(tables, officialTables)
         .take(8)
         .map((row) => row.team)
         .toSet();
@@ -164,7 +166,7 @@ class _GroupStandingsView extends ConsumerWidget {
   }
 
   Map<String, List<_TeamRow>> _calculateGroupTables(
-      List<String> officialTable) {
+      OfficialTables officialTables) {
     final groupMatches = matches
         .where((m) =>
             m.stage.startsWith('Gruppe') ||
@@ -235,38 +237,145 @@ class _GroupStandingsView extends ConsumerWidget {
     final sortedTables = <String, List<_TeamRow>>{};
     for (final group in tables.keys.toList()..sort()) {
       final teamRows = tables[group]!.values.toList();
-      teamRows.sort((a, b) {
-        final pts = b.points.compareTo(a.points);
-        if (pts != 0) return pts;
-        final diff = b.goalDiff.compareTo(a.goalDiff);
-        if (diff != 0) return diff;
-        final goals = b.goalsFor.compareTo(a.goalsFor);
-        if (goals != 0) return goals;
-        if (officialTable.isNotEmpty) {
-          final idxA = officialTable.indexOf(a.team);
-          final idxB = officialTable.indexOf(b.team);
-          if (idxA != -1 && idxB != -1) {
-            return idxA.compareTo(idxB);
-          }
-        }
-        return a.team.compareTo(b.team);
-      });
-      sortedTables[group] = teamRows;
+      final matchesForGroup = groupMatches
+          .where((match) => match.group == group)
+          .map(_completedMatchRow)
+          .whereType<_CompletedMatchRow>()
+          .toList();
+      sortedTables[group] = _sortGroupRows(
+        teamRows,
+        matchesForGroup,
+        officialTables.fairPlayScores,
+      );
     }
 
     return sortedTables;
   }
 
+  _CompletedMatchRow? _completedMatchRow(CupMatch match) {
+    if (match.status != MatchStatus.finalResult &&
+        match.status != MatchStatus.live) {
+      return null;
+    }
+    final homeScore = match.homeScore;
+    final awayScore = match.awayScore;
+    if (homeScore == null || awayScore == null) return null;
+    return _CompletedMatchRow(
+      home: _normalizeTeamName(match.homeTeam),
+      away: _normalizeTeamName(match.awayTeam),
+      homeScore: homeScore,
+      awayScore: awayScore,
+    );
+  }
+
+  List<_TeamRow> _sortGroupRows(
+    List<_TeamRow> rows,
+    List<_CompletedMatchRow> groupMatches,
+    Map<String, int> fairPlayScores,
+  ) {
+    final byPoints = <int, List<_TeamRow>>{};
+    for (final row in rows) {
+      byPoints.putIfAbsent(row.points, () => <_TeamRow>[]).add(row);
+    }
+    final sortedPoints = byPoints.keys.toList()..sort((a, b) => b.compareTo(a));
+    return [
+      for (final points in sortedPoints)
+        ..._sortPointTie(byPoints[points]!, groupMatches, fairPlayScores),
+    ];
+  }
+
+  List<_TeamRow> _sortPointTie(
+    List<_TeamRow> tiedRows,
+    List<_CompletedMatchRow> groupMatches,
+    Map<String, int> fairPlayScores,
+  ) {
+    if (tiedRows.length <= 1) return tiedRows;
+    return _sortHeadToHeadTie(tiedRows, groupMatches, fairPlayScores);
+  }
+
+  List<_TeamRow> _sortHeadToHeadTie(
+    List<_TeamRow> tiedRows,
+    List<_CompletedMatchRow> groupMatches,
+    Map<String, int> fairPlayScores,
+  ) {
+    final tiedTeams = tiedRows.map((row) => row.team).toSet();
+    final headToHead = {
+      for (final row in tiedRows) row.team: _TieStats(),
+    };
+    for (final match in groupMatches) {
+      if (!tiedTeams.contains(match.home) || !tiedTeams.contains(match.away)) {
+        continue;
+      }
+      headToHead[match.home]!.apply(match.homeScore, match.awayScore);
+      headToHead[match.away]!.apply(match.awayScore, match.homeScore);
+    }
+
+    final sorted = [...tiedRows]..sort((a, b) {
+        final h2h =
+            _compareHeadToHead(headToHead[a.team]!, headToHead[b.team]!);
+        if (h2h != 0) return h2h;
+        return _compareFinalTieBreakers(a, b, fairPlayScores);
+      });
+
+    final grouped = <String, List<_TeamRow>>{};
+    for (final row in sorted) {
+      final stats = headToHead[row.team]!;
+      final key = '${stats.points}:${stats.goalDiff}:${stats.goalsFor}';
+      grouped.putIfAbsent(key, () => <_TeamRow>[]).add(row);
+    }
+
+    if (grouped.length <= 1) {
+      return sorted;
+    }
+
+    return [
+      for (final group in grouped.values)
+        if (group.length == tiedRows.length)
+          ...group
+        else
+          ..._sortHeadToHeadTie(group, groupMatches, fairPlayScores),
+    ];
+  }
+
+  int _compareHeadToHead(_TieStats a, _TieStats b) {
+    final points = b.points.compareTo(a.points);
+    if (points != 0) return points;
+    final diff = b.goalDiff.compareTo(a.goalDiff);
+    if (diff != 0) return diff;
+    return b.goalsFor.compareTo(a.goalsFor);
+  }
+
+  int _compareFinalTieBreakers(
+    _TeamRow a,
+    _TeamRow b,
+    Map<String, int> fairPlayScores,
+  ) {
+    final diff = b.goalDiff.compareTo(a.goalDiff);
+    if (diff != 0) return diff;
+    final goals = b.goalsFor.compareTo(a.goalsFor);
+    if (goals != 0) return goals;
+    if (fairPlayScores.isNotEmpty) {
+      final fairPlay =
+          (fairPlayScores[b.team] ?? 0).compareTo(fairPlayScores[a.team] ?? 0);
+      if (fairPlay != 0) return fairPlay;
+    }
+    final rankA = _fifaRanking[a.team] ?? 999;
+    final rankB = _fifaRanking[b.team] ?? 999;
+    final ranking = rankA.compareTo(rankB);
+    if (ranking != 0) return ranking;
+    return a.team.compareTo(b.team);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final officialTableAsync = ref.watch(officialTableProvider);
-    final officialTable = officialTableAsync.value ?? const <String>[];
-    final tables = _calculateGroupTables(officialTable);
+    final officialTablesAsync = ref.watch(officialTablesProvider);
+    final officialTables = officialTablesAsync.value ?? const OfficialTables();
+    final tables = _calculateGroupTables(officialTables);
     if (tables.isEmpty) {
       return const Center(child: Text('Keine Gruppenspiele geladen.'));
     }
-    final bestThirds = _calculateBestThirds(tables, officialTable);
-    final sortedThirds = _getSortedThirds(tables, officialTable);
+    final bestThirds = _calculateBestThirds(tables, officialTables);
+    final sortedThirds = _getSortedThirds(tables, officialTables);
     final user = ref.watch(userProvider).value;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -308,6 +417,79 @@ class _TeamRow {
   int get points => won * 3 + drawn;
   int get goalDiff => goalsFor - goalsAgainst;
 }
+
+class _CompletedMatchRow {
+  const _CompletedMatchRow({
+    required this.home,
+    required this.away,
+    required this.homeScore,
+    required this.awayScore,
+  });
+
+  final String home;
+  final String away;
+  final int homeScore;
+  final int awayScore;
+}
+
+class _TieStats {
+  int points = 0;
+  int goalsFor = 0;
+  int goalsAgainst = 0;
+
+  int get goalDiff => goalsFor - goalsAgainst;
+
+  void apply(int scored, int conceded) {
+    goalsFor += scored;
+    goalsAgainst += conceded;
+    if (scored > conceded) {
+      points += 3;
+    } else if (scored == conceded) {
+      points += 1;
+    }
+  }
+}
+
+const _fifaRanking = <String, int>{
+  'Spanien': 1,
+  'Argentinien': 2,
+  'Frankreich': 3,
+  'England': 4,
+  'Portugal': 5,
+  'Niederlande': 6,
+  'Brasilien': 7,
+  'Belgien': 8,
+  'Deutschland': 9,
+  'Kroatien': 10,
+  'Marokko': 11,
+  'Kolumbien': 13,
+  'USA': 14,
+  'Mexiko': 15,
+  'Uruguay': 16,
+  'Schweiz': 17,
+  'Senegal': 18,
+  'Iran': 20,
+  'Japan': 22,
+  'Österreich': 23,
+  'Ecuador': 24,
+  'Türkei': 25,
+  'Australien': 26,
+  'Kanada': 27,
+  'Norwegen': 29,
+  'Panama': 30,
+  'Ägypten': 34,
+  'Algerien': 35,
+  'Tunesien': 36,
+  'Paraguay': 39,
+  'Elfenbeinküste': 40,
+  'Katar': 51,
+  'Irak': 58,
+  'Südafrika': 61,
+  'Bosnien-Herzegowina': 72,
+  'Kap Verde': 82,
+  'Jordanien': 84,
+  'Neuseeland': 86,
+};
 
 class _GroupTableCard extends StatelessWidget {
   const _GroupTableCard({

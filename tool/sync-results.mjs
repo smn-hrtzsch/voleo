@@ -196,43 +196,7 @@ if (matchesChanged) {
   console.log('No matches changed. Skipping matches Firestore write.');
 }
 
-if (!dryRun) {
-  try {
-    console.log('Fetching official table from OpenLigaDB...');
-    const tableResponse = await fetch('https://api.openligadb.de/getbltable/wm2026/2026');
-    if (tableResponse.ok) {
-      const tableData = await tableResponse.json();
-      const officialOrder = tableData.map((t) => t.teamName);
-      
-      const existingTableDoc = await firestore.getDocument('settings', 'official_table').catch(() => null);
-      let tableChanged = true;
-      if (existingTableDoc && existingTableDoc.fields?.teams?.arrayValue?.values) {
-        const existingTeams = existingTableDoc.fields.teams.arrayValue.values.map(v => v.stringValue);
-        tableChanged = JSON.stringify(existingTeams) !== JSON.stringify(officialOrder);
-      }
-      
-      if (tableChanged) {
-        await firestore.batchWrite([
-          {
-            update: firestore.document('settings', 'official_table', {
-              teams: {
-                arrayValue: {
-                  values: officialOrder.map((team) => ({ stringValue: team })),
-                },
-              },
-              updatedAt: timestampValue(new Date().toISOString()),
-            }),
-          },
-        ]);
-        console.log('Synced official table to Firestore.');
-      } else {
-        console.log('Official table unchanged. Skipping write.');
-      }
-    }
-  } catch (err) {
-    console.error('Failed to fetch/save official table:', err);
-  }
-}
+console.log('Skipping official table sync in local script. Cloud Functions sync football-data.org group standings.');
 
 if (finalMatchesChanged) {
   await recalculateScores(

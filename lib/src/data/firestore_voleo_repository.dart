@@ -426,19 +426,65 @@ class FirestoreVoleoRepository implements VoleoRepository {
   }
 
   @override
-  Stream<List<String>> watchOfficialTable() {
+  Stream<OfficialTables> watchOfficialTables() {
     return _firestore
         .collection('settings')
         .doc('official_table')
         .snapshots()
         .map((doc) {
-      if (!doc.exists) return const <String>[];
+      if (!doc.exists) return const OfficialTables();
       final data = doc.data();
-      if (data == null) return const <String>[];
+      if (data == null) return const OfficialTables();
       final teamsRaw = data['teams'] as List<dynamic>?;
-      if (teamsRaw == null) return const <String>[];
-      return teamsRaw.cast<String>();
+      final teams = teamsRaw?.cast<String>() ?? const <String>[];
+      final fairPlayScoresRaw = data['fairPlayScores'] as Map<String, dynamic>?;
+      final fairPlayScores = <String, int>{};
+      if (fairPlayScoresRaw != null) {
+        for (final entry in fairPlayScoresRaw.entries) {
+          final score = entry.value;
+          if (score is int) {
+            fairPlayScores[entry.key] = score;
+          }
+        }
+      }
+      final groupsRaw = data['groups'] as Map<String, dynamic>?;
+      final groups = <String, List<OfficialTeamStanding>>{};
+      if (groupsRaw != null) {
+        for (final entry in groupsRaw.entries) {
+          final rowsRaw = entry.value;
+          if (rowsRaw is! List<dynamic>) continue;
+          final rows = rowsRaw
+              .whereType<Map<String, dynamic>>()
+              .map(_officialTeamStandingFromMap)
+              .toList()
+            ..sort((a, b) => a.position.compareTo(b.position));
+          if (rows.isNotEmpty) {
+            groups[entry.key] = rows;
+          }
+        }
+      }
+      return OfficialTables(
+        teams: teams,
+        groups: groups,
+        fairPlayScores: fairPlayScores,
+      );
     });
+  }
+
+  static OfficialTeamStanding _officialTeamStandingFromMap(
+      Map<String, dynamic> data) {
+    return OfficialTeamStanding(
+      position: data['position'] as int? ?? 0,
+      team: data['team'] as String? ?? '',
+      played: data['played'] as int? ?? 0,
+      won: data['won'] as int? ?? 0,
+      drawn: data['drawn'] as int? ?? 0,
+      lost: data['lost'] as int? ?? 0,
+      goalsFor: data['goalsFor'] as int? ?? 0,
+      goalsAgainst: data['goalsAgainst'] as int? ?? 0,
+      goalDifference: data['goalDifference'] as int? ?? 0,
+      points: data['points'] as int? ?? 0,
+    );
   }
 
   @override
