@@ -311,6 +311,7 @@ function shouldKeepExistingMatch(existing, nextMatch) {
   const nextSource = nextMatch.source ?? "openligadb";
 
   if (statusRank(nextStatus) < statusRank(existingStatus)) return true;
+  if (nextStatus === "finalResult" && existingStatus !== "finalResult") return false;
   if (existingSource === "football-data" &&
       nextSource !== "football-data" &&
       existingStatus !== "scheduled") {
@@ -356,6 +357,14 @@ function normalizeFootballDataMatch(match) {
 
   const fullTime = match.score?.fullTime ?? {};
   const halfTime = match.score?.halfTime ?? {};
+  const winner = match.score?.winner === "HOME_TEAM"
+    ? homeTeam
+    : match.score?.winner === "AWAY_TEAM"
+      ? awayTeam
+      : null;
+  const resultNote = match.score?.duration && match.score.duration !== "REGULAR"
+    ? match.score.duration
+    : null;
   return {
     providerId: String(match.id),
     homeTeam,
@@ -368,6 +377,8 @@ function normalizeFootballDataMatch(match) {
     awayScore: fullTime.away ?? null,
     halfHomeScore: halfTime.home ?? null,
     halfAwayScore: halfTime.away ?? null,
+    winner,
+    resultNote,
     lastUpdated: match.lastUpdated ?? null,
   };
 }
@@ -420,7 +431,7 @@ async function fetchFirestoreMatches() {
 async function fetchFootballDataMatches() {
   const token = process.env.FOOTBALL_DATA_TOKEN;
   if (!token) {
-    console.warn("FOOTBALL_DATA_TOKEN secret is not configured. Skipping football-data.org live overlay.");
+    console.warn("FOOTBALL_DATA_TOKEN secret is not configured. Skipping football-data.org match overlay.");
     return { matches: [], headers: {}, status: 0 };
   }
 
@@ -607,6 +618,8 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
     status: footballDataMatch.status,
     homeScore: footballDataMatch.homeScore,
     awayScore: footballDataMatch.awayScore,
+    winner: footballDataMatch.status === "finalResult" ? footballDataMatch.winner : null,
+    resultNote: footballDataMatch.resultNote,
     source: "football-data",
     providerStatus: footballDataMatch.rawStatus,
     providerUpdatedAt: footballDataMatch.lastUpdated,
@@ -1345,7 +1358,9 @@ async function writeSyncStatus(kind, data) {
 
 async function syncFullResults({ includeTable = true, includeCleanup = false, forceRecalculate = false, reason = "scheduled" } = {}) {
   console.log(`Starting full syncResults job (${reason})...`);
-  const groupMatches = await fetchOpenLigaMatches();
+  const openLigaMatches = await fetchOpenLigaMatches();
+  const footballData = await fetchFootballDataMatches();
+  const groupMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches);
 
   const matchesSnap = await db.collection("matches").get();
   const existingMatchMap = new Map();
@@ -1358,7 +1373,9 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         winner: data.winner ?? null,
         resultNote: data.resultNote ?? null,
         source: data.source ?? "openligadb",
+        providerStatus: data.providerStatus ?? null,
         providerUpdatedAt: data.providerUpdatedAt ?? null,
+        minute: data.minute ?? null,
       });
   });
 
@@ -1400,6 +1417,9 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         winner: existing.winner ?? match.winner ?? null,
         resultNote: existing.resultNote ?? match.resultNote ?? null,
         source: existing.source,
+        providerStatus: existing.providerStatus ?? match.providerStatus ?? null,
+        providerUpdatedAt: existing.providerUpdatedAt ?? match.providerUpdatedAt ?? null,
+        minute: existing.minute ?? match.minute ?? null,
       };
     }
     effectiveAllMatches.push(match);
@@ -1409,7 +1429,10 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
       existing.status !== match.status ||
       existing.winner !== match.winner ||
       existing.resultNote !== match.resultNote ||
-      existing.source !== (match.source ?? "openligadb");
+      existing.source !== (match.source ?? "openligadb") ||
+      existing.providerStatus !== (match.providerStatus ?? null) ||
+      existing.providerUpdatedAt !== (match.providerUpdatedAt ?? null) ||
+      existing.minute !== (match.minute ?? null);
 
     if (changed) {
       matchesChanged = true;
@@ -1430,6 +1453,9 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         winner: match.winner ?? null,
         resultNote: match.resultNote ?? null,
         source: match.source ?? "openligadb",
+        providerStatus: match.providerStatus ?? null,
+        providerUpdatedAt: match.providerUpdatedAt ?? null,
+        minute: match.minute ?? null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
     }
@@ -1472,6 +1498,9 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     finalMatchesChanged,
     groupMatches: groupMatches.length,
     totalMatches: effectiveAllMatches.length,
+    footballDataStatus: footballData.status,
+    footballDataMatches: footballData.matches.length,
+    footballDataHeaders: footballData.headers,
     tableSource,
     tableStatus,
   });
