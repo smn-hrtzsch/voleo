@@ -80,7 +80,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh pr checks "${{ steps.release_pr.outputs.pr_url }}" --watch --required
+          pr_url="${{ steps.release_pr.outputs.pr_url }}"
+
+          for i in {1..30}; do
+            check_count=$(gh pr checks "$pr_url" --required --json name --jq 'length' 2>/dev/null || true)
+            if [ "${check_count:-0}" -gt 0 ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          check_count=$(gh pr checks "$pr_url" --required --json name --jq 'length' 2>/dev/null || true)
+          if [ "${check_count:-0}" -eq 0 ]; then
+            echo "No required checks were reported for the release pull request."
+            exit 1
+          fi
+
+          gh pr checks "$pr_url" --watch --required
 
       - name: Merge release pull request
         env:
