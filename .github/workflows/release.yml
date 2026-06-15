@@ -21,6 +21,7 @@ permissions:
   actions: write
   contents: write
   pull-requests: write
+  statuses: write
 
 concurrency:
   group: manual-release
@@ -80,23 +81,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          branch="${{ steps.release_pr.outputs.branch }}"
           pr_url="${{ steps.release_pr.outputs.pr_url }}"
 
-          for i in {1..30}; do
-            check_count=$(gh pr checks "$pr_url" --required --json name --jq 'length' 2>/dev/null || true)
-            if [ "${check_count:-0}" -gt 0 ]; then
-              break
-            fi
-            sleep 5
-          done
+          gh workflow run ci.yml --ref "$branch"
+          sleep 15
 
-          check_count=$(gh pr checks "$pr_url" --required --json name --jq 'length' 2>/dev/null || true)
-          if [ "${check_count:-0}" -eq 0 ]; then
-            echo "No required checks were reported for the release pull request."
+          run_id=$(gh run list \
+            --workflow ci.yml \
+            --branch "$branch" \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "Could not find CI run for release branch ${branch}."
             exit 1
           fi
 
-          gh pr checks "$pr_url" --watch --required
+          gh run watch "$run_id" --exit-status
+
+          head_sha=$(gh pr view "$pr_url" --json headRefOid --jq .headRefOid)
+          gh api "repos/${{ github.repository }}/statuses/${head_sha}" \
+            -f state=success \
+            -f context=flutter \
+            -f description="Release PR CI passed" \
+            -f target_url="https://github.com/${{ github.repository }}/actions/runs/${run_id}"
 
       - name: Merge release pull request
         env:
