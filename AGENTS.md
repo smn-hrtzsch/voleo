@@ -38,5 +38,5 @@
 
 - Run `flutter test` before committing when Flutter code changes.
 - Deploy or verify Firebase rules/functions when cloud behavior changes.
-- After opening a PR, wait for the Flutter GitHub workflow/checks to pass before merging.
+- After opening a PR, wait for the Flutter GitHub workflow/checks to finish successfully before merging.
 - Merge with `gh pr merge` only after checks are green.

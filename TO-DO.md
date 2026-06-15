@@ -115,6 +115,7 @@
 - [x] Harden P0 cloud sync stability with stale-provider guards, hourly score audits, and sync status reporting.
 - [x] Add an admin-only sync debug screen for live matchday monitoring.
 - [x] Sort displayed group tables with FIFA-style tiebreakers and manual Fair Play fallback.
+- [x] Process football-data match statuses in full result syncs so stale live states can finish.
 
 ## MVP
 
