@@ -168,6 +168,10 @@ function teamKey(value) {
   return TEAM_ALIASES.get(key) ?? key;
 }
 
+function isSameTeam(a, b) {
+  return teamKey(a) === teamKey(b);
+}
+
 function displayTeamName(value) {
   const key = teamKey(value);
   const fixture = FIXTURES_LIST.find(([, home, away]) => teamKey(home) === key || teamKey(away) === key);
@@ -684,9 +688,9 @@ function getTier(team) {
     "Bosnia and Herzegovina", "Kolumbien", "Ecuador", "Elfenbeinküste", "Ghana", "Mexiko", "Österreich",
     "Schweden", "Südkorea", "Tschechien", "Türkei", "USA"
   ];
-  if (favorites.includes(team)) return "Absolute Titelfavoriten";
-  if (tops.includes(team)) return "Top Team";
-  if (mids.includes(team)) return "Durchschnittliches Team";
+  if (favorites.some((t) => isSameTeam(t, team))) return "Absolute Titelfavoriten";
+  if (tops.some((t) => isSameTeam(t, team))) return "Top Team";
+  if (mids.some((t) => isSameTeam(t, team))) return "Durchschnittliches Team";
   return "Gurkentruppe";
 }
 
@@ -714,7 +718,7 @@ function getMatchWinner(match) {
 }
 
 function getEliminationStage(team, allMatches) {
-  const teamMatches = allMatches.filter((m) => m.homeTeam === team || m.awayTeam === team);
+  const teamMatches = allMatches.filter((m) => isSameTeam(m.homeTeam, team) || isSameTeam(m.awayTeam, team));
   if (teamMatches.length === 0) return null;
 
   const knockouts = teamMatches.filter((m) => !m.stage.startsWith("Gruppe") && !m.stage.includes("Runde"));
@@ -722,7 +726,7 @@ function getEliminationStage(team, allMatches) {
   for (const m of knockouts) {
     if (m.status === "finalResult") {
       const winner = getMatchWinner(m);
-      if (winner && winner !== team) {
+      if (winner && !isSameTeam(winner, team)) {
         const stage = m.stage.toLowerCase();
         if (stage.includes("sechzehntel") || stage.includes("32")) return "Sechzehntelfinale";
         if (stage.includes("achtel") || stage.includes("16")) return "Achtelfinale";
@@ -739,7 +743,7 @@ function getEliminationStage(team, allMatches) {
       !m.stage.toLowerCase().includes("halb") &&
       !m.stage.toLowerCase().includes("viertel") &&
       m.status === "finalResult" &&
-      getMatchWinner(m) === team
+      isSameTeam(getMatchWinner(m), team)
   );
   if (hasWonFinal) return "Champion";
 
@@ -797,7 +801,7 @@ function calculateExtraPoints(userData, allMatches) {
   if (fav) {
     for (const match of allMatches) {
       if (match.status === "finalResult") {
-        if (getMatchWinner(match) === fav) {
+        if (isSameTeam(getMatchWinner(match), fav)) {
           extraPoints += 10;
         }
       }
@@ -808,7 +812,7 @@ function calculateExtraPoints(userData, allMatches) {
   if (championTipp) {
     for (const match of allMatches) {
       if (match.status === "finalResult") {
-        if (getMatchWinner(match) === championTipp) {
+        if (isSameTeam(getMatchWinner(match), championTipp)) {
           extraPoints += 10;
         }
       }
@@ -1539,6 +1543,16 @@ async function deleteLeagueTree(leagueRef) {
 function hasNoActiveMembers(leagueData) {
   const memberIds = leagueData?.memberIds;
   return Array.isArray(memberIds) && memberIds.length === 0;
+}
+
+if (process.env.NODE_ENV === "test") {
+  exports.__test = {
+    calculateExtraPoints,
+    getEliminationStage,
+    getTier,
+    isSameTeam,
+    teamKey,
+  };
 }
 
 exports.deleteEmptyLeague = functions.region("europe-west3").firestore
