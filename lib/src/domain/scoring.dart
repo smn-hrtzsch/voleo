@@ -234,10 +234,15 @@ String getTier(String team) {
     'Türkei',
     'USA'
   ];
-  if (favorites.any((t) => isSameTeam(t, team)))
+  if (favorites.any((t) => isSameTeam(t, team))) {
     return 'Absolute Titelfavoriten';
-  if (tops.any((t) => isSameTeam(t, team))) return 'Top Team';
-  if (mids.any((t) => isSameTeam(t, team))) return 'Durchschnittliches Team';
+  }
+  if (tops.any((t) => isSameTeam(t, team))) {
+    return 'Top Team';
+  }
+  if (mids.any((t) => isSameTeam(t, team))) {
+    return 'Durchschnittliches Team';
+  }
   return 'Gurkentruppe';
 }
 
