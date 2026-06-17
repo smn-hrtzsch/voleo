@@ -157,4 +157,16 @@ void main() {
       expect(points, 60);
     });
   });
+
+  group('isSameTeam', () {
+    test('correctly maps various aliases and languages', () {
+      expect(isSameTeam('Germany', 'Deutschland'), isTrue);
+      expect(isSameTeam('Argentina', 'Argentinien'), isTrue);
+      expect(isSameTeam('Côte d\'Ivoire', 'Elfenbeinküste'), isTrue);
+      expect(
+          isSameTeam('bosnia and herzegovina', 'Bosnien-Herzegowina'), isTrue);
+      expect(isSameTeam('USA', 'United States'), isTrue);
+      expect(isSameTeam('katar', 'Qatar'), isTrue);
+    });
+  });
 }
