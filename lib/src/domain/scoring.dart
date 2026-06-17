@@ -85,21 +85,41 @@ int _sign(int value) {
 
 String _teamKey(String value) {
   var key = value.toLowerCase().trim();
-  
+
   // Replace diacritics and special characters
   key = key.replaceAll('&', 'und');
-  
+
   const diacritics = {
-    'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
-    'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a',
-    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
-    'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o',
-    'ú': 'u', 'ù': 'u', 'û': 'u',
-    'ç': 'c', 'ñ': 'n',
-    'ć': 'c', 'š': 's', 'ž': 'z',
+    'ä': 'a',
+    'ö': 'o',
+    'ü': 'u',
+    'ß': 'ss',
+    'á': 'a',
+    'à': 'a',
+    'â': 'a',
+    'ã': 'a',
+    'é': 'e',
+    'è': 'e',
+    'ê': 'e',
+    'ë': 'e',
+    'í': 'i',
+    'ì': 'i',
+    'î': 'i',
+    'ï': 'i',
+    'ó': 'o',
+    'ò': 'o',
+    'ô': 'o',
+    'õ': 'o',
+    'ú': 'u',
+    'ù': 'u',
+    'û': 'u',
+    'ç': 'c',
+    'ñ': 'n',
+    'ć': 'c',
+    'š': 's',
+    'ž': 'z',
   };
-  
+
   diacritics.forEach((char, replacement) {
     key = key.replaceAll(char, replacement);
   });
@@ -214,7 +234,8 @@ String getTier(String team) {
     'Türkei',
     'USA'
   ];
-  if (favorites.any((t) => isSameTeam(t, team))) return 'Absolute Titelfavoriten';
+  if (favorites.any((t) => isSameTeam(t, team)))
+    return 'Absolute Titelfavoriten';
   if (tops.any((t) => isSameTeam(t, team))) return 'Top Team';
   if (mids.any((t) => isSameTeam(t, team))) return 'Durchschnittliches Team';
   return 'Gurkentruppe';
