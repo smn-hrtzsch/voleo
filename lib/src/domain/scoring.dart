@@ -83,22 +83,95 @@ int _sign(int value) {
   return 0;
 }
 
+String _teamKey(String value) {
+  var key = value.toLowerCase().trim();
+  
+  // Replace diacritics and special characters
+  key = key.replaceAll('&', 'und');
+  
+  const diacritics = {
+    'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
+    'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+    'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o',
+    'ú': 'u', 'ù': 'u', 'û': 'u',
+    'ç': 'c', 'ñ': 'n',
+    'ć': 'c', 'š': 's', 'ž': 'z',
+  };
+  
+  diacritics.forEach((char, replacement) {
+    key = key.replaceAll(char, replacement);
+  });
+
+  // Remove everything except a-z0-9
+  key = key.replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  const teamAliases = {
+    'qatar': 'katar',
+    'switzerland': 'schweiz',
+    'brazil': 'brasilien',
+    'morocco': 'marokko',
+    'haiti': 'haiti',
+    'scotland': 'schottland',
+    'australia': 'australien',
+    'turkiye': 'turkei',
+    'turkey': 'turkei',
+    'germany': 'deutschland',
+    'curacao': 'curacao',
+    'netherlands': 'niederlande',
+    'japan': 'japan',
+    'coteivoire': 'elfenbeinkuste',
+    'cotedivoire': 'elfenbeinkuste',
+    'ivorycoast': 'elfenbeinkuste',
+    'ecuador': 'ecuador',
+    'sweden': 'schweden',
+    'tunisia': 'tunesien',
+    'spain': 'spanien',
+    'capeverde': 'kapverde',
+    'capeverdeislands': 'kapverde',
+    'belgium': 'belgien',
+    'egypt': 'agypten',
+    'saudiarabia': 'saudiarabien',
+    'uruguay': 'uruguay',
+    'iran': 'iran',
+    'newzealand': 'neuseeland',
+    'france': 'frankreich',
+    'senegal': 'senegal',
+    'iraq': 'irak',
+    'norway': 'norwegen',
+    'argentina': 'argentinien',
+    'algeria': 'algerien',
+    'austria': 'osterreich',
+    'jordan': 'jordanien',
+    'portugal': 'portugal',
+    'drcongo': 'drkongo',
+    'congodr': 'drkongo',
+    'england': 'england',
+    'croatia': 'kroatien',
+    'ghana': 'ghana',
+    'panama': 'panama',
+    'uzbekistan': 'usbekistan',
+    'colombia': 'kolumbien',
+    'canada': 'kanada',
+    'bosniaherzegovina': 'bosnienherzegowina',
+    'bosniaandherzegovina': 'bosnienherzegowina',
+    'mexico': 'mexiko',
+    'southafrica': 'sudafrika',
+    'southkorea': 'sudkorea',
+    'korearepublic': 'sudkorea',
+    'czechia': 'tschechien',
+    'czechrepublic': 'tschechien',
+    'unitedstates': 'usa',
+    'usa': 'usa',
+    'paraguay': 'paraguay',
+  };
+
+  return teamAliases[key] ?? key;
+}
+
 bool isSameTeam(String a, String b) {
-  final normA = a.toLowerCase().trim();
-  final normB = b.toLowerCase().trim();
-  if (normA == normB) return true;
-
-  bool isBosnia(String name) {
-    return name == 'bosnia and herzegovina' ||
-        name == 'bosnien und herzegowina' ||
-        name == 'bosnien-herzegowina' ||
-        name == 'bosnien herzegowina';
-  }
-
-  if (isBosnia(normA) && isBosnia(normB)) return true;
-
-  return normA.replaceAll('-', '').replaceAll(' ', '') ==
-      normB.replaceAll('-', '').replaceAll(' ', '');
+  return _teamKey(a) == _teamKey(b);
 }
 
 String getTier(String team) {
@@ -141,9 +214,9 @@ String getTier(String team) {
     'Türkei',
     'USA'
   ];
-  if (favorites.contains(team)) return 'Absolute Titelfavoriten';
-  if (tops.contains(team)) return 'Top Team';
-  if (mids.contains(team)) return 'Durchschnittliches Team';
+  if (favorites.any((t) => isSameTeam(t, team))) return 'Absolute Titelfavoriten';
+  if (tops.any((t) => isSameTeam(t, team))) return 'Top Team';
+  if (mids.any((t) => isSameTeam(t, team))) return 'Durchschnittliches Team';
   return 'Gurkentruppe';
 }
 

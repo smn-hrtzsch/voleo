@@ -13,6 +13,8 @@
 - [x] Fix local/offline caching of profile pictures, points, and picks for all league members and the current user.
 - [x] Fix live standings preview to include Lieblingsmannschaft/Favorit points for all league members.
 - [x] Fix Firebase score recalculation so league standings include Team-Pick points with provider team-name aliases.
+- [x] Fix team-pick points and evaluation justification display in single-match and participant-match lists using alias-aware matching.
+
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
 - [x] Replace local-first repository wiring with Firebase repository after config exists.
