@@ -54,3 +54,50 @@ test("risk team tiers use team aliases", () => {
     "Durchschnittliches Team"
   );
 });
+
+test("final OpenLigaDB result wins when football-data final result conflicts", () => {
+  const openLigaMatch = {
+    homeTeam: "Spanien",
+    awayTeam: "Saudi-Arabien",
+    status: "finalResult",
+    homeScore: 4,
+    awayScore: 0,
+    source: "openligadb",
+  };
+  const footballDataMatch = {
+    homeTeam: "Spain",
+    awayTeam: "Saudi Arabia",
+    status: "finalResult",
+    homeScore: 5,
+    awayScore: 0,
+    rawStatus: "FINISHED",
+    lastUpdated: "2026-06-21T18:07:46Z",
+  };
+
+  assert.deepEqual(
+    __test.applyFootballDataOverlay(openLigaMatch, footballDataMatch),
+    openLigaMatch
+  );
+});
+
+test("recent final matches stay in the minute sync window", () => {
+  const now = new Date("2026-06-21T18:10:00Z");
+  assert.equal(__test.isRecentMatchWindow({
+    kickoff: "2026-06-21T16:00:00Z",
+    status: "finalResult",
+  }, now), true);
+});
+
+test("correct OpenLigaDB final may replace a conflicting football-data final", () => {
+  assert.equal(__test.shouldKeepExistingMatch({
+    status: "finalResult",
+    homeScore: 5,
+    awayScore: 0,
+    source: "football-data",
+  }, {
+    status: "finalResult",
+    homeScore: 4,
+    awayScore: 0,
+    source: "openligadb",
+  }), false);
+});
