@@ -306,6 +306,14 @@ function timestampMillis(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function hasConflictingFinalScore(first, second) {
+  return first?.status === "finalResult" &&
+    second?.status === "finalResult" &&
+    first.homeScore != null && first.awayScore != null &&
+    second.homeScore != null && second.awayScore != null &&
+    (first.homeScore !== second.homeScore || first.awayScore !== second.awayScore);
+}
+
 function shouldKeepExistingMatch(existing, nextMatch) {
   if (!existing) return false;
 
@@ -313,6 +321,12 @@ function shouldKeepExistingMatch(existing, nextMatch) {
   const nextStatus = nextMatch.status ?? "scheduled";
   const existingSource = existing.source ?? "openligadb";
   const nextSource = nextMatch.source ?? "openligadb";
+
+  if (existingSource === "football-data" &&
+      nextSource === "openligadb" &&
+      hasConflictingFinalScore(existing, nextMatch)) {
+    return false;
+  }
 
   if (statusRank(nextStatus) < statusRank(existingStatus)) return true;
   if (nextStatus === "finalResult" && existingStatus !== "finalResult") return false;
@@ -340,6 +354,13 @@ function isLiveWindow(match, now = new Date()) {
   const startsSoon = kickoff.getTime() - now.getTime() <= 60 * 60 * 1000;
   const notTooOld = now.getTime() - kickoff.getTime() <= 4 * 60 * 60 * 1000;
   return startsSoon && notTooOld && match.status !== "finalResult";
+}
+
+function isRecentMatchWindow(match, now = new Date()) {
+  const kickoff = new Date(match.kickoff);
+  const startsSoon = kickoff.getTime() - now.getTime() <= 60 * 60 * 1000;
+  const notTooOld = now.getTime() - kickoff.getTime() <= 4 * 60 * 60 * 1000;
+  return startsSoon && notTooOld;
 }
 
 function normalizeFootballDataMatch(match) {
@@ -617,6 +638,17 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
     return openLigaMatch;
   }
 
+  const conflictingFinalResult = hasConflictingFinalScore(openLigaMatch, footballDataMatch);
+  if (conflictingFinalResult) {
+    console.warn("Final provider result conflict; keeping OpenLigaDB result.", JSON.stringify({
+      match: `${openLigaMatch.homeTeam} - ${openLigaMatch.awayTeam}`,
+      openLiga: `${openLigaMatch.homeScore}:${openLigaMatch.awayScore}`,
+      footballData: `${footballDataMatch.homeScore}:${footballDataMatch.awayScore}`,
+      footballDataUpdatedAt: footballDataMatch.lastUpdated,
+    }));
+    return openLigaMatch;
+  }
+
   return {
     ...openLigaMatch,
     status: footballDataMatch.status,
@@ -635,7 +667,7 @@ function mergeFootballDataOverlay(openLigaMatches, footballDataMatches, { liveOn
   const footballByMatch = new Map(footballDataMatches.map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
   const now = new Date();
   return openLigaMatches.map((match) => {
-    if (liveOnly && !isLiveWindow(match, now)) return match;
+    if (liveOnly && !isRecentMatchWindow(match, now)) return match;
     return applyFootballDataOverlay(match, footballByMatch.get(matchKey(match.homeTeam, match.awayTeam)));
   });
 }
@@ -643,7 +675,7 @@ function mergeFootballDataOverlay(openLigaMatches, footballDataMatches, { liveOn
 function logLiveProviderComparison(openLigaMatches, footballDataMatches, footballHeaders) {
   const footballByMatch = new Map(footballDataMatches.map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
   const now = new Date();
-  const relevant = openLigaMatches.filter((match) => isLiveWindow(match, now));
+  const relevant = openLigaMatches.filter((match) => isRecentMatchWindow(match, now));
   console.log(`Live provider check: ${relevant.length} relevant match(es). football-data headers: ${JSON.stringify(footballHeaders)}`);
   for (const match of relevant) {
     const fd = footballByMatch.get(matchKey(match.homeTeam, match.awayTeam));
@@ -1552,6 +1584,9 @@ if (process.env.NODE_ENV === "test") {
     getTier,
     isSameTeam,
     teamKey,
+    applyFootballDataOverlay,
+    isRecentMatchWindow,
+    shouldKeepExistingMatch,
   };
 }
 
@@ -1604,7 +1639,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       console.warn("OpenLigaDB live request failed. Falling back to Firestore matches.", error);
       openLigaMatches = await fetchFirestoreMatches();
     }
-    const liveCandidates = openLigaMatches.filter((match) => isLiveWindow(match));
+    const liveCandidates = openLigaMatches.filter((match) => isRecentMatchWindow(match));
     if (liveCandidates.length === 0) {
       console.log("No live-window matches. Skipping fast live write.");
       await writeSyncStatus("live", {
@@ -1624,10 +1659,11 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     const footballData = await fetchFootballDataMatches();
     logLiveProviderComparison(openLigaMatches, footballData.matches, footballData.headers);
     const overlayMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches, { liveOnly: true })
-      .filter((match) => isLiveWindow(match) || match.source === "football-data");
+      .filter((match) => isRecentMatchWindow(match));
 
     let changedCount = 0;
     let finalTransition = false;
+    let finalResultChanged = false;
     let skippedStaleCount = 0;
     let tableSource = "none";
     let tableStatus = 0;
@@ -1653,6 +1689,12 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
 
       if (existingStatus !== "finalResult" && match.status === "finalResult") {
         finalTransition = true;
+      }
+      if (match.status === "finalResult" &&
+          (existingStatus !== "finalResult" ||
+            (existing.homeScore ?? null) !== match.homeScore ||
+            (existing.awayScore ?? null) !== match.awayScore)) {
+        finalResultChanged = true;
       }
       changedCount += 1;
       batch.set(docRef, {
@@ -1689,6 +1731,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       ok: true,
       changedCount,
       finalTransition,
+      finalResultChanged,
       skippedStaleCount,
       liveCandidates: liveCandidates.length,
       overlayMatches: overlayMatches.length,
@@ -1700,11 +1743,11 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       tableChanged,
     });
 
-    if (finalTransition) {
+    if (finalResultChanged) {
       try {
-        await syncFullResults({ includeTable: true, includeCleanup: false, forceRecalculate: true, reason: "live-final-transition" });
+        await syncFullResults({ includeTable: true, includeCleanup: false, forceRecalculate: true, reason: "live-final-result-change" });
       } catch (error) {
-        console.warn("Skipping immediate full recalculation after live final transition.", error);
+        console.warn("Skipping immediate full recalculation after final result change.", error);
       }
     }
     return null;

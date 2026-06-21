@@ -119,6 +119,7 @@
 - [x] Add an admin-only sync debug screen for live matchday monitoring.
 - [x] Sort displayed group tables with FIFA-style tiebreakers and manual Fair Play fallback.
 - [x] Process football-data match statuses in full result syncs so stale live states can finish.
+- [x] Resolve conflicting final provider scores and keep recently finished matches in the minute sync.
 
 ## MVP
 
