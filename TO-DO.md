@@ -1,144 +1,18 @@
 # TO-DO
 
-## In Progress
+## Features
 
-- [x] Fix loading screen deadlock on sign-out/account deletion.
-- [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
-- [x] Dynamically calculate and highlight the 8 best third-placed teams in group standings.
-- [x] Resolve confirmed knockout participants and FIFA third-place matrix slots in cloud syncs.
-- [x] Fix team name wrapping in player tips sheet (e.g. for Elfenbeinküste).
-- [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
-- [x] Fix evaluation points display, dropdown KO filter, and rootNavigator back-button bugs.
-- [x] Migrate results synchronization from GitHub Actions to Google Cloud Scheduler & Firebase Functions.
-- [x] Improve rules dialog: change subtitle to "Regeln, Punktevergabe & Team-Picks", fix "Tendenz" example, add link to Profile Screen under booster notice with back-routing, and update risk tip points to match app logic.
-- [x] Fix local/offline caching of profile pictures, points, and picks for all league members and the current user.
-- [x] Fix live standings preview to include Lieblingsmannschaft/Favorit points for all league members.
-- [x] Fix Firebase score recalculation so league standings include Team-Pick points with provider team-name aliases.
-- [x] Fix team-pick points and evaluation justification display in single-match and participant-match lists using alias-aware matching.
-- [x] Prefer football-data.org when final provider scores conflict so incorrect OpenLigaDB results cannot remove tip points.
+- [ ] Wir müssen das Tippen der K.O.-Spiele um Verlängerung (VL) und Elfmeterschießen erweitern. Die maximale Punktzahl liegt bei 5, für den Spezialfall Elfmeterschießen bei 6 Punkten. UI & Verhalten: Wenn ein Nutzer nach 90 Min. ein Unentschieden tippt, müssen darunter Scroll-Räder für das Ergebnis n.V. erscheinen. Wichtig: Diese Räder dürfen nicht unter den Score des 90-Minuten-Tipps gedreht werden können. Wenn auch die VL als Unentschieden getippt wird, muss ein Abschnitt für das Elfmeterschießen erscheinen. Hier gibt es keine Ergebnisse mehr, sondern nur zwei exklusive Radio-Buttons für die Teams zur Bestimmung des Siegers. Der Tipp darf nur gespeichert werden, wenn ein finales Siegerteam ausgewählt ist. Verlässt der Nutzer die Seite vorher, wird der halbe Tipp zwischengespeichert, aber in der UI mit einem roten Warnzeichen markiert. In der Listen-Vorschau zeigen wir aus Platzgründen nur den Tipp nach 90 Minuten, in der Detailansicht den kompletten Verlauf. Punktevergabe (Auswertung basiert auf dem realen Spielende): Spiel endet nach 90 Min (max. 5 Punkte): +3 bei richtiger Tendenz, +4 bei korrekter Tordifferenz, +5 bei exaktem Ergebnis. Spiel endet nach VL (max. 5 Punkte): +2 für erkanntes Unentschieden nach 90 Min., +3 für exaktes 90-Min.-Ergebnis. Zusätzlich: +1 für richtige Tendenz n.V., +2 für exaktes Ergebnis n.V. Spiel endet im Elfmeterschießen (max. 6 Punkte): +2 für erkanntes Unentschieden nach 90 Min., +3 für exaktes 90-Min.-Ergebnis. Zusätzlich: +1 für richtige Tendenz n.V. (erneut Unentschieden), +1 für exaktes Ergebnis n.V., +1 für den richtigen Sieger im Elfmeterschießen. Hinweise zur Logik: Bei Unentschieden gibt es nie Punkte für die Tordifferenz. Wenn ein Spieler auf Elfmeterschießen tippt, das reale Spiel aber schon in der VL entschieden wird, wird der Tipp logischerweise nur bis zur VL ausgewertet. Alles darüber hinaus verfällt einfach. Um diese Punktevergabe zu erklären solltest du den Dialog mit den Regeln im Home Tab um einen Absatz für die K.O.-Spiele erweitern.
+- [ ] In der Liga Tabelle sollte zusätzlich zu den Gesamt Punkten noch eine Spalte mit den reinen Punkten aus den Tipps angezeigt werden, also ohne die Punkt der Team-Picks. Es sollte also eine Spalte geben, die die Gesamt Punkte anzeigt und eine Spalte, die nur die Punkte aus den Tipps anzeigt.
+- [ ] Es sollten im Falle, dass ein Spieler das Tippen vergisst eine Erinnerung per Push Notification geschickt werden, dass er noch Tipps abgeben kann. Diese Push Notification einmal 12h vor dem Spiel verschickt werden. Außerdem sollte es eine Push Notification geben, die 1 Stunde vor dem Spiel verschickt wird, falls der Spieler noch keine Tipps abgegeben hat. Wenn es mehrere Spiele gibt, die noch nicht getippt wurden, dann sollte die Push Notification nur einmal verschickt werden und nicht für jedes Spiel einzeln. Dazu kannst du ja schauen, ob der Spieler die Spiele des Tages schon getippt hat oder nicht. Wenn er die Spiele des Tages schon getippt hat, dann sollte keine Push Notification verschickt werden. Wenn er die Spiele des Tages noch nicht getippt hat, dann sollte eine Push Notification verschickt werden, dass er noch Tipps abgeben kann.
+- [ ] In der Detailansicht zu den Tipps eines einzelnen Spielers, also in der Liste der Spiele sollte man auch auf ein Spiel klicken können, um die Detailansicht zu diesem Spiel zu sehen. Wichtig ist die Navigation und das Routing, beim zurück klicken sollte man auch wieder auf die Detailansicht des Spielers zurückkommen.
+- [ ] In der Detailansicht zu den einzelnen Spielen sollte vor dem Anpfiff, also in der Phase, in der noch Tipps abgegeben werden können die letzten 5 Ergebnisse der beiden Teams angezeigt werden, inklusive grünem W Indikator für Siege und grau D für Unentschieden und rot L für Niederlagen. Arbeite mit zwei Spalten, eine für jedes Team und dabei dann immer das Ergebnis, den Gegner und das Datum (kompakt untereinander). Wenn weniger als 5 Spiele in dem Turnier stattgefunden haben, dann sollten auch nur die Spiele des Turniers mit diesen Teams angezeigt werden.
+- [ ] Ich brauche auch noch in der Spieler Detail Ansicht eine Möglichkeit die Spiele nach Datum zu filtern, also wie im Spiele Tab mit dem Switch zwischen "Spiele Liste" und "Spiele Swipe nach Tagen". Also in der Detail Ansicht eines Spielers sollte es auch die Möglichkeit geben, die Spiele nach Datum zu filtern. Die Auswahl sollte gespeichert werden und auch immer an das aktuelle Datum angepasst werden, aber Tage, an denen keine Spiele stattfinden, sollten übersprungen werden.
 
+## Bugs
 
-- [x] Configure Firebase project on Spark plan and add platform config files locally.
-- [x] Replace local-first repository wiring with Firebase repository after config exists.
-- [ ] Authenticate GitHub CLI and create private remote repository.
-- [x] Stabilize Firebase-backed app flow after enabling Firebase integration.
-- [ ] Ensure tips are evaluated correctly and consistently for all users.
-- [x] Automatically update match results so points are recalculated from current results.
-- [x] Delete empty leagues and stale test league data after members leave or accounts are removed.
-- [ ] Keep the friends league state correct and consistent across devices and sessions.
-- [x] Show other league participants' tips and points inside the league.
-- [ ] In the match overview, show point breakdown details when a match is selected.
-- [ ] Verify the end-to-end MVP on Pixel 7 before Thursday deadline.
-- [ ] Fix endless loading indicator in the Heute tab after matches are visible.
-- [ ] Fix match tip routing so matches can be tipped again.
-- [x] Fix Google sign-in failures after account selection.
-- [ ] Fix endlessly loading Liga tab.
-- [ ] Replace manual score text fields with vertical score pickers.
-- [ ] Remove redundant "Anpfiff" label from match metadata.
-- [ ] Design and implement a local-first sync architecture with Firestore as the cloud source of truth.
-- [ ] Fix saved tips not appearing immediately in Heute and Spiele.
-- [ ] Fix tip detail back navigation preserving the originating tab.
-- [x] Redesign Liga tips by day and player with visibility only after kickoff.
-- [x] Show other players' tips in match details only after kickoff.
-- [x] Improve profile layout, linked-provider feedback, profile image handling, and anonymous sign-out warning.
-- [ ] Avoid onboarding flash for already signed-in users on cold start.
-- [x] Add Bosnia and Herzegovina flag aliases.
-- [ ] Restructure Heute tab to show only today's matches plus league shortcut and top 3 standings.
-- [ ] Generate league invite codes randomly instead of deriving them from user input.
-- [x] Add league invite link/code handling for sharing and joining rounds.
-- [ ] Limit Liga day sections to tournament days that have already started.
-- [x] Add an automatic tournament-phase filter that resets to the current phase on app restart.
-- [x] Refresh profile name and profile image immediately after edits.
-- [x] Enforce unique display names within a league.
-- [x] Default new score wheels to 0:0.
-- [x] Always confirm sign-out, with stronger warning for anonymous accounts.
-- [x] Add a debug/test path for fake league members, fake tips, and synthetic match results.
-- [ ] Explain and harden Firestore network/DNS error handling while connected to Wi-Fi.
-- [ ] Replace old deterministic league codes like MEIN26 with migrated random invite codes.
-- [x] Use real web invitation links that are linkified in messengers and route into the app.
-- [x] Add invite-link handling for users who are already inside another league.
-- [x] Allow users to join multiple leagues and switch the active league from Liga.
-- [x] Give league owners admin controls such as renaming the league.
-- [x] Show member profile images in league standings and tip views.
-- [x] Add app theme settings for system, light, and dark mode.
-- [x] Add Lieblingsmannschaft, Favorit, and Risiko-Tipp tournament picks and points scoring dynamics.
-- [x] Fix deleting tips when a synced league has no matching tip document.
-- [x] Shorten league invite sharing text and remove the broken app-link line.
-- [x] Show flags consistently in the tip screen.
-- [x] Make risk-tip scoring award positive points for teams eliminated no later than the predicted round.
-- [x] Add Sechzehntelfinale to risk-tip elimination-round choices.
-- [x] Reset onboarding to the first step after sign-out instead of skipping ahead.
-- [x] Explain already-linked Google or Apple accounts during onboarding and offer account switching.
-- [x] Keep anonymous league creation reachable after skipping account linking.
-- [x] Allow moving back to earlier onboarding steps to edit choices.
-- [x] Replace onboarding error snackbars with floating toast messages.
-- [x] Deploy Firestore rules that allow invite-code league lookup for signed-in users.
-- [x] Add Liga tab actions for joining and creating additional leagues.
-- [x] Remove example invite code from code entry fields.
-- [x] Allow signed-in users to read league members for join-time duplicate-name checks.
-- [x] Add clearer duplicate nickname messaging when joining a league.
-- [x] Allow confirmed unlinking of Google and Apple providers from profile.
-- [x] Refresh Liga tab state immediately after switching active leagues.
-- [x] Center the match title in the tip entry screen.
-- [x] Require confirmation before deleting a tip.
-- [x] Show an app loading screen during auth restoration instead of flashing onboarding.
-- [x] Fix Firestore permissions for saving and deleting active-league tips.
-- [x] Delete anonymous Firebase Auth and Firestore account leftovers.
-- [x] Delete anonymous Firebase accounts during sign-out.
-- [x] Preserve nickname and existing profile image when linking Google or Apple.
-- [x] Keep the user on the Liga tab after switching active leagues.
-- [x] Verify balanced team column widths in upcoming match rows.
-- [x] Fix Sync World Cup Results script syntax failure and require credentials for real syncs.
-- [x] Store, load, and sync theme mode per Firebase user account.
-- [x] Replicate saved and deleted match tips across all joined leagues.
-- [x] Improve compact match row layout so team names get more usable space.
-- [x] Center group, matchup, and kickoff metadata in the single-match tip view.
-- [x] Verify anonymous Test account deletion in Firebase Auth and Firestore.
-- [x] Group risk-team picker options by risk tier.
-- [x] Adjust USA, Mexico, Colombia, Norway, Canada, Iran, and Egypt risk tiers.
-- [x] Allow long team names to wrap in match rows and tip detail matchup columns.
-- [x] Rename Heute tab to Home.
-- [x] Restyle Home league and Top 3 cards with a consistent subtle surface.
-- [x] Delete providerless Firebase accounts during sign-out after Google unlinking.
-- [x] Use lightweight Google sign-in before interactive auth for cleaner repeat logins.
-- [x] Avoid revoking Google app consent on provider unlink.
-- [x] Reauthenticate before unlinking Google so providerless account deletion can proceed.
-- [x] Show loading route during sign-out and account deletion transitions.
-- [x] Reuse already-linked account switch dialog in profile Google linking.
-- [x] Suppress Google cancellation error toasts.
-- [x] Copy league invite code from the Home league card.
-- [x] Refresh league ranking photos from member profile photos.
-- [x] Center own and league-member tips in the single-match view.
-- [x] Keep the tip delete action inside the own-tip chip.
-- [x] Match Apple profile icon color to text in dark mode.
-- [x] Route Back from non-Home tabs to Home and close only from Home.
-- [x] Force onboarding route after sign-out/delete to avoid loading deadlocks.
-- [x] Retry Google unlink reauthentication only when Firebase requires it.
-- [x] Use Google profile photo from GoogleSignIn when Firebase Auth has not populated it yet.
-- [x] Redesign Spiele tab with a Fotmob-inspired compact tournament match layout.
-- [x] Add a date-mode switch for games with swipe navigation and current-day initial focus.
-- [x] Harden P0 cloud sync stability with stale-provider guards, hourly score audits, and sync status reporting.
-- [x] Add an admin-only sync debug screen for live matchday monitoring.
-- [x] Sort displayed group tables with FIFA-style tiebreakers and manual Fair Play fallback.
-- [x] Process football-data match statuses in full result syncs so stale live states can finish.
-- [x] Resolve conflicting final provider scores and keep recently finished matches in the minute sync.
-
-## MVP
-
-- [x] Create Flutter project foundation for Android and iOS.
-- [x] Use package IDs `de.capycode.voleo`.
-- [x] Add app shell, navigation, and MVP screens.
-- [x] Add classic scoring engine.
-- [x] Add unit tests for scoring, locking, and standings.
-- [x] Add result-sync script with dry-run support.
-- [x] Add GitHub Actions for CI and scheduled result sync.
-- [x] Avoid duplicate and non-app CI runs after checked pull requests.
-- [x] Add Firestore security rules foundation.
-- [x] Add README, MIT license, and project tracking.
-- [x] Persist local account and tips across app restarts.
-- [x] Add full WM 2026 group-stage fixture fallback with date/group filters.
-- [x] Merge OpenLigaDB match/result data into local fixture display.
-- [x] Remove demo leaderboard users from the MVP league view.
+- [ ] Im Spiele Tab wird die Auswahl zwischen "Spiele Liste" und "Spiele Swipe nach Tagen" nicht gespeichert. Außerdem wird beim Klick auf den Switch zwar der korrekte Tag oben angezeigt, aber die Spiele sind noch die vom 11.06., obwohl zum Beispiel schon der 27.06. ist.
+- [ ] Im Turnierbaum sind zwar die Spiele zwar korrekt angezeigt mit Mannschaften, aber der Aufbau des Turnierbaums ist nicht korrekt. Es sind zum Beispiel die Spiele Südafrika vs. Kanada und Brasilien vs. Japan direkt die ersten Spiele oben links, aber die Sieger der Spieler spielen gar nicht gegeneinander. Verstehst du, was ich meine? Es ist nicht der korrekte Turnierbaum, wie von der FIFA vorgegeben. Außerdem sollten die Kacheln für die Spiele so verbunden werden, dass besser klar wird, welche Teams in der kommenden Runde dann auch gegeneinander spielen. Also die Kacheln sollten so verbunden werden, dass klar wird, dass die Sieger der Spiele in der nächsten Runde gegeneinander spielen.
 
 ## Later
 
@@ -146,3 +20,11 @@
 - [ ] Add bonus questions for champion, group winners, and top scorer.
 - [ ] Add push notifications for upcoming lock deadlines.
 - [ ] Add tournament recap after the final.
+
+## In Progress
+
+- [ ]
+
+## Done
+
+- [ ]
