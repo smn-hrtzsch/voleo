@@ -171,12 +171,11 @@ class _UserTipsBottomSheetContentState
             (widget.userProfile?.riskTeam?.isNotEmpty ?? false) &&
             (widget.userProfile?.riskStage?.isNotEmpty ?? false))
         ? () {
-            final actual = getEliminationStage(
-                widget.userProfile!.riskTeam!, widget.matches);
-            return actual != null
-                ? calculateRiskPoints(widget.userProfile!.riskTeam!,
-                    widget.userProfile!.riskStage!, actual)
-                : null;
+            return calculateCurrentRiskPoints(
+              widget.userProfile!.riskTeam!,
+              widget.userProfile!.riskStage!,
+              widget.matches,
+            );
           }()
         : null;
 

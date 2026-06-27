@@ -325,6 +325,70 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
   return null;
 }
 
+String? getDeepestReachedStage(String team, List<CupMatch> matches) {
+  String? deepest;
+  for (final match in matches) {
+    if (_isGroupStage(match.stage) ||
+        (!isSameTeam(match.homeTeam, team) &&
+            !isSameTeam(match.awayTeam, team))) {
+      continue;
+    }
+
+    final stage = match.stage.toLowerCase();
+    String? reached;
+    if (stage.contains('sechzehntel') || stage.contains('32')) {
+      reached = 'Sechzehntelfinale';
+    } else if (stage.contains('achtel') || stage.contains('16')) {
+      reached = 'Achtelfinale';
+    } else if (stage.contains('viertel') || stage.contains('quarter')) {
+      reached = 'Viertelfinale';
+    } else if (stage.contains('halb') || stage.contains('semi')) {
+      reached = 'Halbfinale';
+    } else if (stage.contains('final')) {
+      reached = 'Finale';
+    }
+
+    if (reached != null &&
+        (deepest == null || _stageRank(reached) > _stageRank(deepest))) {
+      deepest = reached;
+    }
+    if (reached != null &&
+        match.status == MatchStatus.finalResult &&
+        getMatchWinner(match) != null &&
+        isSameTeam(getMatchWinner(match)!, team)) {
+      final nextStage = switch (reached) {
+        'Sechzehntelfinale' => 'Achtelfinale',
+        'Achtelfinale' => 'Viertelfinale',
+        'Viertelfinale' => 'Halbfinale',
+        'Halbfinale' => 'Finale',
+        _ => null,
+      };
+      if (nextStage != null &&
+          (deepest == null || _stageRank(nextStage) > _stageRank(deepest))) {
+        deepest = nextStage;
+      }
+    }
+  }
+  return deepest;
+}
+
+int? calculateCurrentRiskPoints(
+  String team,
+  String predictedStage,
+  List<CupMatch> matches,
+) {
+  final actualStage = getEliminationStage(team, matches);
+  if (actualStage != null) {
+    return calculateRiskPoints(team, predictedStage, actualStage);
+  }
+  final reachedStage = getDeepestReachedStage(team, matches);
+  if (reachedStage != null &&
+      _stageRank(reachedStage) > _stageRank(predictedStage)) {
+    return calculateRiskPoints(team, predictedStage, reachedStage);
+  }
+  return null;
+}
+
 bool _isPlaceholder(String name) {
   final lower = name.toLowerCase();
   return lower.startsWith('sieger') ||
@@ -437,10 +501,7 @@ int calculateExtraPoints(VoleoUser user, List<CupMatch> matches) {
       rTeam.isNotEmpty &&
       rStage != null &&
       rStage.isNotEmpty) {
-    final actualStage = getEliminationStage(rTeam, matches);
-    if (actualStage != null) {
-      extraPoints += calculateRiskPoints(rTeam, rStage, actualStage);
-    }
+    extraPoints += calculateCurrentRiskPoints(rTeam, rStage, matches) ?? 0;
   }
 
   return extraPoints;
