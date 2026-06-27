@@ -2,17 +2,6 @@ name: CI
 
 on:
   pull_request:
-    paths:
-      - "android/**"
-      - "ios/**"
-      - "lib/**"
-      - "functions/**"
-      - "test/**"
-      - ".github/workflows/ci.yml"
-      - "analysis_options.yaml"
-      - "pubspec.yaml"
-      - "pubspec.lock"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,7 +14,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
+      - name: Detect Flutter-relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - "android/**"
+              - "ios/**"
+              - "lib/**"
+              - "functions/**"
+              - "test/**"
+              - ".github/workflows/ci.yml"
+              - "analysis_options.yaml"
+              - "pubspec.yaml"
+              - "pubspec.lock"
+              - ".github/workflows/release.yml"
+      - name: Complete documentation-only check
+        if: github.event_name == 'pull_request' && steps.changes.outputs.code != 'true'
+        run: echo "No Flutter-relevant changes detected; skipping Flutter setup and tests."
       - name: Restore or Stub firebase_options.dart
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
         run: |
           if [ -n "${{ secrets.FIREBASE_OPTIONS_DART }}" ]; then
             echo "${{ secrets.FIREBASE_OPTIONS_DART }}" | base64 --decode > lib/firebase_options.dart
@@ -43,15 +52,21 @@ jobs:
             echo "}" >> lib/firebase_options.dart
           fi
       - uses: subosito/flutter-action@v2
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
         with:
           channel: stable
           cache: true
       - run: flutter pub get
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
       - name: Format code
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
         run: dart format lib/ test/
       - name: Auto-commit formatted code
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: auto-format Dart code"
       - run: flutter analyze
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
       - run: flutter test
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.code == 'true'
