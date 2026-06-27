@@ -27,4 +27,4 @@
 
 ## Done
 
-- [ ]
+- [x] Make documentation-only pull requests satisfy the required CI check without running Flutter setup, analysis, or tests.
