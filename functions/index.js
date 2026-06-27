@@ -323,12 +323,6 @@ function shouldKeepExistingMatch(existing, nextMatch) {
   const existingSource = existing.source ?? "openligadb";
   const nextSource = nextMatch.source ?? "openligadb";
 
-  if (existingSource === "football-data" &&
-      nextSource === "openligadb" &&
-      hasConflictingFinalScore(existing, nextMatch)) {
-    return false;
-  }
-
   if (statusRank(nextStatus) < statusRank(existingStatus)) return true;
   if (nextStatus === "finalResult" && existingStatus !== "finalResult") return false;
   if (existingSource === "football-data" &&
@@ -392,6 +386,8 @@ function normalizeFootballDataMatch(match) {
 
   const fullTime = match.score?.fullTime ?? {};
   const halfTime = match.score?.halfTime ?? {};
+  const regularTime = match.score?.regularTime ??
+    (match.score?.duration === "REGULAR" ? fullTime : {});
   const winner = match.score?.winner === "HOME_TEAM"
     ? homeTeam
     : match.score?.winner === "AWAY_TEAM"
@@ -411,6 +407,8 @@ function normalizeFootballDataMatch(match) {
     minute: match.minute ?? null,
     homeScore: fullTime.home ?? null,
     awayScore: fullTime.away ?? null,
+    regularHomeScore: regularTime.home ?? null,
+    regularAwayScore: regularTime.away ?? null,
     halfHomeScore: halfTime.home ?? null,
     halfAwayScore: halfTime.away ?? null,
     winner,
@@ -651,13 +649,12 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
 
   const conflictingFinalResult = hasConflictingFinalScore(openLigaMatch, footballDataMatch);
   if (conflictingFinalResult) {
-    console.warn("Final provider result conflict; keeping OpenLigaDB result.", JSON.stringify({
+    console.warn("Final provider result conflict; keeping football-data.org result.", JSON.stringify({
       match: `${openLigaMatch.homeTeam} - ${openLigaMatch.awayTeam}`,
       openLiga: `${openLigaMatch.homeScore}:${openLigaMatch.awayScore}`,
       footballData: `${footballDataMatch.homeScore}:${footballDataMatch.awayScore}`,
       footballDataUpdatedAt: footballDataMatch.lastUpdated,
     }));
-    return openLigaMatch;
   }
 
   return {
@@ -665,6 +662,8 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
     status: footballDataMatch.status,
     homeScore: footballDataMatch.homeScore,
     awayScore: footballDataMatch.awayScore,
+    regularHomeScore: footballDataMatch.regularHomeScore ?? openLigaMatch.regularHomeScore,
+    regularAwayScore: footballDataMatch.regularAwayScore ?? openLigaMatch.regularAwayScore,
     winner: footballDataMatch.status === "finalResult" ? footballDataMatch.winner : null,
     resultNote: footballDataMatch.resultNote,
     source: "football-data",
@@ -1830,6 +1829,7 @@ if (process.env.NODE_ENV === "test") {
     getTier,
     isSameTeam,
     teamKey,
+    scoreTip,
     applyFootballDataOverlay,
     isRecentMatchWindow,
     shouldKeepExistingMatch,

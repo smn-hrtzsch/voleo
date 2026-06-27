@@ -15,6 +15,7 @@
 - [x] Fix live standings preview to include Lieblingsmannschaft/Favorit points for all league members.
 - [x] Fix Firebase score recalculation so league standings include Team-Pick points with provider team-name aliases.
 - [x] Fix team-pick points and evaluation justification display in single-match and participant-match lists using alias-aware matching.
+- [x] Prefer football-data.org when final provider scores conflict so incorrect OpenLigaDB results cannot remove tip points.
 
 
 - [x] Configure Firebase project on Spark plan and add platform config files locally.
