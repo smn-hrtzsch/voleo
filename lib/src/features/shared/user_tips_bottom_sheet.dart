@@ -347,14 +347,12 @@ class _UserTipsBottomSheetContentState
               if (showTip) {
                 if (tip != null) {
                   final isLive = match.status == MatchStatus.live;
-                  final liveTipPoints = isLive
-                      ? scoreTip(
-                          predictedHome: tip.predictedHome,
-                          predictedAway: tip.predictedAway,
-                          actualHome: match.homeScore ?? 0,
-                          actualAway: match.awayScore ?? 0,
-                        ).points
-                      : 0;
+                  final finalScore = match.status == MatchStatus.finalResult
+                      ? scoreTipForMatch(tip: tip, match: match)
+                      : null;
+                  final liveScore =
+                      isLive ? scoreLiveTip(tip: tip, match: match) : null;
+                  final liveTipPoints = liveScore?.points ?? 0;
 
                   final liveTotalPts = isLive
                       ? getLiveMatchTotalPoints(
@@ -373,36 +371,52 @@ class _UserTipsBottomSheetContentState
                     match: match,
                   );
 
-                  final fullEval = getEvaluationLabel(
-                    tipPoints: tip.points,
-                    favoriteTeam: widget.userProfile?.favoriteTeam,
-                    predictedChampion: widget.userProfile?.predictedChampion,
-                    match: match,
-                  ).replaceAll('\n', ' ');
-
                   final isCompleted = match.status == MatchStatus.finalResult;
+                  final compactTip = _compactTipLabel(tip, match);
 
                   if (isCompleted) {
                     tipWidget = Text(
-                      'Tipp: ${tip.predictedHome}:${tip.predictedAway} ($fullEval)',
+                      'Tipp: $compactTip (${_compactAssessmentLabel(
+                        finalScore,
+                        match: match,
+                        fallbackPoints: tip.points,
+                      )})',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     );
                   } else if (isLive) {
-                    final liveEval = getLiveEvaluationLabel(
-                      tipPoints: liveTipPoints,
-                      favoriteTeam: widget.userProfile?.favoriteTeam,
-                      predictedChampion: widget.userProfile?.predictedChampion,
-                      match: match,
-                    ).replaceAll('\n', ' ');
                     tipWidget = Text(
-                      'Tipp: ${tip.predictedHome}:${tip.predictedAway} (Voraussichtlich: $liveEval)',
+                      'Tipp: $compactTip (aktuell ${_compactAssessmentLabel(
+                        liveScore,
+                        match: match,
+                        fallbackPoints: liveTipPoints,
+                      )})',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, color: Colors.green),
                     );
                   } else {
                     tipWidget = Text(
-                      'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
+                      'Tipp: $compactTip',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.bold),
+                    );
+                  }
+
+                  if (!isTipCompleteForMatch(tip, match)) {
+                    tipWidget = Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(child: tipWidget),
+                      ],
                     );
                   }
 
@@ -487,6 +501,14 @@ class _UserTipsBottomSheetContentState
               final kickoffStr =
                   DateFormat('dd.MM. HH:mm').format(match.kickoff);
               final isLive = match.status == MatchStatus.live;
+              final winner =
+                  match.isKnockout && match.status == MatchStatus.finalResult
+                      ? getMatchWinner(match)
+                      : null;
+              final isHomeWinner =
+                  winner != null && isSameTeam(winner, match.homeTeam);
+              final isAwayWinner =
+                  winner != null && isSameTeam(winner, match.awayTeam);
               final stageLabel = match.group.isNotEmpty
                   ? '${match.stage} · Gruppe ${match.group}'
                   : match.stage;
@@ -544,9 +566,13 @@ class _UserTipsBottomSheetContentState
                             teamName: match.homeTeam,
                             user: widget.userProfile,
                             isRightAligned: true,
+                            isWinner: isHomeWinner,
+                            isLoser: winner != null && !isHomeWinner,
                             style: TextStyle(
                               fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: isHomeWinner
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
@@ -589,9 +615,13 @@ class _UserTipsBottomSheetContentState
                             teamName: match.awayTeam,
                             user: widget.userProfile,
                             isRightAligned: false,
+                            isWinner: isAwayWinner,
+                            isLoser: winner != null && !isAwayWinner,
                             style: TextStyle(
                               fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: isAwayWinner
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
@@ -749,6 +779,36 @@ class _UserTipsBottomSheetContentState
       ),
     );
   }
+}
+
+String _compactTipLabel(Tip tip, CupMatch match) {
+  var label = '${tip.predictedHome}:${tip.predictedAway}';
+  if (match.isKnockout &&
+      tip.predictedOtHome != null &&
+      tip.predictedOtAway != null) {
+    label += ', ${tip.predictedOtHome}:${tip.predictedOtAway} n.V.';
+  }
+  final penaltyWinner = switch (tip.predictedPenaltyWinner) {
+    PenaltyWinnerSide.home => match.homeTeam,
+    PenaltyWinnerSide.away => match.awayTeam,
+    null => null,
+  };
+  if (penaltyWinner != null) label += ' $penaltyWinner i.E.';
+  return label;
+}
+
+String _compactAssessmentLabel(
+  ScoreResult? result, {
+  required CupMatch match,
+  required int fallbackPoints,
+}) {
+  if (result == null) return '$fallbackPoints Pkt.';
+  if (result.isExact) return 'exakt';
+  if (result.isDifference) return 'Differenz';
+  if (result.isTendency) {
+    return match.isKnockout ? '${result.points} Pkt.' : 'Tendenz';
+  }
+  return '0 Pkt.';
 }
 
 class _MemberAvatar extends StatelessWidget {

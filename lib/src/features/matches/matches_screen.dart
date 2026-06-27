@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
 import '../../domain/flags.dart';
+import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
@@ -473,6 +474,12 @@ class _MatchRow extends StatelessWidget {
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
     final scheme = Theme.of(context).colorScheme;
     final isLive = match.status == MatchStatus.live;
+    final tipComplete = tip != null && isTipCompleteForMatch(tip!, match);
+    final winner = match.isKnockout && match.status == MatchStatus.finalResult
+        ? getMatchWinner(match)
+        : null;
+    final isHomeWinner = winner != null && isSameTeam(winner, match.homeTeam);
+    final isAwayWinner = winner != null && isSameTeam(winner, match.awayTeam);
 
     final hasProgression =
         match.otHomeScore != null || match.penaltyHomeScore != null;
@@ -531,8 +538,8 @@ class _MatchRow extends StatelessWidget {
                           flag: homeFlag,
                           user: user,
                           isHome: true,
-                          isWinner: false,
-                          isLoser: false,
+                          isWinner: isHomeWinner,
+                          isLoser: winner != null && !isHomeWinner,
                         ),
                       ),
                       SizedBox(
@@ -546,8 +553,8 @@ class _MatchRow extends StatelessWidget {
                           flag: awayFlag,
                           user: user,
                           isHome: false,
-                          isWinner: false,
-                          isLoser: false,
+                          isWinner: isAwayWinner,
+                          isLoser: winner != null && !isAwayWinner,
                         ),
                       ),
                     ],
@@ -572,13 +579,32 @@ class _MatchRow extends StatelessWidget {
               child: Align(
                 alignment: Alignment.center,
                 child: tip != null
-                    ? Text(
-                        '${tip!.predictedHome}:${tip!.predictedAway}',
-                        style:
-                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (!tipComplete)
+                            Tooltip(
+                              message: 'Tipp unvollständig',
+                              child: Icon(
+                                Icons.warning_amber_rounded,
+                                size: 16,
+                                color: scheme.error,
+                              ),
+                            ),
+                          if (!tipComplete) const SizedBox(width: 2),
+                          Text(
+                            '${tip!.predictedHome}:${tip!.predictedAway}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: scheme.primary,
+                                  color: tipComplete
+                                      ? scheme.primary
+                                      : scheme.error,
                                 ),
+                          ),
+                        ],
                       )
                     : Icon(
                         Icons.chevron_right,

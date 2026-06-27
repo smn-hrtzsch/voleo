@@ -384,17 +384,31 @@ function normalizeFootballDataMatch(match) {
     status = "live";
   }
 
+  const scoreValue = (node, side) => node?.[side] ?? node?.[`${side}Team`] ?? null;
   const fullTime = match.score?.fullTime ?? {};
   const halfTime = match.score?.halfTime ?? {};
+  const duration = match.score?.duration ?? "REGULAR";
   const regularTime = match.score?.regularTime ??
-    (match.score?.duration === "REGULAR" ? fullTime : {});
+    (duration === "REGULAR" ? fullTime : {});
+  const extraTime = match.score?.extraTime ?? {};
+  const penalties = match.score?.penalties ?? {};
+  const regularHomeScore = scoreValue(regularTime, "home");
+  const regularAwayScore = scoreValue(regularTime, "away");
+  const extraTimeHome = scoreValue(extraTime, "home");
+  const extraTimeAway = scoreValue(extraTime, "away");
+  const otHomeScore = regularHomeScore !== null && extraTimeHome !== null
+    ? regularHomeScore + extraTimeHome
+    : null;
+  const otAwayScore = regularAwayScore !== null && extraTimeAway !== null
+    ? regularAwayScore + extraTimeAway
+    : null;
   const winner = match.score?.winner === "HOME_TEAM"
     ? homeTeam
     : match.score?.winner === "AWAY_TEAM"
       ? awayTeam
       : null;
-  const resultNote = match.score?.duration && match.score.duration !== "REGULAR"
-    ? match.score.duration
+  const resultNote = duration !== "REGULAR"
+    ? duration
     : null;
   return {
     providerId: String(match.id),
@@ -405,12 +419,16 @@ function normalizeFootballDataMatch(match) {
     status,
     rawStatus: match.status,
     minute: match.minute ?? null,
-    homeScore: fullTime.home ?? null,
-    awayScore: fullTime.away ?? null,
-    regularHomeScore: regularTime.home ?? null,
-    regularAwayScore: regularTime.away ?? null,
-    halfHomeScore: halfTime.home ?? null,
-    halfAwayScore: halfTime.away ?? null,
+    homeScore: scoreValue(fullTime, "home"),
+    awayScore: scoreValue(fullTime, "away"),
+    regularHomeScore,
+    regularAwayScore,
+    otHomeScore,
+    otAwayScore,
+    penaltyHomeScore: scoreValue(penalties, "home"),
+    penaltyAwayScore: scoreValue(penalties, "away"),
+    halfHomeScore: scoreValue(halfTime, "home"),
+    halfAwayScore: scoreValue(halfTime, "away"),
     winner,
     resultNote,
     lastUpdated: match.lastUpdated ?? null,
@@ -445,6 +463,12 @@ async function fetchFirestoreMatches() {
       status: data.status ?? "scheduled",
       homeScore: data.homeScore ?? null,
       awayScore: data.awayScore ?? null,
+      regularHomeScore: data.regularHomeScore ?? null,
+      regularAwayScore: data.regularAwayScore ?? null,
+      otHomeScore: data.otHomeScore ?? null,
+      otAwayScore: data.otAwayScore ?? null,
+      penaltyHomeScore: data.penaltyHomeScore ?? null,
+      penaltyAwayScore: data.penaltyAwayScore ?? null,
       winner: data.winner ?? null,
       resultNote: data.resultNote ?? null,
       source: data.source ?? "firestore",
@@ -664,6 +688,10 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
     awayScore: footballDataMatch.awayScore,
     regularHomeScore: footballDataMatch.regularHomeScore ?? openLigaMatch.regularHomeScore,
     regularAwayScore: footballDataMatch.regularAwayScore ?? openLigaMatch.regularAwayScore,
+    otHomeScore: footballDataMatch.otHomeScore ?? openLigaMatch.otHomeScore,
+    otAwayScore: footballDataMatch.otAwayScore ?? openLigaMatch.otAwayScore,
+    penaltyHomeScore: footballDataMatch.penaltyHomeScore ?? openLigaMatch.penaltyHomeScore,
+    penaltyAwayScore: footballDataMatch.penaltyAwayScore ?? openLigaMatch.penaltyAwayScore,
     winner: footballDataMatch.status === "finalResult" ? footballDataMatch.winner : null,
     resultNote: footballDataMatch.resultNote,
     source: "football-data",
@@ -711,17 +739,148 @@ function logLiveProviderComparison(openLigaMatches, footballDataMatches, footbal
 
 function scoreTip(predictedHome, predictedAway, actualHome, actualAway) {
   if (predictedHome === actualHome && predictedAway === actualAway) {
-    return { points: 4, isExact: true, isTendency: true };
+    return { points: 4, isExact: true, isDifference: false, isTendency: true };
   }
   const predictedDiff = predictedHome - predictedAway;
   const actualDiff = actualHome - actualAway;
   if (predictedDiff === actualDiff && actualDiff !== 0) {
-    return { points: 3, isExact: false, isTendency: true };
+    return { points: 3, isExact: false, isDifference: true, isTendency: true };
   }
   if (Math.sign(predictedDiff) === Math.sign(actualDiff)) {
-    return { points: 2, isExact: false, isTendency: true };
+    return { points: 2, isExact: false, isDifference: false, isTendency: true };
   }
-  return { points: 0, isExact: false, isTendency: false };
+  return { points: 0, isExact: false, isDifference: false, isTendency: false };
+}
+
+function scoreTipForMatch(tip, match) {
+  if (!tipIsCompleteForMatch(tip, match)) {
+    return { points: 0, isExact: false, isDifference: false, isTendency: false };
+  }
+
+  const actualRegularHome = match.regularHomeScore ?? match.homeScore;
+  const actualRegularAway = match.regularAwayScore ?? match.awayScore;
+  if (actualRegularHome == null || actualRegularAway == null) {
+    return { points: 0, isExact: false, isDifference: false, isTendency: false };
+  }
+  if (!isKnockoutMatch(match)) {
+    return scoreTip(
+      tip.predictedHome ?? 0,
+      tip.predictedAway ?? 0,
+      actualRegularHome,
+      actualRegularAway
+    );
+  }
+
+  const endedInPenalties = match.penaltyHomeScore != null ||
+    match.penaltyAwayScore != null ||
+    ["PENALTY_SHOOTOUT", "n.E."].includes(match.resultNote);
+  const endedInExtraTime = endedInPenalties ||
+    match.otHomeScore != null ||
+    match.otAwayScore != null ||
+    ["EXTRA_TIME", "n.V."].includes(match.resultNote);
+
+  if (!endedInExtraTime) {
+    return scoreKnockoutRegulation(
+      tip.predictedHome ?? 0,
+      tip.predictedAway ?? 0,
+      actualRegularHome,
+      actualRegularAway
+    );
+  }
+
+  const actualOtHome = match.otHomeScore;
+  const actualOtAway = match.otAwayScore;
+  if (actualOtHome == null || actualOtAway == null) {
+    return { points: 0, isExact: false, isDifference: false, isTendency: false };
+  }
+
+  let points = 0;
+  const regularExact = tip.predictedHome === actualRegularHome &&
+    tip.predictedAway === actualRegularAway;
+  if (tip.predictedHome === tip.predictedAway && actualRegularHome === actualRegularAway) {
+    points += regularExact ? 3 : 2;
+  }
+
+  if (tip.predictedOtHome == null || tip.predictedOtAway == null) {
+    return {
+      points,
+      isExact: false,
+      isDifference: false,
+      isTendency: points > 0,
+    };
+  }
+
+  const otExact = tip.predictedOtHome === actualOtHome &&
+    tip.predictedOtAway === actualOtAway;
+  const otTendency = Math.sign(tip.predictedOtHome - tip.predictedOtAway) ===
+    Math.sign(actualOtHome - actualOtAway);
+
+  if (!endedInPenalties) {
+    points += otExact ? 2 : (otTendency ? 1 : 0);
+    return {
+      points,
+      isExact: regularExact && otExact,
+      isDifference: false,
+      isTendency: points > 0,
+    };
+  }
+
+  if (otTendency) points += 1;
+  if (otExact) points += 1;
+  const actualPenaltyWinner = penaltyWinnerSide(match);
+  const penaltyExact = tip.predictedPenaltyWinner != null &&
+    tip.predictedPenaltyWinner === actualPenaltyWinner;
+  if (penaltyExact) points += 1;
+  return {
+    points,
+    isExact: regularExact && otExact && penaltyExact,
+    isDifference: false,
+    isTendency: points > 0,
+  };
+}
+
+function isKnockoutMatch(match) {
+  return !match.group && match.stage !== "Gruppenphase";
+}
+
+function tipIsCompleteForMatch(tip, match) {
+  if (tip.isComplete === false) return false;
+  if (!isKnockoutMatch(match) || tip.predictedHome !== tip.predictedAway) {
+    return true;
+  }
+  if (tip.predictedOtHome == null || tip.predictedOtAway == null ||
+      tip.predictedOtHome < tip.predictedHome ||
+      tip.predictedOtAway < tip.predictedAway) {
+    return false;
+  }
+  if (tip.predictedOtHome !== tip.predictedOtAway) return true;
+  return tip.predictedPenaltyWinner === "home" ||
+    tip.predictedPenaltyWinner === "away";
+}
+
+function scoreKnockoutRegulation(predictedHome, predictedAway, actualHome, actualAway) {
+  if (predictedHome === actualHome && predictedAway === actualAway) {
+    return { points: 5, isExact: true, isDifference: false, isTendency: true };
+  }
+  const predictedDiff = predictedHome - predictedAway;
+  const actualDiff = actualHome - actualAway;
+  if (predictedDiff === actualDiff && actualDiff !== 0) {
+    return { points: 4, isExact: false, isDifference: true, isTendency: true };
+  }
+  if (Math.sign(predictedDiff) === Math.sign(actualDiff)) {
+    return { points: 3, isExact: false, isDifference: false, isTendency: true };
+  }
+  return { points: 0, isExact: false, isDifference: false, isTendency: false };
+}
+
+function penaltyWinnerSide(match) {
+  if (match.penaltyHomeScore != null && match.penaltyAwayScore != null) {
+    if (match.penaltyHomeScore > match.penaltyAwayScore) return "home";
+    if (match.penaltyAwayScore > match.penaltyHomeScore) return "away";
+  }
+  if (match.winner && isSameTeam(match.winner, match.homeTeam)) return "home";
+  if (match.winner && isSameTeam(match.winner, match.awayTeam)) return "away";
+  return null;
 }
 
 function getTier(team) {
@@ -1256,23 +1415,43 @@ async function recalculateScores(allMatches, finalMatches) {
     orphanTipsDeleted: 0,
     standingsWritten: 0,
     standingsDeleted: 0,
+    testLeagueCount: 0,
+    testMatches: 0,
     issues: [],
   };
-  if (finalMatches.length === 0) return audit;
-  const finalMatchById = new Map();
-  for (const m of finalMatches) {
-    finalMatchById.set(m.id, m);
-    finalMatchById.set(`openligadb-${m.id}`, m);
-    const staticId = getStaticId(m.homeTeam, m.awayTeam);
-    if (staticId) {
-      finalMatchById.set(staticId, m);
-    }
-  }
 
   const leaguesSnap = await db.collection("leagues").get();
   for (const leagueDoc of leaguesSnap.docs) {
     audit.leagueCount += 1;
     const leagueId = leagueDoc.id;
+    const isTestLeague = leagueDoc.data().isTestLeague === true;
+    let leagueAllMatches = allMatches;
+    let leagueFinalMatches = finalMatches;
+    if (isTestLeague) {
+      const testMatchesSnap = await leagueDoc.ref.collection("testMatches").get();
+      leagueAllMatches = testMatchesSnap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          kickoff: data.kickoff?.toDate
+            ? data.kickoff.toDate().toISOString()
+            : data.kickoff,
+        };
+      });
+      leagueFinalMatches = leagueAllMatches.filter((match) => match.status === "finalResult");
+      audit.testLeagueCount += 1;
+      audit.testMatches += leagueAllMatches.length;
+    }
+
+    const finalMatchById = new Map();
+    for (const match of leagueFinalMatches) {
+      finalMatchById.set(match.id, match);
+      finalMatchById.set(`openligadb-${match.id}`, match);
+      const staticId = getStaticId(match.homeTeam, match.awayTeam);
+      if (staticId) finalMatchById.set(staticId, match);
+    }
+
     const membersSnap = await db.collection("leagues").doc(leagueId).collection("members").get();
     
     // Fetch user documents for extra points
@@ -1379,15 +1558,7 @@ async function recalculateScores(allMatches, finalMatches) {
       const matchKickoff = new Date(match.kickoff);
       if (matchKickoff < current.joinedAt) continue;
 
-      const actualHome = match.regularHomeScore !== undefined && match.regularHomeScore !== null ? match.regularHomeScore : match.homeScore;
-      const actualAway = match.regularAwayScore !== undefined && match.regularAwayScore !== null ? match.regularAwayScore : match.awayScore;
-
-      const score = scoreTip(
-        data.predictedHome ?? 0,
-        data.predictedAway ?? 0,
-        actualHome,
-        actualAway
-      );
+      const score = scoreTipForMatch(data, match);
 
       if (data.points !== score.points) {
         batch.update(tipDoc.ref, { points: score.points });
@@ -1397,7 +1568,7 @@ async function recalculateScores(allMatches, finalMatches) {
       current.totalPoints += score.points;
       if (score.isExact) {
         current.exactCount += 1;
-      } else if (score.points === 3) {
+      } else if (score.isDifference) {
         current.differenceCount = (current.differenceCount ?? 0) + 1;
       } else if (score.isTendency) {
         current.tendencyCount += 1;
@@ -1409,8 +1580,8 @@ async function recalculateScores(allMatches, finalMatches) {
     for (const [uid, current] of stats.entries()) {
       if (current.leftAt !== null) continue;
       const userData = userFieldsMap.get(uid);
-      const activeMatches = allMatches.filter((m) => new Date(m.kickoff) >= current.joinedAt);
-      const extra = calculateExtraPoints(userData, activeMatches);
+      const activeMatches = leagueAllMatches.filter((m) => new Date(m.kickoff) >= current.joinedAt);
+      const extra = isTestLeague ? 0 : calculateExtraPoints(userData, activeMatches);
       current.totalPoints += extra;
     }
 
@@ -1645,6 +1816,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
       awayTeam: data.awayTeam ?? null,
       homeScore: data.homeScore ?? null,
       awayScore: data.awayScore ?? null,
+      regularHomeScore: data.regularHomeScore ?? null,
+      regularAwayScore: data.regularAwayScore ?? null,
+      otHomeScore: data.otHomeScore ?? null,
+      otAwayScore: data.otAwayScore ?? null,
+      penaltyHomeScore: data.penaltyHomeScore ?? null,
+      penaltyAwayScore: data.penaltyAwayScore ?? null,
       status: data.status ?? "scheduled",
       winner: data.winner ?? null,
       resultNote: data.resultNote ?? null,
@@ -1663,6 +1840,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         ...resolvedTemplate,
         homeScore: existing.homeScore,
         awayScore: existing.awayScore,
+        regularHomeScore: existing.regularHomeScore,
+        regularAwayScore: existing.regularAwayScore,
+        otHomeScore: existing.otHomeScore,
+        otAwayScore: existing.otAwayScore,
+        penaltyHomeScore: existing.penaltyHomeScore,
+        penaltyAwayScore: existing.penaltyAwayScore,
         status: existing.status,
         winner: existing.winner ?? null,
         resultNote: existing.resultNote ?? null,
@@ -1696,6 +1879,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         status: existing.status,
         homeScore: existing.homeScore,
         awayScore: existing.awayScore,
+        regularHomeScore: existing.regularHomeScore,
+        regularAwayScore: existing.regularAwayScore,
+        otHomeScore: existing.otHomeScore,
+        otAwayScore: existing.otAwayScore,
+        penaltyHomeScore: existing.penaltyHomeScore,
+        penaltyAwayScore: existing.penaltyAwayScore,
         winner: existing.winner ?? match.winner ?? null,
         resultNote: existing.resultNote ?? match.resultNote ?? null,
         source: existing.source,
@@ -1710,6 +1899,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
       existing.awayTeam !== match.awayTeam ||
       existing.homeScore !== match.homeScore ||
       existing.awayScore !== match.awayScore ||
+      existing.regularHomeScore !== (match.regularHomeScore ?? null) ||
+      existing.regularAwayScore !== (match.regularAwayScore ?? null) ||
+      existing.otHomeScore !== (match.otHomeScore ?? null) ||
+      existing.otAwayScore !== (match.otAwayScore ?? null) ||
+      existing.penaltyHomeScore !== (match.penaltyHomeScore ?? null) ||
+      existing.penaltyAwayScore !== (match.penaltyAwayScore ?? null) ||
       existing.status !== match.status ||
       existing.winner !== match.winner ||
       existing.resultNote !== match.resultNote ||
@@ -1737,6 +1932,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
         status: match.status,
         homeScore: match.homeScore,
         awayScore: match.awayScore,
+        regularHomeScore: match.regularHomeScore ?? null,
+        regularAwayScore: match.regularAwayScore ?? null,
+        otHomeScore: match.otHomeScore ?? null,
+        otAwayScore: match.otAwayScore ?? null,
+        penaltyHomeScore: match.penaltyHomeScore ?? null,
+        penaltyAwayScore: match.penaltyAwayScore ?? null,
         winner: match.winner ?? null,
         resultNote: match.resultNote ?? null,
         source: match.source ?? "openligadb",
@@ -1830,6 +2031,8 @@ if (process.env.NODE_ENV === "test") {
     isSameTeam,
     teamKey,
     scoreTip,
+    scoreTipForMatch,
+    normalizeFootballDataMatch,
     applyFootballDataOverlay,
     isRecentMatchWindow,
     shouldKeepExistingMatch,
@@ -1941,6 +2144,13 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       const changed = !existingDoc.exists ||
         (existing.homeScore ?? null) !== match.homeScore ||
         (existing.awayScore ?? null) !== match.awayScore ||
+        (existing.regularHomeScore ?? null) !== (match.regularHomeScore ?? null) ||
+        (existing.regularAwayScore ?? null) !== (match.regularAwayScore ?? null) ||
+        (existing.otHomeScore ?? null) !== (match.otHomeScore ?? null) ||
+        (existing.otAwayScore ?? null) !== (match.otAwayScore ?? null) ||
+        (existing.penaltyHomeScore ?? null) !== (match.penaltyHomeScore ?? null) ||
+        (existing.penaltyAwayScore ?? null) !== (match.penaltyAwayScore ?? null) ||
+        (existing.resultNote ?? null) !== (match.resultNote ?? null) ||
         existingStatus !== match.status ||
         existingSource !== matchSource;
       if (!changed) continue;
@@ -1951,7 +2161,13 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       if (match.status === "finalResult" &&
           (existingStatus !== "finalResult" ||
             (existing.homeScore ?? null) !== match.homeScore ||
-            (existing.awayScore ?? null) !== match.awayScore)) {
+            (existing.awayScore ?? null) !== match.awayScore ||
+            (existing.regularHomeScore ?? null) !== (match.regularHomeScore ?? null) ||
+            (existing.regularAwayScore ?? null) !== (match.regularAwayScore ?? null) ||
+            (existing.otHomeScore ?? null) !== (match.otHomeScore ?? null) ||
+            (existing.otAwayScore ?? null) !== (match.otAwayScore ?? null) ||
+            (existing.penaltyHomeScore ?? null) !== (match.penaltyHomeScore ?? null) ||
+            (existing.penaltyAwayScore ?? null) !== (match.penaltyAwayScore ?? null))) {
         finalResultChanged = true;
       }
       changedCount += 1;
@@ -1964,6 +2180,12 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
         status: match.status,
         homeScore: match.homeScore,
         awayScore: match.awayScore,
+        regularHomeScore: match.regularHomeScore ?? null,
+        regularAwayScore: match.regularAwayScore ?? null,
+        otHomeScore: match.otHomeScore ?? null,
+        otAwayScore: match.otAwayScore ?? null,
+        penaltyHomeScore: match.penaltyHomeScore ?? null,
+        penaltyAwayScore: match.penaltyAwayScore ?? null,
         winner: match.status === "finalResult" ? match.winner ?? null : null,
         resultNote: match.resultNote ?? null,
         source: match.source ?? "openligadb",

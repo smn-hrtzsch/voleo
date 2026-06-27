@@ -258,12 +258,7 @@ class _TopThreeCard extends ConsumerWidget {
           orElse: () => null,
         );
         if (tip != null) {
-          final score = scoreTip(
-            predictedHome: tip.predictedHome,
-            predictedAway: tip.predictedAway,
-            actualHome: match.homeScore ?? 0,
-            actualAway: match.awayScore ?? 0,
-          );
+          final score = scoreLiveTip(tip: tip, match: match);
 
           final pts = getLiveMatchTotalPoints(
             tipPoints: score.points,
@@ -276,7 +271,7 @@ class _TopThreeCard extends ConsumerWidget {
           updated = true;
           if (score.isExact) {
             exact++;
-          } else if (score.points == 3) {
+          } else if (score.isDifference) {
             diff++;
           } else if (score.isTendency) {
             tendency++;
@@ -620,6 +615,11 @@ class _NextMatchRow extends StatelessWidget {
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
     final scheme = Theme.of(context).colorScheme;
     final isLive = match.status == MatchStatus.live;
+    final winner = match.isKnockout && match.status == MatchStatus.finalResult
+        ? getMatchWinner(match)
+        : null;
+    final isHomeWinner = winner != null && isSameTeam(winner, match.homeTeam);
+    final isAwayWinner = winner != null && isSameTeam(winner, match.awayTeam);
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
@@ -670,6 +670,7 @@ class _NextMatchRow extends StatelessWidget {
                       flag: homeFlag,
                       user: user,
                       isHome: true,
+                      isWinner: isHomeWinner,
                     ),
                   ),
                   SizedBox(
@@ -697,6 +698,7 @@ class _NextMatchRow extends StatelessWidget {
                       flag: awayFlag,
                       user: user,
                       isHome: false,
+                      isWinner: isAwayWinner,
                     ),
                   ),
                 ],
@@ -736,17 +738,24 @@ class _TeamSlot extends StatelessWidget {
     required this.flag,
     required this.user,
     required this.isHome,
+    this.isWinner = false,
   });
 
   final String teamName;
   final String flag;
   final VoleoUser? user;
   final bool isHome;
+  final bool isWinner;
 
   @override
   Widget build(BuildContext context) {
-    final name =
-        _buildTeamName(context, teamName, user, isRightAligned: isHome);
+    final name = _buildTeamName(
+      context,
+      teamName,
+      user,
+      isRightAligned: isHome,
+      isWinner: isWinner,
+    );
     final flagText = Text(flag, style: const TextStyle(fontSize: 21));
     final children = isHome
         ? <Widget>[
@@ -814,6 +823,23 @@ class _InfoTippspielCard extends ConsumerWidget {
                 _buildBulletPoint(
                     'Tendenz: +2 Punkte (z.B. Tipp 2:0, Spiel endet 3:0)'),
                 _buildBulletPoint('Falscher Tipp: 0 Punkte'),
+                const SizedBox(height: 12),
+                _buildSectionTitle(context, 'K.-o.-Spiele'),
+                const Text(
+                  'Bei einem Remis nach 90 Minuten tippst du zusätzlich das Ergebnis nach Verlängerung und bei einem weiteren Remis den Sieger im Elfmeterschießen.',
+                ),
+                _buildBulletPoint(
+                  'Ende nach 90 Minuten (max. 5): Tendenz +3, Tordifferenz +4, exaktes Ergebnis +5.',
+                ),
+                _buildBulletPoint(
+                  'Ende nach Verlängerung (max. 5): Remis nach 90 Minuten +2 bzw. exakt +3; zusätzlich Tendenz n.V. +1 bzw. exakt +2.',
+                ),
+                _buildBulletPoint(
+                  'Ende im Elfmeterschießen (max. 6): Remis nach 90 Minuten +2 bzw. exakt +3; zusätzlich Remis n.V. +1, exaktes Ergebnis n.V. +1 und richtiger Sieger +1.',
+                ),
+                _buildBulletPoint(
+                  'Bei einem Remis gibt es keine Punkte für die Tordifferenz. Tippst du weiter als das reale Spiel dauert, wird nur bis zum tatsächlichen Spielende gewertet.',
+                ),
                 const SizedBox(height: 12),
                 _buildSectionTitle(context, 'Mannschafts-Booster'),
                 _buildBulletPoint(
@@ -912,6 +938,7 @@ Widget _buildTeamName(
   String teamName,
   VoleoUser? user, {
   required bool isRightAligned,
+  bool isWinner = false,
 }) {
   final List<Widget> markers = [];
   if (user != null) {
@@ -950,6 +977,10 @@ Widget _buildTeamName(
     maxLines: 2,
     softWrap: true,
     overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      color: isWinner ? Colors.green : null,
+      fontWeight: isWinner ? FontWeight.bold : null,
+    ),
   );
 
   if (markers.isEmpty) {

@@ -248,12 +248,29 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     required String matchId,
     required int home,
     required int away,
+    int? otHome,
+    int? otAway,
+    PenaltyWinnerSide? penaltyWinner,
   }) async {
     final user = _requireUser();
     final match = _currentMatches.firstWhere((match) => match.id == matchId);
     if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
+    if ((otHome == null) != (otAway == null) ||
+        (otHome != null && (otHome < home || otAway! < away))) {
+      throw StateError(
+        'Das Ergebnis n.V. muss vollständig sein und darf nicht unter dem Stand nach 90 Minuten liegen.',
+      );
+    }
+
+    final includesExtraTime = match.isKnockout && home == away;
+    final storedOtHome = includesExtraTime ? otHome : null;
+    final storedOtAway = includesExtraTime ? otAway : null;
+    final includesPenalties = storedOtHome != null &&
+        storedOtAway != null &&
+        storedOtHome == storedOtAway;
+    final storedPenaltyWinner = includesPenalties ? penaltyWinner : null;
 
     final existingIndex = _currentTips.indexWhere(
       (tip) => tip.uid == user.uid && tip.matchId == matchId,
@@ -263,6 +280,17 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       matchId: matchId,
       predictedHome: home,
       predictedAway: away,
+      predictedOtHome: storedOtHome,
+      predictedOtAway: storedOtAway,
+      predictedPenaltyWinner: storedPenaltyWinner,
+      isComplete: isTipSelectionComplete(
+        match: match,
+        home: home,
+        away: away,
+        otHome: storedOtHome,
+        otAway: storedOtAway,
+        penaltyWinner: storedPenaltyWinner,
+      ),
       lockedAt: match.kickoff,
       points: 0,
     );
@@ -376,23 +404,14 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       for (final tip in _currentTips) {
         final match =
             _currentMatches.firstWhere((match) => match.id == tip.matchId);
-        final actualHome = match.regularHomeScore ?? match.homeScore;
-        final actualAway = match.regularAwayScore ?? match.awayScore;
-        if (match.status != MatchStatus.finalResult ||
-            actualHome == null ||
-            actualAway == null) {
+        if (match.status != MatchStatus.finalResult) {
           continue;
         }
-        final result = scoreTip(
-          predictedHome: tip.predictedHome,
-          predictedAway: tip.predictedAway,
-          actualHome: actualHome,
-          actualAway: actualAway,
-        );
+        final result = scoreTipForMatch(tip: tip, match: match);
         total += result.points;
         if (result.isExact) {
           exact++;
-        } else if (result.points == 3) {
+        } else if (result.isDifference) {
           difference++;
         } else if (result.isTendency) {
           tendency++;
@@ -655,6 +674,12 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       matchId: json['matchId'] as String,
       predictedHome: json['predictedHome'] as int,
       predictedAway: json['predictedAway'] as int,
+      predictedOtHome: json['predictedOtHome'] as int?,
+      predictedOtAway: json['predictedOtAway'] as int?,
+      predictedPenaltyWinner: PenaltyWinnerSide.values
+          .where((side) => side.name == json['predictedPenaltyWinner'])
+          .firstOrNull,
+      isComplete: json['isComplete'] as bool? ?? true,
       lockedAt: DateTime.parse(json['lockedAt'] as String),
       points: json['points'] as int? ?? 0,
     );
@@ -666,6 +691,10 @@ class LocalFirstVoleoRepository implements VoleoRepository {
       'matchId': tip.matchId,
       'predictedHome': tip.predictedHome,
       'predictedAway': tip.predictedAway,
+      'predictedOtHome': tip.predictedOtHome,
+      'predictedOtAway': tip.predictedOtAway,
+      'predictedPenaltyWinner': tip.predictedPenaltyWinner?.name,
+      'isComplete': tip.isComplete,
       'lockedAt': tip.lockedAt.toIso8601String(),
       'points': tip.points,
     };

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
 import '../../domain/flags.dart';
+import '../../domain/scoring.dart';
 import '../../domain/voleo_models.dart';
 import '../../providers.dart';
 import '../shared/async_value_view.dart';
@@ -830,8 +831,9 @@ class _TournamentMatchCard extends ConsumerWidget {
     final homeFlag = CountryFlags.getFlag(match.homeTeam);
     final awayFlag = CountryFlags.getFlag(match.awayTeam);
 
-    final isHomeWinner = isFinal && match.winner == match.homeTeam;
-    final isAwayWinner = isFinal && match.winner == match.awayTeam;
+    final winner = match.isKnockout && isFinal ? getMatchWinner(match) : null;
+    final isHomeWinner = winner != null && isSameTeam(winner, match.homeTeam);
+    final isAwayWinner = winner != null && isSameTeam(winner, match.awayTeam);
 
     // Own tip
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
@@ -849,6 +851,7 @@ class _TournamentMatchCard extends ConsumerWidget {
       orElse: () => null,
     );
     final hasTip = tip != null;
+    final tipComplete = tip != null && isTipCompleteForMatch(tip, match);
 
     return GestureDetector(
       onTap: () {
@@ -918,11 +921,12 @@ class _TournamentMatchCard extends ConsumerWidget {
                     teamName: match.homeTeam,
                     user: user,
                     isRightAligned: false,
+                    isWinner: isHomeWinner,
+                    isLoser: winner != null && !isHomeWinner,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight:
                           isHomeWinner ? FontWeight.bold : FontWeight.normal,
-                      color: isHomeWinner ? scheme.primary : null,
                     ),
                   ),
                 ),
@@ -933,6 +937,7 @@ class _TournamentMatchCard extends ConsumerWidget {
                       fontSize: 11,
                       fontWeight:
                           isHomeWinner ? FontWeight.bold : FontWeight.normal,
+                      color: isHomeWinner ? Colors.green : null,
                     ),
                   ),
               ],
@@ -948,11 +953,12 @@ class _TournamentMatchCard extends ConsumerWidget {
                     teamName: match.awayTeam,
                     user: user,
                     isRightAligned: false,
+                    isWinner: isAwayWinner,
+                    isLoser: winner != null && !isAwayWinner,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight:
                           isAwayWinner ? FontWeight.bold : FontWeight.normal,
-                      color: isAwayWinner ? scheme.primary : null,
                     ),
                   ),
                 ),
@@ -963,6 +969,7 @@ class _TournamentMatchCard extends ConsumerWidget {
                       fontSize: 11,
                       fontWeight:
                           isAwayWinner ? FontWeight.bold : FontWeight.normal,
+                      color: isAwayWinner ? Colors.green : null,
                     ),
                   ),
               ],
@@ -976,14 +983,30 @@ class _TournamentMatchCard extends ConsumerWidget {
                   color: scheme.primaryContainer.withAlpha(120),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!tipComplete) ...[
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 12,
+                        color: scheme.error,
+                      ),
+                      const SizedBox(width: 2),
+                    ],
+                    Text(
+                      'Tipp: ${tip.predictedHome}:${tip.predictedAway}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: tipComplete
+                            ? scheme.onPrimaryContainer
+                            : scheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ] else if (isScheduled) ...[

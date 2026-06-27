@@ -55,16 +55,20 @@ class TeamNameWithPicks extends StatelessWidget {
       }
     }
 
+    final baseStyle = style ??
+        Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            );
     final textWidget = Text(
       teamName,
       textAlign: isRightAligned ? TextAlign.right : TextAlign.left,
       maxLines: 2,
       softWrap: true,
       overflow: TextOverflow.ellipsis,
-      style: style ??
-          Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+      style: baseStyle?.copyWith(
+        color: isWinner ? Colors.green : baseStyle.color,
+        fontWeight: isWinner ? FontWeight.bold : baseStyle.fontWeight,
+      ),
     );
 
     if (markers.isEmpty) {

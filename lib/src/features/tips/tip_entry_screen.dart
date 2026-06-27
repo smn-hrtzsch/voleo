@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,8 +30,19 @@ class TipEntryScreen extends ConsumerStatefulWidget {
 class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   int _homeGoals = 0;
   int _awayGoals = 0;
+  int _otHomeGoals = 0;
+  int _otAwayGoals = 0;
+  PenaltyWinnerSide? _penaltyWinner;
   bool _isSaving = false;
+  bool _hasEdited = false;
   bool _didSeedTip = false;
+  bool _allowPop = false;
+  bool _isOtExpanded = false;
+  bool _isPenaltyExpanded = false;
+  bool _hasOtSelection = false;
+  CupMatch? _currentMatch;
+  Timer? _otExpansionTimer;
+  Timer? _penaltyExpansionTimer;
 
   final Map<String, VoleoUser> _loadedUsers = {};
 
@@ -46,14 +59,20 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
   }
 
   @override
+  void dispose() {
+    _otExpansionTimer?.cancel();
+    _penaltyExpansionTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         title: const Text('Tipp'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go(widget.returnPath),
+          onPressed: () => _leave(_currentMatch),
         ),
       ),
       body: SafeArea(
@@ -62,6 +81,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
           data: (matches) {
             final match =
                 matches.where((item) => item.id == widget.matchId).firstOrNull;
+            _currentMatch = match;
             if (match == null) {
               return Center(
                 child: Column(
@@ -71,7 +91,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: () => context.canPop()
-                          ? context.pop()
+                          ? _navigateBack()
                           : context.go(widget.returnPath),
                       child: const Text('Zurück'),
                     ),
@@ -95,12 +115,25 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
               if (!_didSeedTip) {
                 _homeGoals = existingTip.predictedHome;
                 _awayGoals = existingTip.predictedAway;
+                _otHomeGoals =
+                    existingTip.predictedOtHome ?? existingTip.predictedHome;
+                _otAwayGoals =
+                    existingTip.predictedOtAway ?? existingTip.predictedAway;
+                _penaltyWinner = existingTip.predictedPenaltyWinner;
+                _hasOtSelection = existingTip.predictedOtHome != null &&
+                    existingTip.predictedOtAway != null;
                 _didSeedTip = true;
               }
             } else {
               _didSeedTip = false;
             }
             final scoreResult = _scoreResult(match, existingTip);
+            final existingTipComplete = existingTip != null &&
+                isTipCompleteForMatch(existingTip, match);
+            final showPenaltySection = match.isKnockout &&
+                _homeGoals == _awayGoals &&
+                _otHomeGoals == _otAwayGoals &&
+                (_hasOtSelection || _isOtExpanded || _penaltyWinner != null);
 
             final hasProgression =
                 match.otHomeScore != null || match.penaltyHomeScore != null;
@@ -152,10 +185,12 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                     final winner = getMatchWinner(match);
                                     final isFinished =
                                         match.status == MatchStatus.finalResult;
-                                    final isHomeWinner = isFinished &&
+                                    final isHomeWinner = match.isKnockout &&
+                                        isFinished &&
                                         winner != null &&
                                         isSameTeam(winner, match.homeTeam);
-                                    final isHomeLoser = isFinished &&
+                                    final isHomeLoser = match.isKnockout &&
+                                        isFinished &&
                                         winner != null &&
                                         !isSameTeam(winner, match.homeTeam);
                                     return _MatchupTeamLabel(
@@ -191,10 +226,12 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                     final winner = getMatchWinner(match);
                                     final isFinished =
                                         match.status == MatchStatus.finalResult;
-                                    final isAwayWinner = isFinished &&
+                                    final isAwayWinner = match.isKnockout &&
+                                        isFinished &&
                                         winner != null &&
                                         isSameTeam(winner, match.awayTeam);
-                                    final isAwayLoser = isFinished &&
+                                    final isAwayLoser = match.isKnockout &&
+                                        isFinished &&
                                         winner != null &&
                                         !isSameTeam(winner, match.awayTeam);
                                     return _MatchupTeamLabel(
@@ -239,6 +276,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                               const SizedBox(height: 12),
                               Center(
                                 child: Container(
+                                  width: double.infinity,
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
@@ -246,42 +284,58 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                         .colorScheme
                                         .primaryContainer,
                                     borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.check,
-                                        size: 18,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onPrimaryContainer,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Dein Tipp: ${existingTip.predictedHome}:${existingTip.predictedAway}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onPrimaryContainer,
-                                        ),
-                                      ),
-                                      if (!match.isLocked) ...[
-                                        const SizedBox(width: 6),
-                                        GestureDetector(
-                                          onTap: _isSaving
-                                              ? null
-                                              : () => _deleteTip(match),
-                                          child: Icon(
-                                            Icons.cancel,
-                                            size: 18,
+                                    border: existingTipComplete
+                                        ? null
+                                        : Border.all(
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .error,
                                           ),
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Icon(
+                                          existingTipComplete
+                                              ? Icons.check
+                                              : Icons.warning_amber_rounded,
+                                          size: 18,
+                                          color: existingTipComplete
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimaryContainer
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .error,
                                         ),
-                                      ],
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 28),
+                                        child: _TipSummary(
+                                          tip: existingTip,
+                                          match: match,
+                                          isComplete: existingTipComplete,
+                                        ),
+                                      ),
+                                      if (!match.isLocked)
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: GestureDetector(
+                                            onTap: _isSaving
+                                                ? null
+                                                : () => _deleteTip(match),
+                                            child: Icon(
+                                              Icons.cancel,
+                                              size: 18,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .error,
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -290,9 +344,22 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                             if (scoreResult != null) ...[
                               const SizedBox(height: 8),
                               Center(
-                                child: Chip(
+                                child: ActionChip(
                                   avatar: const Icon(Icons.stars, size: 18),
-                                  label: Text(_scoreLabel(scoreResult)),
+                                  label: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(_pointsLabel(scoreResult.points)),
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.info_outline, size: 17),
+                                    ],
+                                  ),
+                                  onPressed: () => _showScoreDetails(
+                                    context,
+                                    tip: existingTip!,
+                                    match: match,
+                                    scoreResult: scoreResult,
+                                  ),
                                 ),
                               ),
                             ],
@@ -301,11 +368,9 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                               const SizedBox(height: 8),
                               (() {
                                 final user = ref.watch(userProvider).value;
-                                final previewScore = scoreTip(
-                                  predictedHome: existingTip.predictedHome,
-                                  predictedAway: existingTip.predictedAway,
-                                  actualHome: match.homeScore ?? 0,
-                                  actualAway: match.awayScore ?? 0,
+                                final previewScore = scoreLiveTip(
+                                  tip: existingTip,
+                                  match: match,
                                 );
                                 final pts = getLiveMatchTotalPoints(
                                   tipPoints: previewScore.points,
@@ -318,9 +383,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                   labelText = 'Voraussichtlich: +0';
                                 } else {
                                   String detail = '';
-                                  if (previewScore.isExact) {
+                                  if (match.isKnockout &&
+                                      previewScore.details.isNotEmpty) {
+                                    detail = previewScore.details.first
+                                        .replaceFirst(RegExp(r' \+\d+$'), '');
+                                  } else if (previewScore.isExact) {
                                     detail = 'exaktes Ergebnis';
-                                  } else if (previewScore.points == 3) {
+                                  } else if (previewScore.isDifference) {
                                     detail = 'richtige Tordifferenz';
                                   } else if (previewScore.isTendency) {
                                     detail = 'richtige Tendenz';
@@ -382,6 +451,16 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                 ),
                 if (!match.isLocked) ...[
                   const SizedBox(height: 16),
+                  Text(
+                    match.isKnockout
+                        ? 'Ergebnis nach 90 Minuten'
+                        : 'Dein Ergebnis',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -391,7 +470,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           enabled: !match.isLocked,
                           onChanged: (value) {
                             if (_homeGoals != value) {
-                              setState(() => _homeGoals = value);
+                              _setRegularScore(home: value);
                             }
                           },
                         ),
@@ -410,18 +489,98 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                           enabled: !match.isLocked,
                           onChanged: (value) {
                             if (_awayGoals != value) {
-                              setState(() => _awayGoals = value);
+                              _setRegularScore(away: value);
                             }
                           },
                         ),
                       ),
                     ],
                   ),
+                  if (match.isKnockout && _homeGoals == _awayGoals) ...[
+                    const SizedBox(height: 24),
+                    _PhaseExpansionHeader(
+                      label: 'Ergebnis nach Verlängerung',
+                      isExpanded: _isOtExpanded,
+                      onTap: _toggleOtExpansion,
+                      collapsedPreview: _PhaseScorePreview(
+                        home: _otHomeGoals,
+                        away: _otAwayGoals,
+                      ),
+                    ),
+                    _PhaseBody(
+                      isExpanded: _isOtExpanded,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _ScoreStepper(
+                                label: match.homeTeam,
+                                value: _otHomeGoals,
+                                minValue: _homeGoals,
+                                onChanged: (value) => _setOtScore(home: value),
+                              ),
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(
+                                ':',
+                                style: Theme.of(context).textTheme.displaySmall,
+                              ),
+                            ),
+                            Expanded(
+                              child: _ScoreStepper(
+                                label: match.awayTeam,
+                                value: _otAwayGoals,
+                                minValue: _awayGoals,
+                                onChanged: (value) => _setOtScore(away: value),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (showPenaltySection) ...[
+                      const SizedBox(height: 16),
+                      _PhaseExpansionHeader(
+                        label: 'Sieger im Elfmeterschießen',
+                        isExpanded: _isPenaltyExpanded,
+                        onTap: _togglePenaltyExpansion,
+                        collapsedPreview: _PenaltyWinnerPreview(
+                          match: match,
+                          value: _penaltyWinner,
+                        ),
+                      ),
+                      _PhaseBody(
+                        isExpanded: _isPenaltyExpanded,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _PenaltyWinnerSelector(
+                            match: match,
+                            value: _penaltyWinner,
+                            onChanged: (value) {
+                              setState(() {
+                                _penaltyWinner = value;
+                                _hasEdited = true;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: 24),
                   FilledButton.icon(
-                    onPressed: _isSaving ? null : () => _save(match),
+                    onPressed: _isSaving || !_selectionIsComplete(match)
+                        ? null
+                        : () => _save(match),
                     icon: const Icon(Icons.save),
-                    label: const Text('Tipp speichern'),
+                    label: Text(
+                      _selectionIsComplete(match)
+                          ? 'Tipp speichern'
+                          : 'Tipp noch unvollständig',
+                    ),
                   ),
                 ],
                 if (match.isLocked) ...[
@@ -494,7 +653,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                         ),
                                       ),
                                       Expanded(
-                                        flex: 2,
+                                        flex: 7,
                                         child: Text(
                                           'Tipp',
                                           textAlign: TextAlign.center,
@@ -508,24 +667,10 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                         ),
                                       ),
                                       Expanded(
-                                        flex: 2,
+                                        flex: 3,
                                         child: Text(
-                                          'Punkte',
+                                          'Pkt.',
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 6,
-                                        child: Text(
-                                          'Wertung',
-                                          textAlign: TextAlign.right,
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
@@ -547,14 +692,18 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                         userProfile?.nickname.isEmpty ?? true;
                                     final isLive =
                                         match.status == MatchStatus.live;
-                                    final liveTipPoints = isLive
-                                        ? scoreTip(
-                                            predictedHome: tip.predictedHome,
-                                            predictedAway: tip.predictedAway,
-                                            actualHome: match.homeScore ?? 0,
-                                            actualAway: match.awayScore ?? 0,
-                                          ).points
-                                        : 0;
+                                    final finalScore =
+                                        match.status == MatchStatus.finalResult
+                                            ? scoreTipForMatch(
+                                                tip: tip,
+                                                match: match,
+                                              )
+                                            : null;
+                                    final liveScore = isLive
+                                        ? scoreLiveTip(tip: tip, match: match)
+                                        : null;
+                                    final liveTipPoints =
+                                        liveScore?.points ?? 0;
 
                                     final liveTotalPts = isLive
                                         ? getLiveMatchTotalPoints(
@@ -590,6 +739,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                           ? null
                                           : userProfile?.predictedChampion,
                                       match: match,
+                                      scoreResult: finalScore,
                                     );
 
                                     final liveEvalStr = isLive
@@ -603,6 +753,7 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                                 : userProfile
                                                     ?.predictedChampion,
                                             match: match,
+                                            scoreResult: liveScore,
                                           )
                                         : '';
 
@@ -625,123 +776,149 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 2,
-                                            child: Text(
-                                              '${tip.predictedHome}:${tip.predictedAway}',
-                                              textAlign: TextAlign.center,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
+                                            flex: 7,
+                                            child: Row(
+                                              children: [
+                                                if (!isTipCompleteForMatch(
+                                                    tip, match)) ...[
+                                                  Icon(
+                                                    Icons.warning_amber_rounded,
+                                                    size: 16,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .error,
+                                                  ),
+                                                  const SizedBox(width: 2),
+                                                ],
+                                                Expanded(
+                                                  child: Text(
+                                                    _tipDetailLabel(tip, match),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 12,
+                                                      color:
+                                                          isTipCompleteForMatch(
+                                                                  tip, match)
+                                                              ? null
+                                                              : Theme.of(
+                                                                      context)
+                                                                  .colorScheme
+                                                                  .error,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 2,
-                                            child: Align(
-                                              alignment: Alignment.center,
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: match.status ==
-                                                          MatchStatus
-                                                              .finalResult
-                                                      ? (totalPts > 0
-                                                          ? Colors.green
-                                                              .withAlpha(38)
-                                                          : Colors.grey
-                                                              .withAlpha(38))
-                                                      : match.status ==
-                                                              MatchStatus.live
-                                                          ? Colors.green
-                                                              .withAlpha(38)
-                                                          : Colors.blue
-                                                              .withAlpha(38),
-                                                  borderRadius:
-                                                      BorderRadius.circular(6),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Text(
-                                                      match.status ==
+                                            flex: 3,
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.end,
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: match.status ==
+                                                            MatchStatus
+                                                                .finalResult
+                                                        ? (totalPts > 0
+                                                            ? Colors.green
+                                                                .withAlpha(38)
+                                                            : Colors.grey
+                                                                .withAlpha(38))
+                                                        : match.status ==
+                                                                MatchStatus.live
+                                                            ? Colors.green
+                                                                .withAlpha(38)
+                                                            : Colors.blue
+                                                                .withAlpha(38),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            6),
+                                                  ),
+                                                  child: Text(
+                                                    match.status ==
+                                                            MatchStatus
+                                                                .finalResult
+                                                        ? '+$totalPts'
+                                                        : match.status ==
+                                                                MatchStatus.live
+                                                            ? '+$liveTotalPts'
+                                                            : '-',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: match.status ==
                                                               MatchStatus
                                                                   .finalResult
-                                                          ? '+$totalPts'
+                                                          ? (totalPts > 0
+                                                              ? Colors.green
+                                                              : Colors.grey)
                                                           : match.status ==
                                                                   MatchStatus
                                                                       .live
-                                                              ? '+$liveTotalPts'
-                                                              : '-',
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color: match.status ==
-                                                                MatchStatus
-                                                                    .finalResult
-                                                            ? (totalPts > 0
-                                                                ? Colors.green
-                                                                : Colors.grey)
-                                                            : match.status ==
-                                                                    MatchStatus
-                                                                        .live
-                                                                ? Colors.green
-                                                                : Colors.blue,
-                                                      ),
+                                                              ? Colors.green
+                                                              : Colors.blue,
                                                     ),
-                                                    if (match.status ==
-                                                        MatchStatus.live) ...[
-                                                      const SizedBox(width: 4),
-                                                      const LivePulseDot(
-                                                          size: 6),
-                                                    ],
-                                                  ],
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 6,
-                                            child: Text(
-                                              match.status ==
-                                                      MatchStatus.finalResult
-                                                  ? evalStr
-                                                  : match.status ==
-                                                          MatchStatus.live
-                                                      ? liveEvalStr
-                                                      : '-',
-                                              textAlign: TextAlign.right,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: match.status ==
-                                                        MatchStatus.finalResult
-                                                    ? (totalPts > 0
-                                                        ? Colors.green
-                                                        : Colors.grey)
-                                                    : match.status ==
-                                                            MatchStatus.live
-                                                        ? (liveTotalPts > 0
-                                                            ? Colors.green
-                                                            : Colors.grey)
-                                                        : Colors.grey,
-                                                fontWeight: match.status ==
-                                                        MatchStatus.finalResult
-                                                    ? (totalPts > 0
-                                                        ? FontWeight.w500
-                                                        : FontWeight.normal)
-                                                    : match.status ==
-                                                            MatchStatus.live
-                                                        ? (liveTotalPts > 0
-                                                            ? FontWeight.w500
-                                                            : FontWeight.normal)
-                                                        : FontWeight.normal,
-                                              ),
+                                                if (match.status ==
+                                                    MatchStatus.live) ...[
+                                                  const SizedBox(width: 4),
+                                                  const LivePulseDot(size: 7),
+                                                ],
+                                                if (match.status ==
+                                                        MatchStatus
+                                                            .finalResult ||
+                                                    match.status ==
+                                                        MatchStatus.live)
+                                                  IconButton(
+                                                    tooltip: 'Wertung anzeigen',
+                                                    visualDensity:
+                                                        VisualDensity.compact,
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                      minWidth: 28,
+                                                      minHeight: 28,
+                                                    ),
+                                                    padding: EdgeInsets.zero,
+                                                    icon: const Icon(
+                                                      Icons.info_outline,
+                                                      size: 18,
+                                                    ),
+                                                    onPressed: () =>
+                                                        _showRoundTipDetails(
+                                                      context,
+                                                      playerName: displayNames[
+                                                              tip.uid] ??
+                                                          'Spieler',
+                                                      tipLabel: _tipDetailLabel(
+                                                          tip, match),
+                                                      points: match.status ==
+                                                              MatchStatus
+                                                                  .finalResult
+                                                          ? totalPts
+                                                          : liveTotalPts,
+                                                      evaluation: match
+                                                                  .status ==
+                                                              MatchStatus
+                                                                  .finalResult
+                                                          ? evalStr
+                                                          : liveEvalStr,
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
                                           ),
                                         ],
@@ -765,6 +942,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
         ),
       ),
     );
+    return PopScope(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _leave(_currentMatch);
+      },
+      child: scaffold,
+    );
   }
 
   Future<void> _save(CupMatch match) async {
@@ -774,13 +958,16 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
             matchId: match.id,
             home: _homeGoals,
             away: _awayGoals,
+            otHome: match.isKnockout && _homeGoals == _awayGoals
+                ? _otHomeGoals
+                : null,
+            otAway: match.isKnockout && _homeGoals == _awayGoals
+                ? _otAwayGoals
+                : null,
+            penaltyWinner: _penaltyWinner,
           );
       if (mounted) {
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(widget.returnPath);
-        }
+        _navigateBack();
       }
     } catch (error) {
       if (mounted) {
@@ -827,6 +1014,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
       setState(() {
         _homeGoals = 0;
         _awayGoals = 0;
+        _otHomeGoals = 0;
+        _otAwayGoals = 0;
+        _penaltyWinner = null;
+        _hasOtSelection = false;
+        _isOtExpanded = false;
+        _isPenaltyExpanded = false;
+        _hasEdited = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tipp gelöscht.')),
@@ -840,6 +1034,135 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _setRegularScore({int? home, int? away}) {
+    _otExpansionTimer?.cancel();
+    _penaltyExpansionTimer?.cancel();
+    setState(() {
+      _homeGoals = home ?? _homeGoals;
+      _awayGoals = away ?? _awayGoals;
+      if (_homeGoals == _awayGoals) {
+        if (_otHomeGoals < _homeGoals) _otHomeGoals = _homeGoals;
+        if (_otAwayGoals < _awayGoals) _otAwayGoals = _awayGoals;
+      } else {
+        _penaltyWinner = null;
+        _isOtExpanded = false;
+        _isPenaltyExpanded = false;
+      }
+      _hasEdited = true;
+    });
+    if (_homeGoals == _awayGoals) _scheduleOtExpansion();
+  }
+
+  void _setOtScore({int? home, int? away}) {
+    _penaltyExpansionTimer?.cancel();
+    setState(() {
+      _otHomeGoals = home ?? _otHomeGoals;
+      _otAwayGoals = away ?? _otAwayGoals;
+      _penaltyWinner = null;
+      _hasOtSelection = true;
+      if (_otHomeGoals != _otAwayGoals) _isPenaltyExpanded = false;
+      _hasEdited = true;
+    });
+    if (_otHomeGoals == _otAwayGoals) _schedulePenaltyExpansion();
+  }
+
+  void _toggleOtExpansion() {
+    _otExpansionTimer?.cancel();
+    _penaltyExpansionTimer?.cancel();
+    setState(() => _isOtExpanded = !_isOtExpanded);
+    if (_isOtExpanded &&
+        _otHomeGoals == _otAwayGoals &&
+        _penaltyWinner == null) {
+      _schedulePenaltyExpansion();
+    }
+  }
+
+  void _togglePenaltyExpansion() {
+    _penaltyExpansionTimer?.cancel();
+    setState(() => _isPenaltyExpanded = !_isPenaltyExpanded);
+  }
+
+  void _scheduleOtExpansion() {
+    _otExpansionTimer?.cancel();
+    _otExpansionTimer = Timer(const Duration(milliseconds: 1300), () {
+      if (!mounted || _homeGoals != _awayGoals || _isOtExpanded) return;
+      setState(() => _isOtExpanded = true);
+      if (_otHomeGoals == _otAwayGoals && _penaltyWinner == null) {
+        _schedulePenaltyExpansion();
+      }
+    });
+  }
+
+  void _schedulePenaltyExpansion() {
+    _penaltyExpansionTimer?.cancel();
+    _penaltyExpansionTimer = Timer(const Duration(milliseconds: 1300), () {
+      if (!mounted ||
+          !_isOtExpanded ||
+          _otHomeGoals != _otAwayGoals ||
+          _isPenaltyExpanded) {
+        return;
+      }
+      setState(() => _isPenaltyExpanded = true);
+    });
+  }
+
+  bool _selectionIsComplete(CupMatch match) {
+    return isTipSelectionComplete(
+      match: match,
+      home: _homeGoals,
+      away: _awayGoals,
+      otHome:
+          match.isKnockout && _homeGoals == _awayGoals ? _otHomeGoals : null,
+      otAway:
+          match.isKnockout && _homeGoals == _awayGoals ? _otAwayGoals : null,
+      penaltyWinner: _penaltyWinner,
+    );
+  }
+
+  Future<void> _leave(CupMatch? match) async {
+    if (_isSaving) return;
+    if (match != null &&
+        !match.isLocked &&
+        _hasEdited &&
+        !_selectionIsComplete(match)) {
+      setState(() => _isSaving = true);
+      try {
+        await ref.read(repositoryProvider).saveTip(
+              matchId: match.id,
+              home: _homeGoals,
+              away: _awayGoals,
+              otHome: _otHomeGoals,
+              otAway: _otAwayGoals,
+              penaltyWinner: _penaltyWinner,
+            );
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content:
+                    Text('Entwurf konnte nicht gespeichert werden: $error')),
+          );
+          setState(() => _isSaving = false);
+        }
+        return;
+      }
+    }
+    if (mounted) _navigateBack();
+  }
+
+  void _navigateBack() {
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go(widget.returnPath);
+      }
+    });
   }
 }
 
@@ -858,6 +1181,11 @@ class _MatchupTeamLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final nameStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: isWinner ? FontWeight.bold : FontWeight.w600,
+          color:
+              isWinner ? Colors.green : Theme.of(context).colorScheme.onSurface,
+        );
     final flag = Text(
       CountryFlags.getFlag(teamName),
       style: const TextStyle(fontSize: 24),
@@ -869,10 +1197,7 @@ class _MatchupTeamLabel extends StatelessWidget {
         softWrap: true,
         overflow: TextOverflow.ellipsis,
         textAlign: isHome ? TextAlign.right : TextAlign.left,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
+        style: nameStyle,
       ),
     );
     return Row(
@@ -899,27 +1224,116 @@ Tip? _tipForMatch(List<Tip> tips, CupMatch match) {
 }
 
 ScoreResult? _scoreResult(CupMatch match, Tip? tip) {
-  final actualHome = match.regularHomeScore ?? match.homeScore;
-  final actualAway = match.regularAwayScore ?? match.awayScore;
-  if (tip == null ||
-      match.status != MatchStatus.finalResult ||
-      actualHome == null ||
-      actualAway == null) {
+  if (tip == null || match.status != MatchStatus.finalResult) {
     return null;
   }
-  return scoreTip(
-    predictedHome: tip.predictedHome,
-    predictedAway: tip.predictedAway,
-    actualHome: actualHome,
-    actualAway: actualAway,
+  return scoreTipForMatch(tip: tip, match: match);
+}
+
+String _pointsLabel(int points) {
+  return points == 1 ? '1 Punkt' : '$points Punkte';
+}
+
+List<String> _scoreReasonLines(ScoreResult result) {
+  if (result.details.isNotEmpty) return result.details;
+  if (result.isExact) return const ['Exaktes Ergebnis'];
+  if (result.isDifference) return const ['Richtige Tordifferenz'];
+  if (result.isTendency) return const ['Richtige Tendenz'];
+  return const ['Keine Übereinstimmung'];
+}
+
+Future<void> _showScoreDetails(
+  BuildContext context, {
+  required Tip tip,
+  required CupMatch match,
+  required ScoreResult scoreResult,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Punktevergabe'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _tipDetailLabel(tip, match),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _pointsLabel(scoreResult.points),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: scoreResult.points > 0 ? Colors.green : null,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          for (final reason in _scoreReasonLines(scoreResult))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $reason'),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Schließen'),
+        ),
+      ],
+    ),
   );
 }
 
-String _scoreLabel(ScoreResult result) {
-  if (result.isExact) return '${result.points} Punkte: exaktes Ergebnis';
-  if (result.points == 3) return '3 Punkte: richtige Tordifferenz';
-  if (result.isTendency) return '${result.points} Punkte: richtige Tendenz';
-  return '0 Punkte';
+Future<void> _showRoundTipDetails(
+  BuildContext context, {
+  required String playerName,
+  required String tipLabel,
+  required int points,
+  required String evaluation,
+}) {
+  final reasons = evaluation
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(playerName),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tipp: $tipLabel',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _pointsLabel(points),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: points > 0 ? Colors.green : null,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          for (final reason in reasons)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $reason'),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Schließen'),
+        ),
+      ],
+    ),
+  );
 }
 
 String _matchContextLabel(CupMatch match) {
@@ -936,6 +1350,429 @@ String _matchContextLabel(CupMatch match) {
     return '${match.stage} $num';
   }
   return match.stage;
+}
+
+String _tipDetailLabel(Tip tip, CupMatch match) {
+  if (!match.isKnockout) {
+    return '${tip.predictedHome}:${tip.predictedAway}';
+  }
+  final parts = <String>['${tip.predictedHome}:${tip.predictedAway}'];
+  if (tip.predictedOtHome != null && tip.predictedOtAway != null) {
+    parts.add('${tip.predictedOtHome}:${tip.predictedOtAway} n.V.');
+  }
+  final winner = switch (tip.predictedPenaltyWinner) {
+    PenaltyWinnerSide.home => match.homeTeam,
+    PenaltyWinnerSide.away => match.awayTeam,
+    null => null,
+  };
+  if (winner != null) parts.add('$winner i.E.');
+  if (!isTipCompleteForMatch(tip, match)) parts.add('unvollständig');
+  return parts.join(' · ');
+}
+
+class _TipSummary extends StatelessWidget {
+  const _TipSummary({
+    required this.tip,
+    required this.match,
+    required this.isComplete,
+  });
+
+  final Tip tip;
+  final CupMatch match;
+  final bool isComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isComplete
+        ? Theme.of(context).colorScheme.onPrimaryContainer
+        : Theme.of(context).colorScheme.error;
+    if (!match.isKnockout) {
+      return Text(
+        'Dein Tipp: ${tip.predictedHome}:${tip.predictedAway}',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontWeight: FontWeight.bold, color: color),
+      );
+    }
+
+    final winner = switch (tip.predictedPenaltyWinner) {
+      PenaltyWinnerSide.home => match.homeTeam,
+      PenaltyWinnerSide.away => match.awayTeam,
+      null => null,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          'Dein Tipp',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold, color: color),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '90 Min. ${tip.predictedHome}:${tip.predictedAway}',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold, color: color),
+        ),
+        if (tip.predictedOtHome != null && tip.predictedOtAway != null)
+          Text(
+            '${tip.predictedOtHome}:${tip.predictedOtAway} n.V.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        if (!isComplete &&
+            tip.predictedHome == tip.predictedAway &&
+            (tip.predictedOtHome == null || tip.predictedOtAway == null))
+          Text(
+            'Ergebnis n.V. fehlt',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        if (winner != null)
+          Text(
+            '$winner i.E.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        if (!isComplete &&
+            winner == null &&
+            tip.predictedOtHome != null &&
+            tip.predictedOtHome == tip.predictedOtAway)
+          Text(
+            'Sieger i.E. fehlt',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+      ],
+    );
+  }
+}
+
+class _PhaseExpansionHeader extends StatelessWidget {
+  const _PhaseExpansionHeader({
+    required this.label,
+    required this.isExpanded,
+    required this.onTap,
+    this.collapsedPreview,
+  });
+
+  final String label;
+  final Widget? collapsedPreview;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Icon(
+                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                    ),
+                  ),
+                ],
+              ),
+              if (!isExpanded && collapsedPreview != null) ...[
+                const SizedBox(height: 8),
+                DefaultTextStyle.merge(
+                  style: TextStyle(color: scheme.primary),
+                  child: collapsedPreview!,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhaseScorePreview extends StatelessWidget {
+  const _PhaseScorePreview({required this.home, required this.away});
+
+  final int home;
+  final int away;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$home : $away',
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
+    );
+  }
+}
+
+class _PenaltyWinnerPreview extends StatelessWidget {
+  const _PenaltyWinnerPreview({required this.match, required this.value});
+
+  final CupMatch match;
+  final PenaltyWinnerSide? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final team = switch (value) {
+      PenaltyWinnerSide.home => match.homeTeam,
+      PenaltyWinnerSide.away => match.awayTeam,
+      null => null,
+    };
+    if (team == null) {
+      return Text(
+        'Sieger wählen',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+      );
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          CountryFlags.getFlag(team),
+          style: const TextStyle(fontSize: 24),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            team,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PhaseBody extends StatelessWidget {
+  const _PhaseBody({
+    required this.isExpanded,
+    required this.child,
+  });
+
+  final bool isExpanded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return isExpanded ? child : const SizedBox.shrink();
+  }
+}
+
+class _ScoreStepper extends StatelessWidget {
+  const _ScoreStepper({
+    required this.label,
+    required this.value,
+    required this.minValue,
+    required this.onChanged,
+  });
+
+  static const _maxGoals = 12;
+
+  final String label;
+  final int value;
+  final int minValue;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        SizedBox(
+          height: 42,
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 2,
+              softWrap: true,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          height: 156,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: IconButton(
+                  tooltip: 'Tor hinzufügen',
+                  onPressed:
+                      value < _maxGoals ? () => onChanged(value + 1) : null,
+                  icon: const Icon(Icons.add),
+                ),
+              ),
+              Text(
+                '$value',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              Expanded(
+                child: IconButton(
+                  tooltip: 'Tor entfernen',
+                  onPressed:
+                      value > minValue ? () => onChanged(value - 1) : null,
+                  icon: const Icon(Icons.remove),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PenaltyWinnerSelector extends StatelessWidget {
+  const _PenaltyWinnerSelector({
+    required this.match,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final CupMatch match;
+  final PenaltyWinnerSide? value;
+  final ValueChanged<PenaltyWinnerSide?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          RadioGroup<PenaltyWinnerSide>(
+            groupValue: value,
+            onChanged: onChanged,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    selected: value == PenaltyWinnerSide.home,
+                    label: '${match.homeTeam} als Sieger wählen',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => onChanged(PenaltyWinnerSide.home),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            match.homeTeam,
+                            maxLines: 3,
+                            softWrap: true,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  CountryFlags.getFlag(match.homeTeam),
+                  style: const TextStyle(fontSize: 24),
+                ),
+                Radio<PenaltyWinnerSide>(value: PenaltyWinnerSide.home),
+                Radio<PenaltyWinnerSide>(value: PenaltyWinnerSide.away),
+                Text(
+                  CountryFlags.getFlag(match.awayTeam),
+                  style: const TextStyle(fontSize: 24),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    selected: value == PenaltyWinnerSide.away,
+                    label: '${match.awayTeam} als Sieger wählen',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => onChanged(PenaltyWinnerSide.away),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            match.awayTeam,
+                            maxLines: 3,
+                            softWrap: true,
+                            textAlign: TextAlign.left,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (value == null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Bitte ein finales Siegerteam auswählen.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _ScoreWheel extends StatefulWidget {
@@ -969,13 +1806,14 @@ class _ScoreWheelState extends State<_ScoreWheel> {
   @override
   void didUpdateWidget(covariant _ScoreWheel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final targetItem = widget.value;
     if (widget.value != oldWidget.value) {
-      if (_controller.hasClients && _controller.selectedItem != widget.value) {
+      if (_controller.hasClients && _controller.selectedItem != targetItem) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted &&
               _controller.hasClients &&
-              _controller.selectedItem != widget.value) {
-            _controller.jumpToItem(widget.value);
+              _controller.selectedItem != targetItem) {
+            _controller.jumpToItem(targetItem);
           }
         });
       }

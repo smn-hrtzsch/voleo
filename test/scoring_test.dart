@@ -57,6 +57,159 @@ void main() {
     });
   });
 
+  group('scoreTipForMatch knockout scoring', () {
+    test('awards 5, 4 and 3 points when a match ends after 90 minutes', () {
+      final match = _knockoutMatch(
+        regularHome: 2,
+        regularAway: 0,
+      );
+
+      expect(
+        scoreTipForMatch(tip: _tip(2, 0), match: match).points,
+        5,
+      );
+      expect(
+        scoreTipForMatch(tip: _tip(3, 1), match: match).points,
+        4,
+      );
+      expect(
+        scoreTipForMatch(tip: _tip(1, 0), match: match).points,
+        3,
+      );
+    });
+
+    test('awards at most 5 points when a match ends after extra time', () {
+      final match = _knockoutMatch(
+        regularHome: 1,
+        regularAway: 1,
+        otHome: 2,
+        otAway: 1,
+        resultNote: 'EXTRA_TIME',
+      );
+
+      final exactResult = scoreTipForMatch(
+        tip: _tip(1, 1, otHome: 2, otAway: 1),
+        match: match,
+      );
+      expect(exactResult.points, 5);
+      expect(exactResult.details, ['90 Min. exakt +3', 'n.V. exakt +2']);
+      expect(
+        scoreTipForMatch(
+          tip: _tip(0, 0, otHome: 1, otAway: 0),
+          match: match,
+        ).points,
+        3,
+      );
+    });
+
+    test('awards 6 points for a fully exact penalty-shootout tip', () {
+      final match = _knockoutMatch(
+        regularHome: 1,
+        regularAway: 1,
+        otHome: 2,
+        otAway: 2,
+        penaltyHome: 5,
+        penaltyAway: 4,
+        resultNote: 'PENALTY_SHOOTOUT',
+      );
+
+      final result = scoreTipForMatch(
+        tip: _tip(
+          1,
+          1,
+          otHome: 2,
+          otAway: 2,
+          penaltyWinner: PenaltyWinnerSide.home,
+        ),
+        match: match,
+      );
+
+      expect(result.points, 6);
+      expect(result.isExact, isTrue);
+      expect(result.details, [
+        '90 Min. exakt +3',
+        'Remis n.V. +1',
+        'n.V. exakt +1',
+        'Sieger i.E. +1',
+      ]);
+    });
+
+    test('ignores a penalty prediction when the real match ends in extra time',
+        () {
+      final match = _knockoutMatch(
+        regularHome: 1,
+        regularAway: 1,
+        otHome: 2,
+        otAway: 1,
+        resultNote: 'EXTRA_TIME',
+      );
+
+      final result = scoreTipForMatch(
+        tip: _tip(
+          1,
+          1,
+          otHome: 2,
+          otAway: 1,
+          penaltyWinner: PenaltyWinnerSide.home,
+        ),
+        match: match,
+      );
+
+      expect(result.points, 5);
+    });
+
+    test('does not score an incomplete draft', () {
+      final match = _knockoutMatch(
+        regularHome: 1,
+        regularAway: 1,
+        otHome: 1,
+        otAway: 1,
+        penaltyHome: 4,
+        penaltyAway: 5,
+        resultNote: 'PENALTY_SHOOTOUT',
+      );
+
+      expect(
+        scoreTipForMatch(
+          tip: _tip(1, 1, otHome: 1, otAway: 1, isComplete: false),
+          match: match,
+        ).points,
+        0,
+      );
+      expect(
+        scoreTipForMatch(
+          tip: _tip(1, 1, otHome: 1, otAway: 1),
+          match: match,
+        ).points,
+        0,
+      );
+    });
+  });
+
+  group('scoreLiveTip knockout preview', () {
+    test('uses the extra-time path when the current score is a draw', () {
+      final match = _knockoutMatch(
+        regularHome: 1,
+        regularAway: 1,
+        status: MatchStatus.live,
+      );
+
+      final exact = scoreLiveTip(
+        tip: _tip(1, 1, otHome: 2, otAway: 1),
+        match: match,
+      );
+      final draw = scoreLiveTip(
+        tip: _tip(0, 0, otHome: 1, otAway: 0),
+        match: match,
+      );
+
+      expect(exact.points, 3);
+      expect(exact.details, ['90 Min. exakt +3']);
+      expect(draw.points, 2);
+      expect(draw.details, ['Remis nach 90 Min. +2']);
+    });
+  });
+
   test('locks tips at kickoff', () {
     final match = CupMatch(
       id: 'm1',
@@ -268,4 +421,60 @@ void main() {
       expect(isSameTeam('katar', 'Qatar'), isTrue);
     });
   });
+}
+
+CupMatch _knockoutMatch({
+  required int regularHome,
+  required int regularAway,
+  int? otHome,
+  int? otAway,
+  int? penaltyHome,
+  int? penaltyAway,
+  String? resultNote,
+  MatchStatus status = MatchStatus.finalResult,
+}) {
+  return CupMatch(
+    id: 'ko-1',
+    homeTeam: 'Deutschland',
+    awayTeam: 'Frankreich',
+    kickoff: DateTime(2026, 7, 10),
+    stage: 'Achtelfinale',
+    group: '',
+    status: status,
+    homeScore: penaltyHome ?? otHome ?? regularHome,
+    awayScore: penaltyAway ?? otAway ?? regularAway,
+    regularHomeScore: regularHome,
+    regularAwayScore: regularAway,
+    otHomeScore: otHome,
+    otAwayScore: otAway,
+    penaltyHomeScore: penaltyHome,
+    penaltyAwayScore: penaltyAway,
+    winner: (penaltyHome ?? otHome ?? regularHome) >
+            (penaltyAway ?? otAway ?? regularAway)
+        ? 'Deutschland'
+        : 'Frankreich',
+    resultNote: resultNote,
+  );
+}
+
+Tip _tip(
+  int home,
+  int away, {
+  int? otHome,
+  int? otAway,
+  PenaltyWinnerSide? penaltyWinner,
+  bool isComplete = true,
+}) {
+  return Tip(
+    uid: 'u1',
+    matchId: 'ko-1',
+    predictedHome: home,
+    predictedAway: away,
+    predictedOtHome: otHome,
+    predictedOtAway: otAway,
+    predictedPenaltyWinner: penaltyWinner,
+    isComplete: isComplete,
+    lockedAt: DateTime(2026, 7, 10),
+    points: 0,
+  );
 }

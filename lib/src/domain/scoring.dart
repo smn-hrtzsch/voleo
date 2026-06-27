@@ -1,16 +1,27 @@
 import 'voleo_models.dart';
 
+enum ScoreClassification { none, tendency, difference, exact }
+
 class ScoreResult {
   const ScoreResult({
     required this.points,
-    required this.isExact,
-    required this.isTendency,
+    required this.classification,
+    this.details = const [],
   });
 
   final int points;
-  final bool isExact;
-  final bool isTendency;
+  final ScoreClassification classification;
+  final List<String> details;
+
+  bool get isExact => classification == ScoreClassification.exact;
+  bool get isDifference => classification == ScoreClassification.difference;
+  bool get isTendency => classification != ScoreClassification.none;
 }
+
+const _noScore = ScoreResult(
+  points: 0,
+  classification: ScoreClassification.none,
+);
 
 ScoreResult scoreTip({
   required int predictedHome,
@@ -19,20 +30,260 @@ ScoreResult scoreTip({
   required int actualAway,
 }) {
   if (predictedHome == actualHome && predictedAway == actualAway) {
-    return const ScoreResult(points: 4, isExact: true, isTendency: true);
+    return const ScoreResult(
+      points: 4,
+      classification: ScoreClassification.exact,
+    );
   }
 
   final predictedDiff = predictedHome - predictedAway;
   final actualDiff = actualHome - actualAway;
   if (predictedDiff == actualDiff && actualDiff != 0) {
-    return const ScoreResult(points: 3, isExact: false, isTendency: true);
+    return const ScoreResult(
+      points: 3,
+      classification: ScoreClassification.difference,
+    );
   }
 
   if (_sign(predictedDiff) == _sign(actualDiff)) {
-    return const ScoreResult(points: 2, isExact: false, isTendency: true);
+    return const ScoreResult(
+      points: 2,
+      classification: ScoreClassification.tendency,
+    );
   }
 
-  return const ScoreResult(points: 0, isExact: false, isTendency: false);
+  return _noScore;
+}
+
+ScoreResult scoreTipForMatch({required Tip tip, required CupMatch match}) {
+  if (!isTipCompleteForMatch(tip, match)) return _noScore;
+
+  final actualRegularHome = match.regularHomeScore ?? match.homeScore;
+  final actualRegularAway = match.regularAwayScore ?? match.awayScore;
+  if (actualRegularHome == null || actualRegularAway == null) return _noScore;
+
+  if (!match.isKnockout) {
+    return scoreTip(
+      predictedHome: tip.predictedHome,
+      predictedAway: tip.predictedAway,
+      actualHome: actualRegularHome,
+      actualAway: actualRegularAway,
+    );
+  }
+
+  final endedInPenalties = match.penaltyHomeScore != null ||
+      match.penaltyAwayScore != null ||
+      match.resultNote == 'PENALTY_SHOOTOUT' ||
+      match.resultNote == 'n.E.';
+  final endedInExtraTime = endedInPenalties ||
+      match.otHomeScore != null ||
+      match.otAwayScore != null ||
+      match.resultNote == 'EXTRA_TIME' ||
+      match.resultNote == 'n.V.';
+
+  if (!endedInExtraTime) {
+    return _scoreKnockoutRegulation(
+      predictedHome: tip.predictedHome,
+      predictedAway: tip.predictedAway,
+      actualHome: actualRegularHome,
+      actualAway: actualRegularAway,
+    );
+  }
+
+  final actualOtHome = match.otHomeScore;
+  final actualOtAway = match.otAwayScore;
+  if (actualOtHome == null || actualOtAway == null) return _noScore;
+
+  var points = 0;
+  final details = <String>[];
+  final regularExact = tip.predictedHome == actualRegularHome &&
+      tip.predictedAway == actualRegularAway;
+  final predictedRegularDraw = tip.predictedHome == tip.predictedAway;
+  if (predictedRegularDraw && actualRegularHome == actualRegularAway) {
+    if (regularExact) {
+      points += 3;
+      details.add('90 Min. exakt +3');
+    } else {
+      points += 2;
+      details.add('Remis nach 90 Min. +2');
+    }
+  }
+
+  final predictedOtHome = tip.predictedOtHome;
+  final predictedOtAway = tip.predictedOtAway;
+  if (predictedOtHome == null || predictedOtAway == null) {
+    return ScoreResult(
+      points: points,
+      classification:
+          points > 0 ? ScoreClassification.tendency : ScoreClassification.none,
+      details: details,
+    );
+  }
+
+  final otExact =
+      predictedOtHome == actualOtHome && predictedOtAway == actualOtAway;
+  final otTendency = _sign(predictedOtHome - predictedOtAway) ==
+      _sign(actualOtHome - actualOtAway);
+
+  if (!endedInPenalties) {
+    if (otExact) {
+      points += 2;
+      details.add('n.V. exakt +2');
+    } else if (otTendency) {
+      points += 1;
+      details.add('Tendenz n.V. +1');
+    }
+    final fullyExact = regularExact && otExact;
+    return ScoreResult(
+      points: points,
+      classification: fullyExact
+          ? ScoreClassification.exact
+          : (points > 0
+              ? ScoreClassification.tendency
+              : ScoreClassification.none),
+      details: details,
+    );
+  }
+
+  if (otTendency) {
+    points += 1;
+    details.add('Remis n.V. +1');
+  }
+  if (otExact) {
+    points += 1;
+    details.add('n.V. exakt +1');
+  }
+  final actualPenaltyWinner = _penaltyWinnerForMatch(match);
+  final penaltyWinnerExact = tip.predictedPenaltyWinner != null &&
+      tip.predictedPenaltyWinner == actualPenaltyWinner;
+  if (penaltyWinnerExact) {
+    points += 1;
+    details.add('Sieger i.E. +1');
+  }
+
+  final fullyExact = regularExact && otExact && penaltyWinnerExact;
+  return ScoreResult(
+    points: points,
+    classification: fullyExact
+        ? ScoreClassification.exact
+        : (points > 0
+            ? ScoreClassification.tendency
+            : ScoreClassification.none),
+    details: details,
+  );
+}
+
+ScoreResult scoreLiveTip({required Tip tip, required CupMatch match}) {
+  if (!isTipCompleteForMatch(tip, match)) return _noScore;
+  final actualHome = match.regularHomeScore ?? match.homeScore ?? 0;
+  final actualAway = match.regularAwayScore ?? match.awayScore ?? 0;
+  if (!match.isKnockout) {
+    return scoreTip(
+      predictedHome: tip.predictedHome,
+      predictedAway: tip.predictedAway,
+      actualHome: actualHome,
+      actualAway: actualAway,
+    );
+  }
+  if (actualHome == actualAway) {
+    if (tip.predictedHome != tip.predictedAway) return _noScore;
+    if (tip.predictedHome == actualHome && tip.predictedAway == actualAway) {
+      return const ScoreResult(
+        points: 3,
+        classification: ScoreClassification.exact,
+        details: ['90 Min. exakt +3'],
+      );
+    }
+    return const ScoreResult(
+      points: 2,
+      classification: ScoreClassification.tendency,
+      details: ['Remis nach 90 Min. +2'],
+    );
+  }
+  return _scoreKnockoutRegulation(
+    predictedHome: tip.predictedHome,
+    predictedAway: tip.predictedAway,
+    actualHome: actualHome,
+    actualAway: actualAway,
+  );
+}
+
+bool isTipSelectionComplete({
+  required CupMatch match,
+  required int home,
+  required int away,
+  int? otHome,
+  int? otAway,
+  PenaltyWinnerSide? penaltyWinner,
+}) {
+  if (!match.isKnockout || home != away) return true;
+  if (otHome == null || otAway == null || otHome < home || otAway < away) {
+    return false;
+  }
+  if (otHome != otAway) return true;
+  return penaltyWinner != null;
+}
+
+bool isTipCompleteForMatch(Tip tip, CupMatch match) {
+  if (!tip.isComplete) return false;
+  return isTipSelectionComplete(
+    match: match,
+    home: tip.predictedHome,
+    away: tip.predictedAway,
+    otHome: tip.predictedOtHome,
+    otAway: tip.predictedOtAway,
+    penaltyWinner: tip.predictedPenaltyWinner,
+  );
+}
+
+ScoreResult _scoreKnockoutRegulation({
+  required int predictedHome,
+  required int predictedAway,
+  required int actualHome,
+  required int actualAway,
+}) {
+  if (predictedHome == actualHome && predictedAway == actualAway) {
+    return const ScoreResult(
+      points: 5,
+      classification: ScoreClassification.exact,
+      details: ['90 Min. exakt +5'],
+    );
+  }
+  final predictedDiff = predictedHome - predictedAway;
+  final actualDiff = actualHome - actualAway;
+  if (predictedDiff == actualDiff && actualDiff != 0) {
+    return const ScoreResult(
+      points: 4,
+      classification: ScoreClassification.difference,
+      details: ['Tordifferenz nach 90 Min. +4'],
+    );
+  }
+  if (_sign(predictedDiff) == _sign(actualDiff)) {
+    return const ScoreResult(
+      points: 3,
+      classification: ScoreClassification.tendency,
+      details: ['Tendenz nach 90 Min. +3'],
+    );
+  }
+  return _noScore;
+}
+
+PenaltyWinnerSide? _penaltyWinnerForMatch(CupMatch match) {
+  final penaltyHome = match.penaltyHomeScore;
+  final penaltyAway = match.penaltyAwayScore;
+  if (penaltyHome != null && penaltyAway != null) {
+    if (penaltyHome > penaltyAway) return PenaltyWinnerSide.home;
+    if (penaltyAway > penaltyHome) return PenaltyWinnerSide.away;
+  }
+  if (match.winner != null) {
+    if (isSameTeam(match.winner!, match.homeTeam)) {
+      return PenaltyWinnerSide.home;
+    }
+    if (isSameTeam(match.winner!, match.awayTeam)) {
+      return PenaltyWinnerSide.away;
+    }
+  }
+  return null;
 }
 
 bool canEditTip(CupMatch match, DateTime now) {
@@ -551,6 +802,7 @@ String getEvaluationLabel({
   required String? favoriteTeam,
   required String? predictedChampion,
   required CupMatch match,
+  ScoreResult? scoreResult,
 }) {
   final winner = getMatchWinner(match);
   final isFavWin = winner != null &&
@@ -560,13 +812,17 @@ String getEvaluationLabel({
       predictedChampion != null &&
       isSameTeam(predictedChampion, winner);
 
-  final baseLabel = tipPoints == 4
-      ? 'exakt'
-      : tipPoints == 3
-          ? 'Differenz'
-          : tipPoints == 2
-              ? 'Tendenz'
-              : 'falsch';
+  final baseLabel = match.isKnockout
+      ? (scoreResult?.details.isNotEmpty == true
+          ? scoreResult!.details.join('\n')
+          : '$tipPoints Tipp-Punkte')
+      : tipPoints == 4
+          ? 'exakt'
+          : tipPoints == 3
+              ? 'Differenz'
+              : tipPoints == 2
+                  ? 'Tendenz'
+                  : 'falsch';
 
   final boosters = <String>[];
   if (isFavWin) boosters.add('Lieblings-Team');
@@ -614,6 +870,7 @@ String getLiveEvaluationLabel({
   required String? favoriteTeam,
   required String? predictedChampion,
   required CupMatch match,
+  ScoreResult? scoreResult,
 }) {
   final winner = getLiveMatchWinner(match);
   final isFavWin = winner != null &&
@@ -623,13 +880,17 @@ String getLiveEvaluationLabel({
       predictedChampion != null &&
       isSameTeam(predictedChampion, winner);
 
-  final baseLabel = tipPoints == 4
-      ? 'exakt'
-      : tipPoints == 3
-          ? 'Differenz'
-          : tipPoints == 2
-              ? 'Tendenz'
-              : 'falsch';
+  final baseLabel = match.isKnockout
+      ? (scoreResult?.details.isNotEmpty == true
+          ? scoreResult!.details.join('\n')
+          : '$tipPoints Tipp-Punkte')
+      : tipPoints == 4
+          ? 'exakt'
+          : tipPoints == 3
+              ? 'Differenz'
+              : tipPoints == 2
+                  ? 'Tendenz'
+                  : 'falsch';
 
   final boosters = <String>[];
   if (isFavWin) boosters.add('Lieblings-Team');
