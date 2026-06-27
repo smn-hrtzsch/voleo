@@ -191,7 +191,7 @@ test("assigns qualifying third-placed teams using the FIFA matrix", () => {
   assert.equal(assignments.K, "Third D");
 });
 
-test("final OpenLigaDB result wins when football-data final result conflicts", () => {
+test("football-data final result wins when OpenLigaDB final result conflicts", () => {
   const openLigaMatch = {
     homeTeam: "Spanien",
     awayTeam: "Saudi-Arabien",
@@ -206,14 +206,46 @@ test("final OpenLigaDB result wins when football-data final result conflicts", (
     status: "finalResult",
     homeScore: 5,
     awayScore: 0,
+    regularHomeScore: 5,
+    regularAwayScore: 0,
     rawStatus: "FINISHED",
     lastUpdated: "2026-06-21T18:07:46Z",
   };
 
-  assert.deepEqual(
-    __test.applyFootballDataOverlay(openLigaMatch, footballDataMatch),
-    openLigaMatch
-  );
+  const result = __test.applyFootballDataOverlay(openLigaMatch, footballDataMatch);
+  assert.equal(result.homeScore, 5);
+  assert.equal(result.awayScore, 0);
+  assert.equal(result.source, "football-data");
+  assert.equal(result.providerStatus, "FINISHED");
+  assert.equal(result.regularHomeScore, 5);
+  assert.equal(result.regularAwayScore, 0);
+});
+
+test("football-data regular score replaces an incorrect OpenLigaDB score for scoring", () => {
+  const result = __test.applyFootballDataOverlay({
+    homeTeam: "Norwegen",
+    awayTeam: "Frankreich",
+    status: "finalResult",
+    homeScore: 0,
+    awayScore: 0,
+    regularHomeScore: 0,
+    regularAwayScore: 0,
+    source: "openligadb",
+  }, {
+    homeTeam: "Norway",
+    awayTeam: "France",
+    status: "finalResult",
+    homeScore: 1,
+    awayScore: 4,
+    regularHomeScore: 1,
+    regularAwayScore: 4,
+    rawStatus: "FINISHED",
+    lastUpdated: "2026-06-27T07:23:05Z",
+  });
+
+  assert.equal(result.regularHomeScore, 1);
+  assert.equal(result.regularAwayScore, 4);
+  assert.equal(__test.scoreTip(0, 2, result.regularHomeScore, result.regularAwayScore).points, 2);
 });
 
 test("recent final matches stay in the minute sync window", () => {
@@ -224,7 +256,7 @@ test("recent final matches stay in the minute sync window", () => {
   }, now), true);
 });
 
-test("correct OpenLigaDB final may replace a conflicting football-data final", () => {
+test("OpenLigaDB final cannot replace an existing football-data final", () => {
   assert.equal(__test.shouldKeepExistingMatch({
     status: "finalResult",
     homeScore: 5,
@@ -235,5 +267,5 @@ test("correct OpenLigaDB final may replace a conflicting football-data final", (
     homeScore: 4,
     awayScore: 0,
     source: "openligadb",
-  }), false);
+  }), true);
 });
