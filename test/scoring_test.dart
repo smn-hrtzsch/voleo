@@ -158,6 +158,105 @@ void main() {
     });
   });
 
+  group('risk progression', () {
+    test('penalizes group-stage exit pick once knockouts are reached', () {
+      final points = calculateExtraPoints(
+        const VoleoUser(
+          uid: 'olaf',
+          nickname: 'Olaf',
+          isAnonymous: false,
+          riskTeam: 'Belgien',
+          riskStage: 'Gruppenphase',
+        ),
+        [
+          CupMatch(
+            id: 'ko1',
+            homeTeam: 'Belgien',
+            awayTeam: 'Bester 3. Gruppe A/E/H/I/J',
+            kickoff: DateTime(2026, 7, 3),
+            stage: 'Sechzehntelfinale',
+            group: '',
+            status: MatchStatus.scheduled,
+          ),
+        ],
+      );
+
+      expect(points, -40);
+    });
+
+    test('exposes current negative risk points for detail views', () {
+      final points = calculateCurrentRiskPoints(
+        'Belgien',
+        'Gruppenphase',
+        [
+          CupMatch(
+            id: 'ko1',
+            homeTeam: 'Belgien',
+            awayTeam: 'Bester 3. Gruppe A/E/H/I/J',
+            kickoff: DateTime(2026, 7, 1),
+            stage: 'Sechzehntelfinale',
+            group: '',
+            status: MatchStatus.scheduled,
+          ),
+        ],
+      );
+
+      expect(points, -40);
+    });
+
+    test('does not award points before actual elimination', () {
+      final points = calculateExtraPoints(
+        const VoleoUser(
+          uid: 'olaf',
+          nickname: 'Olaf',
+          isAnonymous: false,
+          riskTeam: 'Belgien',
+          riskStage: 'Sechzehntelfinale',
+        ),
+        [
+          CupMatch(
+            id: 'ko1',
+            homeTeam: 'Belgien',
+            awayTeam: 'Bester 3. Gruppe A/E/H/I/J',
+            kickoff: DateTime(2026, 7, 3),
+            stage: 'Sechzehntelfinale',
+            group: '',
+            status: MatchStatus.scheduled,
+          ),
+        ],
+      );
+
+      expect(points, 0);
+    });
+
+    test('penalizes exit pick immediately after team wins that round', () {
+      final points = calculateExtraPoints(
+        const VoleoUser(
+          uid: 'olaf',
+          nickname: 'Olaf',
+          isAnonymous: false,
+          riskTeam: 'Belgien',
+          riskStage: 'Sechzehntelfinale',
+        ),
+        [
+          CupMatch(
+            id: 'ko1',
+            homeTeam: 'Belgien',
+            awayTeam: 'Kanada',
+            kickoff: DateTime(2026, 7, 3),
+            stage: 'Sechzehntelfinale',
+            group: '',
+            status: MatchStatus.finalResult,
+            homeScore: 2,
+            awayScore: 0,
+          ),
+        ],
+      );
+
+      expect(points, -30);
+    });
+  });
+
   group('isSameTeam', () {
     test('correctly maps various aliases and languages', () {
       expect(isSameTeam('Germany', 'Deutschland'), isTrue);

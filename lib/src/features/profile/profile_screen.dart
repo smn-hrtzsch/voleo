@@ -882,12 +882,11 @@ class _BoosterAndRiskPicksCardState
                           widget.user.riskStage != null &&
                           widget.user.riskStage!.isNotEmpty)
                       ? () {
-                          final actual = getEliminationStage(
-                              widget.user.riskTeam!, matches);
-                          return actual != null
-                              ? calculateRiskPoints(widget.user.riskTeam!,
-                                  widget.user.riskStage!, actual)
-                              : null;
+                          return calculateCurrentRiskPoints(
+                            widget.user.riskTeam!,
+                            widget.user.riskStage!,
+                            matches,
+                          );
                         }()
                       : null,
                   onSelected: (team) =>

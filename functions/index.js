@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const THIRD_PLACE_MATRIX = require("./third-place-matrix");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -364,10 +365,19 @@ function isRecentMatchWindow(match, now = new Date()) {
 }
 
 function normalizeFootballDataMatch(match) {
-  const homeTeam = match.homeTeam?.name;
-  const awayTeam = match.awayTeam?.name;
+  const homeTeam = match.homeTeam?.name ? displayTeamName(match.homeTeam.name) : null;
+  const awayTeam = match.awayTeam?.name ? displayTeamName(match.awayTeam.name) : null;
   const kickoff = match.utcDate;
-  if (!homeTeam || !awayTeam || !kickoff) return null;
+  const knockoutStage = {
+    LAST_32: "Sechzehntelfinale",
+    LAST_16: "Achtelfinale",
+    QUARTER_FINALS: "Viertelfinale",
+    SEMI_FINALS: "Halbfinale",
+    THIRD_PLACE: "Spiel um Platz 3",
+    FINAL: "Finale",
+  }[match.stage] ?? null;
+  if ((!homeTeam || !awayTeam) && !knockoutStage) return null;
+  if (!kickoff) return null;
 
   const kickoffDate = new Date(kickoff);
   const now = new Date();
@@ -392,9 +402,10 @@ function normalizeFootballDataMatch(match) {
     : null;
   return {
     providerId: String(match.id),
-    homeTeam,
-    awayTeam,
+    homeTeam: homeTeam ?? null,
+    awayTeam: awayTeam ?? null,
     kickoff,
+    stage: knockoutStage,
     status,
     rawStatus: match.status,
     minute: match.minute ?? null,
@@ -664,7 +675,9 @@ function applyFootballDataOverlay(openLigaMatch, footballDataMatch) {
 }
 
 function mergeFootballDataOverlay(openLigaMatches, footballDataMatches, { liveOnly = false } = {}) {
-  const footballByMatch = new Map(footballDataMatches.map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
+  const footballByMatch = new Map(footballDataMatches
+    .filter((m) => m.homeTeam && m.awayTeam)
+    .map((m) => [matchKey(m.homeTeam, m.awayTeam), m]));
   const now = new Date();
   return openLigaMatches.map((match) => {
     if (liveOnly && !isRecentMatchWindow(match, now)) return match;
@@ -788,6 +801,38 @@ function getEliminationStage(team, allMatches) {
   return null;
 }
 
+function getDeepestReachedStage(team, allMatches) {
+  let deepest = null;
+  for (const match of allMatches) {
+    if (match.stage.startsWith("Gruppe") || match.stage.includes("Runde")) continue;
+    if (!isSameTeam(match.homeTeam, team) && !isSameTeam(match.awayTeam, team)) continue;
+
+    const stage = match.stage.toLowerCase();
+    let reached = null;
+    if (stage.includes("sechzehntel") || stage.includes("32")) reached = "Sechzehntelfinale";
+    else if (stage.includes("achtel") || stage.includes("16")) reached = "Achtelfinale";
+    else if (stage.includes("viertel") || stage.includes("quarter")) reached = "Viertelfinale";
+    else if (stage.includes("halb") || stage.includes("semi")) reached = "Halbfinale";
+    else if (stage.includes("final")) reached = "Finale";
+
+    if (reached && (deepest === null || stageRank(reached) > stageRank(deepest))) {
+      deepest = reached;
+    }
+    if (reached && match.status === "finalResult" && isSameTeam(getMatchWinner(match), team)) {
+      const nextStage = {
+        Sechzehntelfinale: "Achtelfinale",
+        Achtelfinale: "Viertelfinale",
+        Viertelfinale: "Halbfinale",
+        Halbfinale: "Finale",
+      }[reached];
+      if (nextStage && (deepest === null || stageRank(nextStage) > stageRank(deepest))) {
+        deepest = nextStage;
+      }
+    }
+  }
+  return deepest;
+}
+
 function calculateRiskPoints(team, predictedStage, actualStage) {
   const tier = getTier(team);
   const isCorrect = stageRank(actualStage) <= stageRank(predictedStage);
@@ -857,6 +902,13 @@ function calculateExtraPoints(userData, allMatches) {
     const actualStage = getEliminationStage(rTeam, allMatches);
     if (actualStage) {
       extraPoints += calculateRiskPoints(rTeam, rStage, actualStage);
+    } else {
+      const reachedStage = getDeepestReachedStage(rTeam, allMatches);
+      if (reachedStage && stageRank(reachedStage) > stageRank(rStage)) {
+        // Reaching a later round already proves an earlier elimination pick wrong.
+        // Positive risk points still wait until the actual elimination is final.
+        extraPoints += calculateRiskPoints(rTeam, rStage, reachedStage);
+      }
     }
   }
 
@@ -992,6 +1044,184 @@ function getKnockoutMatches() {
   });
 
   return list;
+}
+
+function isPlaceholderTeam(name) {
+  const lower = String(name ?? "").toLowerCase();
+  return lower.startsWith("sieger") ||
+    lower.startsWith("zweiter") ||
+    lower.startsWith("dritter") ||
+    lower.startsWith("bester") ||
+    lower.startsWith("verlierer") ||
+    lower.includes("gruppe");
+}
+
+function preserveResolvedParticipants(template, existing) {
+  if (!existing) return template;
+  return {
+    ...template,
+    homeTeam: isPlaceholderTeam(template.homeTeam) && !isPlaceholderTeam(existing.homeTeam)
+      ? existing.homeTeam
+      : template.homeTeam,
+    awayTeam: isPlaceholderTeam(template.awayTeam) && !isPlaceholderTeam(existing.awayTeam)
+      ? existing.awayTeam
+      : template.awayTeam,
+  };
+}
+
+function mergeProviderKnockoutMatches(providerMatches, templates, existingMatchMap = new Map()) {
+  const stageOrder = [
+    "Sechzehntelfinale",
+    "Achtelfinale",
+    "Viertelfinale",
+    "Halbfinale",
+    "Spiel um Platz 3",
+    "Finale",
+  ];
+  const merged = [];
+
+  for (const stage of stageOrder) {
+    const stageTemplates = templates.filter((match) => match.stage === stage)
+      .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+    const stageProviders = providerMatches.filter((match) => match.stage === stage)
+      .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+    for (let index = 0; index < stageTemplates.length; index++) {
+      const template = stageTemplates[index];
+      const existing = existingMatchMap.get(template.id);
+      const preserved = preserveResolvedParticipants(template, existing);
+      const provider = stageProviders[index];
+      if (!provider) {
+        merged.push(preserved);
+        continue;
+      }
+      merged.push({
+        ...preserved,
+        ...provider,
+        id: template.id,
+        homeTeam: provider.homeTeam ?? preserved.homeTeam,
+        awayTeam: provider.awayTeam ?? preserved.awayTeam,
+        stage,
+        group: "",
+        source: "football-data",
+        providerStatus: provider.rawStatus,
+        providerUpdatedAt: provider.lastUpdated,
+      });
+    }
+  }
+  return merged;
+}
+
+function calculateCompletedGroupTables(groupMatches) {
+  const tables = {};
+  for (const match of groupMatches) {
+    if (!match.group || match.status !== "finalResult" ||
+        match.homeScore == null || match.awayScore == null) continue;
+    const table = (tables[match.group] ??= {});
+    const home = (table[teamKey(match.homeTeam)] ??= {
+      team: displayTeamName(match.homeTeam), points: 0, goalsFor: 0, goalsAgainst: 0,
+    });
+    const away = (table[teamKey(match.awayTeam)] ??= {
+      team: displayTeamName(match.awayTeam), points: 0, goalsFor: 0, goalsAgainst: 0,
+    });
+    home.goalsFor += match.homeScore;
+    home.goalsAgainst += match.awayScore;
+    away.goalsFor += match.awayScore;
+    away.goalsAgainst += match.homeScore;
+    if (match.homeScore > match.awayScore) home.points += 3;
+    else if (match.awayScore > match.homeScore) away.points += 3;
+    else {
+      home.points += 1;
+      away.points += 1;
+    }
+  }
+
+  const completed = {};
+  for (const [group, table] of Object.entries(tables)) {
+    const matches = groupMatches.filter((match) => match.group === group);
+    if (matches.length !== 6 || !matches.every((match) => match.status === "finalResult")) continue;
+    completed[group] = Object.values(table).sort((a, b) =>
+      b.points - a.points ||
+      (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst) ||
+      b.goalsFor - a.goalsFor ||
+      a.team.localeCompare(b.team));
+  }
+  return completed;
+}
+
+function resolveDirectGroupSlots(matches, groupMatches) {
+  const hasDirectSlots = matches.some((match) =>
+    /^(Sieger|Zweiter) Gruppe [A-L]$/.test(match.homeTeam) ||
+    /^(Sieger|Zweiter) Gruppe [A-L]$/.test(match.awayTeam));
+  if (!hasDirectSlots) return matches;
+
+  const tables = calculateCompletedGroupTables(groupMatches);
+  const resolve = (slot) => {
+    const parsed = /^(Sieger|Zweiter) Gruppe ([A-L])$/.exec(slot);
+    if (!parsed) return slot;
+    const [, rank, group] = parsed;
+    return tables[group]?.[rank === "Sieger" ? 0 : 1]?.team ?? slot;
+  };
+  for (const match of matches) {
+    match.homeTeam = resolve(match.homeTeam);
+    match.awayTeam = resolve(match.awayTeam);
+  }
+  return matches;
+}
+
+function getThirdPlaceAssignments(completedTables) {
+  if (Object.keys(completedTables).length !== 12) return null;
+  const thirds = Object.entries(completedTables).map(([group, rows]) => ({
+    group,
+    ...rows[2],
+  })).sort((a, b) =>
+    b.points - a.points ||
+    (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst) ||
+    b.goalsFor - a.goalsFor ||
+    a.team.localeCompare(b.team));
+
+  const eighth = thirds[7];
+  const ninth = thirds[8];
+  if (!eighth || !ninth) return null;
+  if (eighth.points === ninth.points &&
+      eighth.goalsFor - eighth.goalsAgainst === ninth.goalsFor - ninth.goalsAgainst &&
+      eighth.goalsFor === ninth.goalsFor) {
+    // Wait for official fair-play/ranking data instead of guessing a tied cutoff.
+    return null;
+  }
+
+  const qualifying = thirds.slice(0, 8);
+  const combination = qualifying.map((row) => row.group).sort().join("");
+  const allocation = THIRD_PLACE_MATRIX[combination];
+  if (!allocation) return null;
+
+  const winnerGroups = ["A", "B", "D", "E", "G", "I", "K", "L"];
+  const thirdByGroup = new Map(qualifying.map((row) => [row.group, row.team]));
+  return Object.fromEntries(winnerGroups.map((winnerGroup, index) => [
+    winnerGroup,
+    thirdByGroup.get(allocation[index]),
+  ]));
+}
+
+function resolveThirdPlaceSlots(matches, groupMatches) {
+  const assignments = getThirdPlaceAssignments(calculateCompletedGroupTables(groupMatches));
+  if (!assignments) return matches;
+  const winnerGroupByMatchId = {
+    "wc-ko-sf-3": "E",
+    "wc-ko-sf-6": "I",
+    "wc-ko-sf-7": "A",
+    "wc-ko-sf-8": "L",
+    "wc-ko-sf-9": "G",
+    "wc-ko-sf-10": "D",
+    "wc-ko-sf-13": "B",
+    "wc-ko-sf-16": "K",
+  };
+  for (const match of matches) {
+    const winnerGroup = winnerGroupByMatchId[match.id];
+    if (!winnerGroup || !match.awayTeam.startsWith("Bester 3.")) continue;
+    match.awayTeam = assignments[winnerGroup] ?? match.awayTeam;
+  }
+  return matches;
 }
 
 function rankStandings(entries) {
@@ -1396,30 +1626,42 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
   console.log(`Starting full syncResults job (${reason})...`);
   const openLigaMatches = await fetchOpenLigaMatches();
   const footballData = await fetchFootballDataMatches();
-  const groupMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches);
+  const providerMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches);
+  const groupMatches = providerMatches.filter((match) => match.group);
+
+  let tableSource = "none";
+  let tableStatus = 0;
+  if (includeTable) {
+    const tableResult = await syncOfficialTable({ allowOpenLigaFallback: true });
+    tableSource = tableResult.tableSource;
+    tableStatus = tableResult.tableStatus;
+  }
 
   const matchesSnap = await db.collection("matches").get();
   const existingMatchMap = new Map();
   matchesSnap.forEach((doc) => {
     const data = doc.data();
-      existingMatchMap.set(doc.id, {
-        homeScore: data.homeScore ?? null,
-        awayScore: data.awayScore ?? null,
-        status: data.status ?? "scheduled",
-        winner: data.winner ?? null,
-        resultNote: data.resultNote ?? null,
-        source: data.source ?? "openligadb",
-        providerStatus: data.providerStatus ?? null,
-        providerUpdatedAt: data.providerUpdatedAt ?? null,
-        minute: data.minute ?? null,
-      });
+    existingMatchMap.set(doc.id, {
+      homeTeam: data.homeTeam ?? null,
+      awayTeam: data.awayTeam ?? null,
+      homeScore: data.homeScore ?? null,
+      awayScore: data.awayScore ?? null,
+      status: data.status ?? "scheduled",
+      winner: data.winner ?? null,
+      resultNote: data.resultNote ?? null,
+      source: data.source ?? "openligadb",
+      providerStatus: data.providerStatus ?? null,
+      providerUpdatedAt: data.providerUpdatedAt ?? null,
+      minute: data.minute ?? null,
+    });
   });
 
-  const koMatches = getKnockoutMatches().map((m) => {
+  const koTemplates = getKnockoutMatches().map((m) => {
     const existing = existingMatchMap.get(m.id);
+    const resolvedTemplate = preserveResolvedParticipants(m, existing);
     if (existing) {
       return {
-        ...m,
+        ...resolvedTemplate,
         homeScore: existing.homeScore,
         awayScore: existing.awayScore,
         status: existing.status,
@@ -1428,16 +1670,21 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
       };
     }
     return {
-      ...m,
+      ...resolvedTemplate,
       winner: null,
       resultNote: null,
     };
   });
+  const providerKnockouts = footballData.matches.filter((match) => match.stage);
+  const koMatches = mergeProviderKnockoutMatches(providerKnockouts, koTemplates, existingMatchMap);
+  resolveDirectGroupSlots(koMatches, groupMatches);
+  resolveThirdPlaceSlots(koMatches, groupMatches);
 
   const allMatches = [...groupMatches, ...koMatches];
 
   let matchesChanged = false;
   let finalMatchesChanged = false;
+  let progressionChanged = false;
   const effectiveAllMatches = [];
 
   const matchBatch = db.batch();
@@ -1460,6 +1707,8 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     }
     effectiveAllMatches.push(match);
     const changed = !existing ||
+      existing.homeTeam !== match.homeTeam ||
+      existing.awayTeam !== match.awayTeam ||
       existing.homeScore !== match.homeScore ||
       existing.awayScore !== match.awayScore ||
       existing.status !== match.status ||
@@ -1472,6 +1721,9 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
 
     if (changed) {
       matchesChanged = true;
+      if (existing && (existing.homeTeam !== match.homeTeam || existing.awayTeam !== match.awayTeam)) {
+        progressionChanged = true;
+      }
       if (match.status === "finalResult" || (existing && existing.status !== "finalResult" && match.status === "finalResult")) {
         finalMatchesChanged = true;
       }
@@ -1504,19 +1756,11 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     console.log("No matches changed. Skipping matches Firestore write.");
   }
 
-  let tableSource = "none";
-  let tableStatus = 0;
-  if (includeTable) {
-    const tableResult = await syncOfficialTable({ allowOpenLigaFallback: true });
-    tableSource = tableResult.tableSource;
-    tableStatus = tableResult.tableStatus;
-  }
-
   if (includeCleanup) {
     await cleanupDuplicateTips(allMatches);
   }
 
-  if (forceRecalculate || finalMatchesChanged) {
+  if (forceRecalculate || finalMatchesChanged || progressionChanged) {
     const finalMatches = effectiveAllMatches.filter((m) => m.status === "finalResult");
     const audit = await recalculateScores(effectiveAllMatches, finalMatches);
     await writeSyncStatus("scoreAudit", {
@@ -1532,6 +1776,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     ok: true,
     matchesChanged,
     finalMatchesChanged,
+    progressionChanged,
     groupMatches: groupMatches.length,
     totalMatches: effectiveAllMatches.length,
     footballDataStatus: footballData.status,
@@ -1581,12 +1826,19 @@ if (process.env.NODE_ENV === "test") {
   exports.__test = {
     calculateExtraPoints,
     getEliminationStage,
+    getDeepestReachedStage,
     getTier,
     isSameTeam,
     teamKey,
     applyFootballDataOverlay,
     isRecentMatchWindow,
     shouldKeepExistingMatch,
+    preserveResolvedParticipants,
+    mergeProviderKnockoutMatches,
+    calculateCompletedGroupTables,
+    resolveDirectGroupSlots,
+    getThirdPlaceAssignments,
+    resolveThirdPlaceSlots,
   };
 }
 
@@ -1640,26 +1892,32 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
       openLigaMatches = await fetchFirestoreMatches();
     }
     const liveCandidates = openLigaMatches.filter((match) => isRecentMatchWindow(match));
-    if (liveCandidates.length === 0) {
+    const footballData = await fetchFootballDataMatches();
+    logLiveProviderComparison(openLigaMatches, footballData.matches, footballData.headers);
+    const groupOverlayMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches, { liveOnly: true })
+      .filter((match) => match.group);
+    const knockoutOverlayMatches = mergeProviderKnockoutMatches(
+      footballData.matches.filter((match) => match.stage),
+      getKnockoutMatches()
+    );
+    const overlayMatches = [...groupOverlayMatches, ...knockoutOverlayMatches]
+      .filter((match) => isRecentMatchWindow(match));
+
+    if (overlayMatches.length === 0) {
       console.log("No live-window matches. Skipping fast live write.");
       await writeSyncStatus("live", {
         ok: true,
         changedCount: 0,
         finalTransition: false,
         skippedStaleCount: 0,
-        liveCandidates: 0,
+        liveCandidates: liveCandidates.length,
         overlayMatches: 0,
       });
       return null;
     }
 
     const now = new Date();
-    await canonicalizeKickoffTips(liveCandidates, now);
-
-    const footballData = await fetchFootballDataMatches();
-    logLiveProviderComparison(openLigaMatches, footballData.matches, footballData.headers);
-    const overlayMatches = mergeFootballDataOverlay(openLigaMatches, footballData.matches, { liveOnly: true })
-      .filter((match) => isRecentMatchWindow(match));
+    await canonicalizeKickoffTips(overlayMatches, now);
 
     let changedCount = 0;
     let finalTransition = false;

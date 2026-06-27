@@ -5,6 +5,7 @@
 - [x] Fix loading screen deadlock on sign-out/account deletion.
 - [x] Fix booster points calculation in simulator, improve user detail screen layout/centering, next-matches margins, stage dropdown filter, and profile picks opacity.
 - [x] Dynamically calculate and highlight the 8 best third-placed teams in group standings.
+- [x] Resolve confirmed knockout participants and FIFA third-place matrix slots in cloud syncs.
 - [x] Fix team name wrapping in player tips sheet (e.g. for Elfenbeinküste).
 - [x] Fix Jonas simulation risk team from Dänemark (not in WC 2026) to Panama.
 - [x] Fix evaluation points display, dropdown KO filter, and rootNavigator back-button bugs.
