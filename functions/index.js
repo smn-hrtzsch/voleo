@@ -1077,21 +1077,21 @@ function getKnockoutMatches() {
   const list = [];
   const sfMatches = [
     ['Zweiter Gruppe A', 'Zweiter Gruppe B', '2026-06-29T17:00:00Z'],
-    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
     ['Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', '2026-06-30T17:00:00Z'],
     ['Sieger Gruppe F', 'Zweiter Gruppe C', '2026-06-30T20:00:00Z'],
-    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
+    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
     ['Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', '2026-07-01T20:00:00Z'],
+    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
     ['Sieger Gruppe A', 'Bester 3. Gruppe C/E/F/H/I', '2026-07-02T17:00:00Z'],
     ['Sieger Gruppe L', 'Bester 3. Gruppe E/H/I/J/K', '2026-07-02T20:00:00Z'],
-    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
     ['Sieger Gruppe D', 'Bester 3. Gruppe B/E/F/I/J', '2026-07-03T20:00:00Z'],
-    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
+    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
     ['Zweiter Gruppe K', 'Zweiter Gruppe L', '2026-07-04T20:00:00Z'],
+    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
     ['Sieger Gruppe B', 'Bester 3. Gruppe E/F/G/I/J', '2026-07-05T17:00:00Z'],
-    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
     ['Sieger Gruppe J', 'Zweiter Gruppe H', '2026-07-06T17:00:00Z'],
     ['Sieger Gruppe K', 'Bester 3. Gruppe D/E/I/J/L', '2026-07-06T20:00:00Z'],
+    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
   ];
 
   for (let i = 0; i < sfMatches.length; i++) {
@@ -1111,13 +1111,13 @@ function getKnockoutMatches() {
 
   const afMatches = [
     ['Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', '2026-07-07T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 4', '2026-07-07T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 5', 'Sieger Sechzehntelfinale 7', '2026-07-08T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 6', 'Sieger Sechzehntelfinale 8', '2026-07-08T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 11', '2026-07-09T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 10', 'Sieger Sechzehntelfinale 12', '2026-07-09T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', '2026-07-10T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', '2026-07-10T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 5', '2026-07-07T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 4', 'Sieger Sechzehntelfinale 6', '2026-07-08T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 7', 'Sieger Sechzehntelfinale 8', '2026-07-08T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 11', 'Sieger Sechzehntelfinale 12', '2026-07-09T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 10', '2026-07-09T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', '2026-07-10T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', '2026-07-10T20:00:00Z'],
   ];
 
   for (let i = 0; i < afMatches.length; i++) {
@@ -1136,9 +1136,9 @@ function getKnockoutMatches() {
   }
 
   const vfMatches = [
-    ['Sieger Achtelfinale 1', 'Sieger Achtelfinale 3', '2026-07-12T17:00:00Z'],
-    ['Sieger Achtelfinale 2', 'Sieger Achtelfinale 4', '2026-07-12T20:00:00Z'],
-    ['Sieger Achtelfinale 5', 'Sieger Achtelfinale 7', '2026-07-13T17:00:00Z'],
+    ['Sieger Achtelfinale 1', 'Sieger Achtelfinale 2', '2026-07-12T17:00:00Z'],
+    ['Sieger Achtelfinale 5', 'Sieger Achtelfinale 6', '2026-07-12T20:00:00Z'],
+    ['Sieger Achtelfinale 3', 'Sieger Achtelfinale 4', '2026-07-13T17:00:00Z'],
     ['Sieger Achtelfinale 6', 'Sieger Achtelfinale 8', '2026-07-13T20:00:00Z'],
   ];
 
@@ -1365,14 +1365,14 @@ function resolveThirdPlaceSlots(matches, groupMatches) {
   const assignments = getThirdPlaceAssignments(calculateCompletedGroupTables(groupMatches));
   if (!assignments) return matches;
   const winnerGroupByMatchId = {
-    "wc-ko-sf-3": "E",
-    "wc-ko-sf-6": "I",
+    "wc-ko-sf-2": "E",
+    "wc-ko-sf-5": "I",
     "wc-ko-sf-7": "A",
     "wc-ko-sf-8": "L",
-    "wc-ko-sf-9": "G",
     "wc-ko-sf-10": "D",
+    "wc-ko-sf-11": "G",
     "wc-ko-sf-13": "B",
-    "wc-ko-sf-16": "K",
+    "wc-ko-sf-15": "K",
   };
   for (const match of matches) {
     const winnerGroup = winnerGroupByMatchId[match.id];
@@ -1501,6 +1501,7 @@ async function recalculateScores(allMatches, finalMatches) {
         displayName: displayNames.get(uid) ?? "Spieler",
         photoUrl: photoUrls.get(uid) ?? null,
         totalPoints: leftAt !== null ? frozenPoints : frozenPoints,
+        tipPoints: 0,
         exactCount: leftAt !== null ? frozenExactCount : frozenExactCount,
         differenceCount: leftAt !== null ? frozenDifferenceCount : frozenDifferenceCount,
         tendencyCount: leftAt !== null ? frozenTendencyCount : frozenTendencyCount,
@@ -1566,6 +1567,7 @@ async function recalculateScores(allMatches, finalMatches) {
       audit.scoredTips += 1;
 
       current.totalPoints += score.points;
+      current.tipPoints += score.points;
       if (score.isExact) {
         current.exactCount += 1;
       } else if (score.isDifference) {
@@ -1604,6 +1606,7 @@ async function recalculateScores(allMatches, finalMatches) {
       batch.set(standingRef, {
         displayName: standing.displayName,
         totalPoints: standing.totalPoints,
+        tipPoints: standing.tipPoints ?? 0,
         exactCount: standing.exactCount,
         differenceCount: standing.differenceCount ?? 0,
         tendencyCount: standing.tendencyCount,
@@ -2022,6 +2025,107 @@ function hasNoActiveMembers(leagueData) {
   return Array.isArray(memberIds) && memberIds.length === 0;
 }
 
+function berlinDayKey(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function reminderWindowForMatch(match, now = new Date()) {
+  const kickoff = new Date(match.kickoff);
+  const diff = kickoff.getTime() - now.getTime();
+  const tolerance = 5 * 60 * 1000;
+  if (diff >= 12 * 60 * 60 * 1000 && diff < 12 * 60 * 60 * 1000 + tolerance) return "12h";
+  if (diff >= 60 * 60 * 1000 && diff < 60 * 60 * 1000 + tolerance) return "1h";
+  return null;
+}
+
+async function sendTipRemindersForMatches(matches, now = new Date()) {
+  const scheduled = matches.filter((match) => match.status !== "finalResult" && new Date(match.kickoff) > now);
+  const targets = new Map();
+  for (const match of scheduled) {
+    const window = reminderWindowForMatch(match, now);
+    if (!window) continue;
+    const dayKey = berlinDayKey(new Date(match.kickoff));
+    targets.set(`${dayKey}:${window}`, { dayKey, window });
+  }
+  if (targets.size === 0) return { sent: 0, skipped: 0, targetCount: 0 };
+
+  const leaguesSnap = await db.collection("leagues").get();
+  const activeUids = new Set();
+  const memberLeagueIds = new Map();
+  leaguesSnap.forEach((leagueDoc) => {
+    const ids = Array.isArray(leagueDoc.data().memberIds) ? leagueDoc.data().memberIds : [];
+    for (const uid of ids) {
+      activeUids.add(uid);
+      const list = memberLeagueIds.get(uid) ?? [];
+      list.push(leagueDoc.id);
+      memberLeagueIds.set(uid, list);
+    }
+  });
+
+  let sent = 0;
+  let skipped = 0;
+  for (const { dayKey, window } of targets.values()) {
+    const dayMatches = scheduled.filter((match) => berlinDayKey(new Date(match.kickoff)) === dayKey);
+    for (const uid of activeUids) {
+      const leagueIds = memberLeagueIds.get(uid) ?? [];
+      const tipsById = new Map();
+      for (const leagueId of leagueIds) {
+        const tipsSnap = await db.collection("leagues").doc(leagueId).collection("tips")
+          .where("uid", "==", uid).get();
+        tipsSnap.forEach((doc) => {
+          const tip = doc.data();
+          tipsById.set(tip.matchId, tip);
+        });
+      }
+      const missing = dayMatches.some((match) => !equivalentTipMatchIds(match).some((id) => {
+        const tip = tipsById.get(id);
+        return tip != null && tipIsCompleteForMatch(tip, match);
+      }));
+      if (!missing) {
+        skipped += 1;
+        continue;
+      }
+
+      const dedupeRef = db.collection("notificationDedup").doc(`tipReminder_${uid}_${dayKey}_${window}`);
+      try {
+        await dedupeRef.create({ uid, dayKey, window, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      } catch (_) {
+        skipped += 1;
+        continue;
+      }
+
+      const tokensSnap = await db.collection("users").doc(uid).collection("fcmTokens").get();
+      const tokens = tokensSnap.docs.map((doc) => doc.data().token).filter(Boolean);
+      if (tokens.length === 0) {
+        skipped += 1;
+        continue;
+      }
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: {
+          title: window === "12h" ? "Tipps nicht vergessen" : "Letzte Chance zum Tippen",
+          body: "Du hast für heute noch nicht alle Spiele getippt.",
+        },
+        data: { type: "tip_reminder", dayKey, window },
+      });
+      sent += response.successCount;
+      response.responses.forEach((result, index) => {
+        if (!result.error) return;
+        const code = result.error.code;
+        if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+          tokensSnap.docs[index]?.ref.delete().catch(() => undefined);
+        }
+      });
+    }
+  }
+  return { sent, skipped, targetCount: targets.size };
+}
+
 if (process.env.NODE_ENV === "test") {
   exports.__test = {
     calculateExtraPoints,
@@ -2042,6 +2146,9 @@ if (process.env.NODE_ENV === "test") {
     resolveDirectGroupSlots,
     getThirdPlaceAssignments,
     resolveThirdPlaceSlots,
+    berlinDayKey,
+    reminderWindowForMatch,
+    sendTipRemindersForMatches,
   };
 }
 
@@ -2069,6 +2176,24 @@ exports.cleanupEmptyLeagues = functions.region("europe-west3").runWith({
   }
 
   console.log(`cleanupEmptyLeagues deleted ${deletedCount} empty league(s).`);
+  return null;
+});
+
+exports.sendTipReminders = functions.region("europe-west3").runWith({
+  timeoutSeconds: 300,
+  memory: "256MB",
+}).pubsub.schedule("*/5 * * * *").timeZone("Europe/Berlin").onRun(async () => {
+  const matchesSnap = await db.collection("matches").get();
+  const matches = matchesSnap.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      kickoff: data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff,
+    };
+  }).filter((match) => match.kickoff);
+  const result = await sendTipRemindersForMatches(matches);
+  console.log("Tip reminder result", JSON.stringify(result));
   return null;
 });
 

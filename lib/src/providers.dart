@@ -106,6 +106,45 @@ final showRulesDialogProvider =
 final themeModeProvider =
     NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
+final dateModeProvider =
+    NotifierProvider<DateModeController, bool>(DateModeController.new);
+
+class DateModeController extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_load());
+    return false;
+  }
+
+  Future<void> setSwipeByDay(bool value) async {
+    state = value;
+    await _saveLocal(value);
+  }
+
+  Future<void> toggle() => setSwipeByDay(!state);
+
+  Future<void> _saveLocal(bool value) async {
+    final file = await _settingsFile();
+    await file.parent.create(recursive: true);
+    await file.writeAsString(value ? 'swipe' : 'list');
+  }
+
+  Future<void> _load() async {
+    try {
+      final file = await _settingsFile();
+      if (!await file.exists()) return;
+      state = (await file.readAsString()).trim() == 'swipe';
+    } catch (_) {
+      state = false;
+    }
+  }
+
+  Future<File> _settingsFile() async {
+    final directory = await getApplicationSupportDirectory();
+    return File('${directory.path}/voleo_settings/date_mode.txt');
+  }
+}
+
 class ThemeModeController extends Notifier<ThemeMode> {
   @override
   ThemeMode build() {

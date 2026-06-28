@@ -36,6 +36,10 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn();
       allow create, update, delete: if signedIn() && request.auth.uid == uid;
+
+      match /fcmTokens/{tokenId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     match /matches/{matchId} {

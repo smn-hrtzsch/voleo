@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
@@ -69,7 +70,7 @@ void showUserTipsBottomSheet({
   );
 }
 
-class UserTipsBottomSheetContent extends StatefulWidget {
+class UserTipsBottomSheetContent extends ConsumerStatefulWidget {
   const UserTipsBottomSheetContent({
     required this.scrollController,
     required this.displayName,
@@ -92,13 +93,22 @@ class UserTipsBottomSheetContent extends StatefulWidget {
   final bool showPicks;
 
   @override
-  State<UserTipsBottomSheetContent> createState() =>
+  ConsumerState<UserTipsBottomSheetContent> createState() =>
       _UserTipsBottomSheetContentState();
 }
 
 class _UserTipsBottomSheetContentState
-    extends State<UserTipsBottomSheetContent> {
+    extends ConsumerState<UserTipsBottomSheetContent> {
   late String _selectedFilter;
+  final _pageController = PageController();
+  var _selectedDayIndex = 0;
+  var _didSetInitialDay = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -146,6 +156,7 @@ class _UserTipsBottomSheetContentState
 
   @override
   Widget build(BuildContext context) {
+    final swipeByDay = ref.watch(dateModeProvider);
     // Filter matches
     final filteredMatches = widget.matches.where((match) {
       if (_selectedFilter == 'Alle') return true;
@@ -155,6 +166,12 @@ class _UserTipsBottomSheetContentState
       }
       return match.stage == _selectedFilter;
     }).toList();
+    final days = _groupByDay(filteredMatches);
+    final dayKeys = days.keys.toList()..sort();
+    _setInitialDay(dayKeys);
+    final safeDayIndex = dayKeys.isEmpty
+        ? 0
+        : _selectedDayIndex.clamp(0, dayKeys.length - 1);
 
     final favPoints = (widget.showPicks &&
             widget.userProfile?.favoriteTeam != null &&
@@ -243,6 +260,18 @@ class _UserTipsBottomSheetContentState
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            FilterChip(
+              selected: swipeByDay,
+              showCheckmark: false,
+              avatar: const Icon(Icons.calendar_today_outlined, size: 16),
+              label: Text(swipeByDay ? 'Swipe' : 'Liste'),
+              onSelected: (_) {
+                final next = !swipeByDay;
+                ref.read(dateModeProvider.notifier).setSwipeByDay(next);
+                if (next) _jumpToSelectedDayAfterBuild();
+              },
+            ),
+            const SizedBox(width: 8),
             // Stage filters dropdown
             DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -251,6 +280,8 @@ class _UserTipsBottomSheetContentState
                   if (newValue != null) {
                     setState(() {
                       _selectedFilter = newValue;
+                      _selectedDayIndex = 0;
+                      _didSetInitialDay = false;
                     });
                   }
                 },
@@ -278,7 +309,7 @@ class _UserTipsBottomSheetContentState
           ],
         ),
         const Divider(),
-        if (filteredMatches.isNotEmpty) ...[
+        if (filteredMatches.isNotEmpty && !swipeByDay) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
@@ -317,9 +348,45 @@ class _UserTipsBottomSheetContentState
               child: Text('Keine Spiele in dieser Phase.'),
             ),
           )
-        else
+        else if (swipeByDay) ...[
+          _PlayerDaySwitcher(
+            day: dayKeys[safeDayIndex],
+            index: safeDayIndex,
+            count: dayKeys.length,
+            onPrevious: safeDayIndex == 0
+                ? null
+                : () => _goToDay(safeDayIndex - 1),
+            onNext: safeDayIndex == dayKeys.length - 1
+                ? null
+                : () => _goToDay(safeDayIndex + 1),
+          ),
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.52,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: dayKeys.length,
+              onPageChanged: (index) => setState(() => _selectedDayIndex = index),
+              itemBuilder: (context, index) {
+                final dayMatches = days[dayKeys[index]] ?? const <CupMatch>[];
+                return ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final match in dayMatches) _buildMatchEntry(context, match),
+                  ],
+                );
+              },
+            ),
+          ),
+        ] else
           for (final match in filteredMatches) ...[
-            (() {
+            _buildMatchEntry(context, match),
+          ],
+      ],
+    );
+  }
+
+  Widget _buildMatchEntry(BuildContext context, CupMatch match) {
+    return (() {
               final tip = widget.userTips.cast<Tip?>().firstWhere(
                 (t) {
                   if (t == null) return false;
@@ -526,9 +593,12 @@ class _UserTipsBottomSheetContentState
               }
               final progressionText = progressionParts.join(' • ');
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Column(
+              return InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => context.push('/league/tip/${match.id}'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
@@ -659,11 +729,39 @@ class _UserTipsBottomSheetContentState
                     const SizedBox(height: 6),
                     const Divider(height: 1),
                   ],
+                  ),
                 ),
               );
-            })(),
-          ],
-      ],
+            })();
+  }
+
+  void _setInitialDay(List<DateTime> dayKeys) {
+    if (_didSetInitialDay || dayKeys.isEmpty) return;
+    _didSetInitialDay = true;
+    final today = _dayFor(VoleoClock.now);
+    final todayIndex = dayKeys.indexWhere((day) => day == today);
+    final nextIndex = dayKeys.indexWhere((day) => day.isAfter(today));
+    _selectedDayIndex = todayIndex != -1
+        ? todayIndex
+        : nextIndex != -1
+            ? nextIndex
+            : dayKeys.length - 1;
+    _jumpToSelectedDayAfterBuild();
+  }
+
+  void _jumpToSelectedDayAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageController.hasClients) return;
+      _pageController.jumpToPage(_selectedDayIndex);
+    });
+  }
+
+  void _goToDay(int index) {
+    setState(() => _selectedDayIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
     );
   }
 
@@ -776,6 +874,80 @@ class _UserTipsBottomSheetContentState
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+Map<DateTime, List<CupMatch>> _groupByDay(List<CupMatch> matches) {
+  final result = <DateTime, List<CupMatch>>{};
+  for (final match in matches) {
+    final day = _dayFor(match.kickoff);
+    result.putIfAbsent(day, () => <CupMatch>[]).add(match);
+  }
+  return result;
+}
+
+DateTime _dayFor(DateTime value) => DateTime(value.year, value.month, value.day);
+
+String _formatPlayerDay(DateTime day) {
+  const weekdays = [
+    'Montag',
+    'Dienstag',
+    'Mittwoch',
+    'Donnerstag',
+    'Freitag',
+    'Samstag',
+    'Sonntag',
+  ];
+  return '${weekdays[day.weekday - 1]}, ${DateFormat('dd.MM.').format(day)}';
+}
+
+class _PlayerDaySwitcher extends StatelessWidget {
+  const _PlayerDaySwitcher({
+    required this.day,
+    required this.index,
+    required this.count,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final DateTime day;
+  final int index;
+  final int count;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          IconButton.filledTonal(
+            onPressed: onPrevious,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  _formatPlayerDay(day),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  '${index + 1} von $count',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onNext,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
       ),
     );
   }

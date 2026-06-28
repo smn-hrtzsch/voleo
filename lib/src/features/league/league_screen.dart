@@ -44,6 +44,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
 
           final List<_LiveStanding> liveStandings = standings.map((s) {
             int total = s.totalPoints;
+            int tipPoints = s.tipPoints;
             int exact = s.exactCount;
             int diff = s.differenceCount;
             int tendency = s.tendencyCount;
@@ -67,6 +68,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                 );
 
                 total += pts;
+                tipPoints += score.points;
                 updated = true;
                 if (score.isExact) {
                   exact++;
@@ -81,6 +83,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
             return _LiveStanding(
               standing: s,
               totalPoints: total,
+              tipPoints: tipPoints,
               exactCount: exact,
               differenceCount: diff,
               tendencyCount: tendency,
@@ -116,6 +119,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
             rankedLiveStandings.add(_LiveStanding(
               standing: cur.standing,
               totalPoints: cur.totalPoints,
+              tipPoints: cur.tipPoints,
               exactCount: cur.exactCount,
               differenceCount: cur.differenceCount,
               tendencyCount: cur.tendencyCount,
@@ -173,19 +177,10 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                             const LivePulseDot(),
                             const SizedBox(width: 6),
                           ],
-                          Text(
-                            '${liveStanding.totalPoints}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  color: liveStanding.hasLiveUpdates
-                                      ? Colors.green
-                                      : null,
-                                  fontWeight: liveStanding.hasLiveUpdates
-                                      ? FontWeight.bold
-                                      : null,
-                                ),
+                          _PointsSummary(
+                            totalPoints: liveStanding.totalPoints,
+                            tipPoints: liveStanding.tipPoints,
+                            isLive: liveStanding.hasLiveUpdates,
                           ),
                         ],
                       ),
@@ -879,6 +874,7 @@ class _LiveStanding {
   const _LiveStanding({
     required this.standing,
     required this.totalPoints,
+    required this.tipPoints,
     required this.exactCount,
     required this.differenceCount,
     required this.tendencyCount,
@@ -888,9 +884,48 @@ class _LiveStanding {
 
   final Standing standing;
   final int totalPoints;
+  final int tipPoints;
   final int exactCount;
   final int differenceCount;
   final int tendencyCount;
   final int rank;
   final bool hasLiveUpdates;
+}
+
+class _PointsSummary extends StatelessWidget {
+  const _PointsSummary({
+    required this.totalPoints,
+    required this.tipPoints,
+    required this.isLive,
+  });
+
+  final int totalPoints;
+  final int tipPoints;
+  final bool isLive;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final totalColor = isLive ? Colors.green : scheme.onSurface;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          '$totalPoints',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: totalColor,
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        Text(
+          '$tipPoints Tipps',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ],
+    );
+  }
 }

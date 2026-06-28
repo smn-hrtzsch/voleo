@@ -701,7 +701,12 @@ class _TournamentTreeView extends StatelessWidget {
 
   List<CupMatch> _getRoundMatches(String stage) {
     return matches.where((m) => m.stage == stage).toList()
-      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+      ..sort((a, b) => _matchSlot(a).compareTo(_matchSlot(b)));
+  }
+
+  int _matchSlot(CupMatch match) {
+    final matchNumber = RegExp(r'-(\d+)$').firstMatch(match.id);
+    return int.tryParse(matchNumber?.group(1) ?? '') ?? 999;
   }
 
   @override
@@ -723,20 +728,31 @@ class _TournamentTreeView extends StatelessWidget {
         scrollDirection: Axis.vertical,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          height:
-              2000, // Increased height to prevent overflow in columns with many matches
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          height: 1540,
+          child: Stack(
             children: [
-              _buildRoundColumn(context, 'Sechzehntelfinale', sf),
-              const SizedBox(width: 24),
-              _buildRoundColumn(context, 'Achtelfinale', af),
-              const SizedBox(width: 24),
-              _buildRoundColumn(context, 'Viertelfinale', vf),
-              const SizedBox(width: 24),
-              _buildRoundColumn(context, 'Halbfinale', hf),
-              const SizedBox(width: 24),
-              _buildRoundColumn(context, 'Finals', finals),
+              Positioned.fill(
+                top: 40,
+                child: CustomPaint(
+                  painter: _BracketConnectorPainter(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildRoundColumn(context, 'Sechzehntelfinale', sf, 16),
+                  const SizedBox(width: 42),
+                  _buildRoundColumn(context, 'Achtelfinale', af, 8),
+                  const SizedBox(width: 42),
+                  _buildRoundColumn(context, 'Viertelfinale', vf, 4),
+                  const SizedBox(width: 42),
+                  _buildRoundColumn(context, 'Halbfinale', hf, 2),
+                  const SizedBox(width: 42),
+                  _buildRoundColumn(context, 'Finals', finals, 2),
+                ],
+              ),
             ],
           ),
         ),
@@ -745,7 +761,7 @@ class _TournamentTreeView extends StatelessWidget {
   }
 
   Widget _buildRoundColumn(
-      BuildContext context, String title, List<CupMatch> roundMatches) {
+      BuildContext context, String title, List<CupMatch> roundMatches, int slots) {
     final scheme = Theme.of(context).colorScheme;
 
     return SizedBox(
@@ -774,20 +790,61 @@ class _TournamentTreeView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 if (roundMatches.isEmpty)
-                  for (var i = 0; i < 4; i++) const _PlaceholderMatchCard()
+                  for (var i = 0; i < slots; i++) const _PlaceholderMatchCard()
                 else
-                  for (var i = 0; i < roundMatches.length; i++)
-                    _TournamentMatchCard(
-                      match: roundMatches[i],
-                      matchIndex: i + 1,
-                      roundLabel: title,
-                    ),
+                  for (var i = 0; i < slots; i++)
+                    if (i < roundMatches.length)
+                      _TournamentMatchCard(
+                        match: roundMatches[i],
+                        matchIndex: i + 1,
+                        roundLabel: title,
+                      )
+                    else
+                      const _PlaceholderMatchCard(),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _BracketConnectorPainter extends CustomPainter {
+  const _BracketConnectorPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withAlpha(150)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    const columnWidth = 190.0;
+    const gap = 42.0;
+    final step = size.height / 16;
+    for (var round = 0; round < 4; round++) {
+      final leftX = round * (columnWidth + gap) + columnWidth;
+      final rightX = leftX + gap;
+      final groupSize = 1 << round;
+      final nextGroupSize = groupSize * 2;
+      final lineCount = 8 >> round;
+      for (var i = 0; i < lineCount; i++) {
+        final y1 = step * (i * nextGroupSize + groupSize / 2);
+        final y2 = step * (i * nextGroupSize + groupSize + groupSize / 2);
+        final midY = (y1 + y2) / 2;
+        canvas.drawLine(Offset(leftX, y1), Offset(leftX + gap / 2, y1), paint);
+        canvas.drawLine(Offset(leftX, y2), Offset(leftX + gap / 2, y2), paint);
+        canvas.drawLine(Offset(leftX + gap / 2, y1), Offset(leftX + gap / 2, y2), paint);
+        canvas.drawLine(Offset(leftX + gap / 2, midY), Offset(rightX, midY), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BracketConnectorPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 

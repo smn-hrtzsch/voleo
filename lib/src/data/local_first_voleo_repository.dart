@@ -398,6 +398,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
     final user = _currentUser;
     if (user != null) {
       var total = 0;
+      var tipPoints = 0;
       var exact = 0;
       var difference = 0;
       var tendency = 0;
@@ -408,6 +409,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           continue;
         }
         final result = scoreTipForMatch(tip: tip, match: match);
+        tipPoints += result.points;
         total += result.points;
         if (result.isExact) {
           exact++;
@@ -424,6 +426,7 @@ class LocalFirstVoleoRepository implements VoleoRepository {
           uid: user.uid,
           displayName: user.nickname,
           totalPoints: total,
+          tipPoints: tipPoints,
           exactCount: exact,
           differenceCount: difference,
           tendencyCount: tendency,

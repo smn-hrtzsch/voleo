@@ -24,7 +24,6 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   String _selectedGroup = 'Alle';
   String _selectedRound = 'Alle';
   String _selectedTeam = 'Alle';
-  bool _swipeByDay = false;
   bool _didSetInitialDay = false;
   bool _didSetInitialFilters = false;
   int _selectedDayIndex = 0;
@@ -70,6 +69,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
   Widget build(BuildContext context) {
     final tips = ref.watch(tipsProvider).value ?? const <Tip>[];
     final user = ref.watch(userProvider).value;
+    final swipeByDay = ref.watch(dateModeProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Spiele')),
       body: AsyncValueView<List<CupMatch>>(
@@ -105,7 +105,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _FilterRail(
-                swipeByDay: _swipeByDay,
+                swipeByDay: swipeByDay,
                 selectedRound: _selectedRound,
                 selectedTeam: _selectedTeam,
                 selectedGroup: _selectedGroup,
@@ -113,7 +113,9 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
                 teams: teams,
                 groups: groups,
                 onToggleDateMode: () {
-                  setState(() => _swipeByDay = !_swipeByDay);
+                  final next = !swipeByDay;
+                  ref.read(dateModeProvider.notifier).setSwipeByDay(next);
+                  if (next) _jumpToSelectedDayAfterBuild();
                 },
                 onRoundChanged: (value) => _changeFilter(round: value),
                 onTeamChanged: (value) => _changeFilter(team: value),
@@ -123,7 +125,7 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
                 const Expanded(
                   child: Center(child: Text('Keine Spiele für diesen Filter.')),
                 )
-              else if (_swipeByDay) ...[
+              else if (swipeByDay) ...[
                 _DaySwitcher(
                   day: dayKeys[safeDayIndex],
                   index: safeDayIndex,
@@ -195,9 +197,15 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
             : dayKeys.length - 1;
     _selectedDayIndex = index;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(index);
-      }
+      if (!_pageController.hasClients) return;
+      _pageController.jumpToPage(index);
+    });
+  }
+
+  void _jumpToSelectedDayAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageController.hasClients) return;
+      _pageController.jumpToPage(_selectedDayIndex);
     });
   }
 

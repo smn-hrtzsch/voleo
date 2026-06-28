@@ -450,6 +450,13 @@ class _TipEntryScreenState extends ConsumerState<TipEntryScreen> {
                   ),
                 ),
                 if (!match.isLocked) ...[
+                  const SizedBox(height: 12),
+                  _RecentFormCard(
+                    match: match,
+                    matches: matches,
+                  ),
+                ],
+                if (!match.isLocked) ...[
                   const SizedBox(height: 16),
                   Text(
                     match.isKnockout
@@ -1209,6 +1216,160 @@ class _MatchupTeamLabel extends StatelessWidget {
           : [flag, const SizedBox(width: 8), name],
     );
   }
+}
+
+class _RecentFormCard extends StatelessWidget {
+  const _RecentFormCard({required this.match, required this.matches});
+
+  final CupMatch match;
+  final List<CupMatch> matches;
+
+  @override
+  Widget build(BuildContext context) {
+    final homeForm = _recentResults(match.homeTeam);
+    final awayForm = _recentResults(match.awayTeam);
+    if (homeForm.isEmpty && awayForm.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Letzte Ergebnisse',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _FormColumn(team: match.homeTeam, rows: homeForm)),
+                const SizedBox(width: 12),
+                Expanded(child: _FormColumn(team: match.awayTeam, rows: awayForm)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_FormRowData> _recentResults(String team) {
+    final finished = matches.where((candidate) {
+      if (candidate.status != MatchStatus.finalResult) return false;
+      if (!candidate.kickoff.isBefore(match.kickoff)) return false;
+      return isSameTeam(candidate.homeTeam, team) || isSameTeam(candidate.awayTeam, team);
+    }).toList()
+      ..sort((a, b) => b.kickoff.compareTo(a.kickoff));
+    return finished.take(5).map((candidate) {
+      final isHome = isSameTeam(candidate.homeTeam, team);
+      final own = isHome ? candidate.homeScore : candidate.awayScore;
+      final other = isHome ? candidate.awayScore : candidate.homeScore;
+      final opponent = isHome ? candidate.awayTeam : candidate.homeTeam;
+      final result = own == null || other == null
+          ? 'D'
+          : own > other
+              ? 'W'
+              : own < other
+                  ? 'L'
+                  : 'D';
+      return _FormRowData(
+        result: result,
+        score: '${own ?? 0}:${other ?? 0}',
+        opponent: opponent,
+        date: DateFormat('dd.MM.').format(candidate.kickoff),
+      );
+    }).toList();
+  }
+}
+
+class _FormColumn extends StatelessWidget {
+  const _FormColumn({required this.team, required this.rows});
+
+  final String team;
+  final List<_FormRowData> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          team,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(height: 6),
+        if (rows.isEmpty)
+          Text('Noch keine Spiele', style: Theme.of(context).textTheme.bodySmall)
+        else
+          for (final row in rows) _FormResultRow(row: row),
+      ],
+    );
+  }
+}
+
+class _FormResultRow extends StatelessWidget {
+  const _FormResultRow({required this.row});
+
+  final _FormRowData row;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (row.result) {
+      'W' => Colors.green,
+      'L' => Colors.red,
+      _ => Colors.grey,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color.withAlpha(38),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              row.result,
+              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '${row.date} · ${row.score} vs ${row.opponent}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FormRowData {
+  const _FormRowData({
+    required this.result,
+    required this.score,
+    required this.opponent,
+    required this.date,
+  });
+
+  final String result;
+  final String score;
+  final String opponent;
+  final String date;
 }
 
 Tip? _tipForMatch(List<Tip> tips, CupMatch match) {
