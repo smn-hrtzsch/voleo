@@ -173,7 +173,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         width: 44,
                         child: Text(
                           'Ges.',
-                          textAlign: TextAlign.center,
+                          textAlign: TextAlign.right,
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                 color: scheme.onSurfaceVariant,
                                 fontWeight: FontWeight.bold,
@@ -185,7 +185,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         width: 44,
                         child: Text(
                           'Tipps',
-                          textAlign: TextAlign.center,
+                          textAlign: TextAlign.right,
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                 color: scheme.onSurfaceVariant,
                                 fontWeight: FontWeight.bold,
@@ -955,7 +955,7 @@ class _PointsSummary extends StatelessWidget {
           width: 44,
           child: Text(
             '$totalPoints',
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.right,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: totalColor,
                   fontWeight: FontWeight.bold,
@@ -967,7 +967,7 @@ class _PointsSummary extends StatelessWidget {
           width: 44,
           child: Text(
             '$tipPoints',
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.right,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,

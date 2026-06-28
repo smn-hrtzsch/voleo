@@ -315,6 +315,15 @@ function hasConflictingFinalScore(first, second) {
     (first.homeScore !== second.homeScore || first.awayScore !== second.awayScore);
 }
 
+function sameKickoff(existingKickoff, nextKickoffStr) {
+  if (!existingKickoff || !nextKickoffStr) return false;
+  const existingMs = typeof existingKickoff.toMillis === "function"
+    ? existingKickoff.toMillis()
+    : new Date(existingKickoff).getTime();
+  const nextMs = new Date(nextKickoffStr).getTime();
+  return existingMs === nextMs;
+}
+
 function shouldKeepExistingMatch(existing, nextMatch) {
   if (!existing) return false;
 
@@ -493,34 +502,34 @@ async function fetchFootballDataMatches() {
     return { matches: [], headers: {}, status: 0 };
   }
 
-  let response;
   try {
-    response = await fetch(FOOTBALL_DATA_WC_MATCHES_URL, {
+    const response = await fetch(FOOTBALL_DATA_WC_MATCHES_URL, {
       headers: { "X-Auth-Token": token },
     });
+
+    const headers = {
+      apiVersion: response.headers.get("x-api-version"),
+      authenticatedClient: response.headers.get("x-authenticated-client"),
+      requestCounterReset: response.headers.get("x-requestcounter-reset"),
+      requestsAvailable: response.headers.get("x-requestsavailable"),
+    };
+
+    if (response.status === 429) {
+      console.warn("football-data.org rate limit reached.", headers);
+      return { matches: [], headers, status: response.status };
+    }
+    if (!response.ok) {
+      console.warn(`football-data.org request failed with ${response.status}.`, headers);
+      return { matches: [], headers, status: response.status };
+    }
+
+    const data = await response.json();
+    const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
+    return { matches, headers, status: response.status };
   } catch (error) {
-    console.warn("football-data.org request failed before receiving a response.", error);
+    console.warn("football-data.org matches fetch/parse failed.", error);
     return { matches: [], headers: {}, status: 0 };
   }
-  const headers = {
-    apiVersion: response.headers.get("x-api-version"),
-    authenticatedClient: response.headers.get("x-authenticated-client"),
-    requestCounterReset: response.headers.get("x-requestcounter-reset"),
-    requestsAvailable: response.headers.get("x-requestsavailable"),
-  };
-
-  if (response.status === 429) {
-    console.warn("football-data.org rate limit reached.", headers);
-    return { matches: [], headers, status: response.status };
-  }
-  if (!response.ok) {
-    console.warn(`football-data.org request failed with ${response.status}.`, headers);
-    return { matches: [], headers, status: response.status };
-  }
-
-  const data = await response.json();
-  const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
-  return { matches, headers, status: response.status };
 }
 
 async function fetchFootballDataStandings() {
@@ -530,63 +539,58 @@ async function fetchFootballDataStandings() {
     return { groups: {}, teams: [], headers: {}, status: 0 };
   }
 
-  let response;
   try {
-    response = await fetch(FOOTBALL_DATA_WC_STANDINGS_URL, {
+    const response = await fetch(FOOTBALL_DATA_WC_STANDINGS_URL, {
       headers: { "X-Auth-Token": token },
     });
-  } catch (error) {
-    console.warn("football-data.org standings request failed before receiving a response.", error);
-    return { groups: {}, teams: [], headers: {}, status: 0 };
-  }
 
-  const headers = {
-    apiVersion: response.headers.get("x-api-version"),
-    authenticatedClient: response.headers.get("x-authenticated-client"),
-    requestCounterReset: response.headers.get("x-requestcounter-reset"),
-    requestsAvailable: response.headers.get("x-requestsavailable"),
-  };
+    const headers = {
+      apiVersion: response.headers.get("x-api-version"),
+      authenticatedClient: response.headers.get("x-authenticated-client"),
+      requestCounterReset: response.headers.get("x-requestcounter-reset"),
+      requestsAvailable: response.headers.get("x-requestsavailable"),
+    };
 
-  if (response.status === 429) {
-    console.warn("football-data.org standings rate limit reached.", headers);
-    return { groups: {}, teams: [], headers, status: response.status };
-  }
-  if (!response.ok) {
-    console.warn(`football-data.org standings request failed with ${response.status}.`, headers);
-    return { groups: {}, teams: [], headers, status: response.status };
-  }
-
-  const data = await response.json();
-  const groups = {};
-  const teams = [];
-  for (const standing of data.standings ?? []) {
-    if (standing.type && standing.type !== "TOTAL") continue;
-    const group = groupKey(standing.group);
-    const rows = [];
-    for (const row of standing.table ?? []) {
-      const team = displayTeamName(row.team?.name);
-      if (!team) continue;
-      rows.push({
-        position: Number(row.position ?? 0),
-        team,
-        played: Number(row.playedGames ?? 0),
-        won: Number(row.won ?? 0),
-        drawn: Number(row.draw ?? 0),
-        lost: Number(row.lost ?? 0),
-        goalsFor: Number(row.goalsFor ?? 0),
-        goalsAgainst: Number(row.goalsAgainst ?? 0),
-        goalDifference: Number(row.goalDifference ?? 0),
-        points: Number(row.points ?? 0),
-      });
-      teams.push(team);
+    if (response.status === 429) {
+      console.warn("football-data.org standings rate limit reached.", headers);
+      return { groups: {}, teams: [], headers, status: response.status };
     }
-    if (group && rows.length > 0) {
-      rows.sort((a, b) => a.position - b.position);
+    if (!response.ok) {
+      console.warn(`football-data.org standings request failed with ${response.status}.`, headers);
+      return { groups: {}, teams: [], headers, status: response.status };
+    }
+
+    const data = await response.json();
+    const groups = {};
+    const teams = [];
+    for (const standing of data.standings ?? []) {
+      if (standing.type && standing.type !== "TOTAL") continue;
+      const group = groupKey(standing.group);
+      const rows = [];
+      for (const row of standing.table ?? []) {
+        const team = displayTeamName(row.team?.name);
+        if (!team) continue;
+        rows.push({
+          position: Number(row.position ?? 0),
+          team,
+          played: Number(row.playedGames ?? 0),
+          won: Number(row.won ?? 0),
+          drawn: Number(row.draw ?? 0),
+          lost: Number(row.lost ?? 0),
+          goalsFor: Number(row.goalsFor ?? 0),
+          goalsAgainst: Number(row.goalsAgainst ?? 0),
+          goalDifference: Number(row.goalDifference ?? 0),
+          points: Number(row.points ?? 0),
+        });
+        teams.push(team);
+      }
       groups[group] = rows;
     }
+    return { groups, teams, headers, status: response.status };
+  } catch (error) {
+    console.warn("football-data.org standings fetch/parse failed.", error);
+    return { groups: {}, teams: [], headers: {}, status: 0 };
   }
-
-  return { groups, teams, headers, status: response.status };
 }
 
 async function syncOfficialTable({ allowOpenLigaFallback = true } = {}) {
@@ -1817,6 +1821,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     existingMatchMap.set(doc.id, {
       homeTeam: data.homeTeam ?? null,
       awayTeam: data.awayTeam ?? null,
+      kickoff: data.kickoff ?? null,
       homeScore: data.homeScore ?? null,
       awayScore: data.awayScore ?? null,
       regularHomeScore: data.regularHomeScore ?? null,
@@ -1900,6 +1905,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     const changed = !existing ||
       existing.homeTeam !== match.homeTeam ||
       existing.awayTeam !== match.awayTeam ||
+      !sameKickoff(existing.kickoff, match.kickoff) ||
       existing.homeScore !== match.homeScore ||
       existing.awayScore !== match.awayScore ||
       existing.regularHomeScore !== (match.regularHomeScore ?? null) ||
@@ -2315,6 +2321,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
         continue;
       }
       const changed = !existingDoc.exists ||
+        !sameKickoff(existing.kickoff, match.kickoff) ||
         (existing.homeScore ?? null) !== match.homeScore ||
         (existing.awayScore ?? null) !== match.awayScore ||
         (existing.regularHomeScore ?? null) !== (match.regularHomeScore ?? null) ||
