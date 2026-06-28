@@ -36,6 +36,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
       body: AsyncValueView<List<Standing>>(
         value: standingsValue,
         data: (standings) {
+          final scheme = Theme.of(context).colorScheme;
           final sortedMatches = [...matches]
             ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
 
@@ -44,6 +45,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
 
           final List<_LiveStanding> liveStandings = standings.map((s) {
             int total = s.totalPoints;
+            int tipPoints = s.tipPoints;
             int exact = s.exactCount;
             int diff = s.differenceCount;
             int tendency = s.tendencyCount;
@@ -67,6 +69,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                 );
 
                 total += pts;
+                tipPoints += score.points;
                 updated = true;
                 if (score.isExact) {
                   exact++;
@@ -81,6 +84,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
             return _LiveStanding(
               standing: s,
               totalPoints: total,
+              tipPoints: tipPoints,
               exactCount: exact,
               differenceCount: diff,
               tendencyCount: tendency,
@@ -116,6 +120,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
             rankedLiveStandings.add(_LiveStanding(
               standing: cur.standing,
               totalPoints: cur.totalPoints,
+              tipPoints: cur.tipPoints,
               exactCount: cur.exactCount,
               differenceCount: cur.differenceCount,
               tendencyCount: cur.tendencyCount,
@@ -149,11 +154,52 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              Text('Tabelle', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              if (rankedLiveStandings.isEmpty)
-                const Text('Noch keine Spieler in dieser Runde.')
-              else
+              if (rankedLiveStandings.isEmpty) ...[
+                Text('Tabelle', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('Noch keine Spieler in dieser Runde.'),
+              ] else ...[
+                // Spaltenüberschriften auf Höhe der Tabelle-Überschrift
+                Padding(
+                  padding: const EdgeInsets.only(
+                      left: 4.0, right: 28.0, top: 8.0, bottom: 4.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Tabelle',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const Expanded(child: SizedBox()),
+                      // Platzhalter entsprechend dem LivePulseDot (14px)
+                      const SizedBox(width: 14),
+                      SizedBox(
+                        width: 44,
+                        child: Text(
+                          'Ges.',
+                          textAlign: TextAlign.right,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 44,
+                        child: Text(
+                          'Tipps',
+                          textAlign: TextAlign.right,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
                 for (final liveStanding in rankedLiveStandings) ...[
                   Card(
                     child: ListTile(
@@ -169,23 +215,16 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          if (liveStanding.hasLiveUpdates) ...[
-                            const LivePulseDot(),
-                            const SizedBox(width: 6),
-                          ],
-                          Text(
-                            '${liveStanding.totalPoints}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  color: liveStanding.hasLiveUpdates
-                                      ? Colors.green
-                                      : null,
-                                  fontWeight: liveStanding.hasLiveUpdates
-                                      ? FontWeight.bold
-                                      : null,
-                                ),
+                          SizedBox(
+                            width: 14,
+                            child: liveStanding.hasLiveUpdates
+                                ? const Center(child: LivePulseDot())
+                                : null,
+                          ),
+                          _PointsSummary(
+                            totalPoints: liveStanding.totalPoints,
+                            tipPoints: liveStanding.tipPoints,
+                            isLive: liveStanding.hasLiveUpdates,
                           ),
                         ],
                       ),
@@ -206,6 +245,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                   ),
                   const SizedBox(height: 8),
                 ],
+              ],
               const SizedBox(height: 12),
             ],
           );
@@ -879,6 +919,7 @@ class _LiveStanding {
   const _LiveStanding({
     required this.standing,
     required this.totalPoints,
+    required this.tipPoints,
     required this.exactCount,
     required this.differenceCount,
     required this.tendencyCount,
@@ -888,9 +929,56 @@ class _LiveStanding {
 
   final Standing standing;
   final int totalPoints;
+  final int tipPoints;
   final int exactCount;
   final int differenceCount;
   final int tendencyCount;
   final int rank;
   final bool hasLiveUpdates;
+}
+
+class _PointsSummary extends StatelessWidget {
+  const _PointsSummary({
+    required this.totalPoints,
+    required this.tipPoints,
+    required this.isLive,
+  });
+
+  final int totalPoints;
+  final int tipPoints;
+  final bool isLive;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final totalColor = isLive ? Colors.green : scheme.onSurface;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 44,
+          child: Text(
+            '$totalPoints',
+            textAlign: TextAlign.right,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: totalColor,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 44,
+          child: Text(
+            '$tipPoints',
+            textAlign: TextAlign.right,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
 }

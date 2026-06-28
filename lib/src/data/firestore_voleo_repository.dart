@@ -336,6 +336,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
                 uid: s.uid,
                 displayName: displayName,
                 totalPoints: s.totalPoints,
+                tipPoints: s.tipPoints,
                 exactCount: s.exactCount,
                 differenceCount: s.differenceCount,
                 tendencyCount: s.tendencyCount,
@@ -367,6 +368,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
                       userData?['nickname'] as String? ??
                       'Spieler',
                   totalPoints: memberData['totalPoints'] as int? ?? 0,
+                  tipPoints: memberData['tipPoints'] as int? ?? 0,
                   exactCount: memberData['exactCount'] as int? ?? 0,
                   differenceCount: memberData['differenceCount'] as int? ?? 0,
                   tendencyCount: memberData['tendencyCount'] as int? ?? 0,
@@ -1502,6 +1504,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
       uid: doc.id,
       displayName: data['displayName'] as String,
       totalPoints: data['totalPoints'] as int? ?? 0,
+      tipPoints: data['tipPoints'] as int? ?? 0,
       exactCount: data['exactCount'] as int? ?? 0,
       differenceCount: data['differenceCount'] as int? ?? 0,
       tendencyCount: data['tendencyCount'] as int? ?? 0,

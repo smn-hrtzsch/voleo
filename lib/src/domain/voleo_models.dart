@@ -256,6 +256,7 @@ class Standing {
     required this.uid,
     required this.displayName,
     required this.totalPoints,
+    required this.tipPoints,
     required this.exactCount,
     required this.differenceCount,
     required this.tendencyCount,
@@ -268,6 +269,7 @@ class Standing {
   final String uid;
   final String displayName;
   final int totalPoints;
+  final int tipPoints;
   final int exactCount;
   final int differenceCount;
   final int tendencyCount;

@@ -315,6 +315,15 @@ function hasConflictingFinalScore(first, second) {
     (first.homeScore !== second.homeScore || first.awayScore !== second.awayScore);
 }
 
+function sameKickoff(existingKickoff, nextKickoffStr) {
+  if (!existingKickoff || !nextKickoffStr) return false;
+  const existingMs = typeof existingKickoff.toMillis === "function"
+    ? existingKickoff.toMillis()
+    : new Date(existingKickoff).getTime();
+  const nextMs = new Date(nextKickoffStr).getTime();
+  return existingMs === nextMs;
+}
+
 function shouldKeepExistingMatch(existing, nextMatch) {
   if (!existing) return false;
 
@@ -493,34 +502,34 @@ async function fetchFootballDataMatches() {
     return { matches: [], headers: {}, status: 0 };
   }
 
-  let response;
   try {
-    response = await fetch(FOOTBALL_DATA_WC_MATCHES_URL, {
+    const response = await fetch(FOOTBALL_DATA_WC_MATCHES_URL, {
       headers: { "X-Auth-Token": token },
     });
+
+    const headers = {
+      apiVersion: response.headers.get("x-api-version"),
+      authenticatedClient: response.headers.get("x-authenticated-client"),
+      requestCounterReset: response.headers.get("x-requestcounter-reset"),
+      requestsAvailable: response.headers.get("x-requestsavailable"),
+    };
+
+    if (response.status === 429) {
+      console.warn("football-data.org rate limit reached.", headers);
+      return { matches: [], headers, status: response.status };
+    }
+    if (!response.ok) {
+      console.warn(`football-data.org request failed with ${response.status}.`, headers);
+      return { matches: [], headers, status: response.status };
+    }
+
+    const data = await response.json();
+    const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
+    return { matches, headers, status: response.status };
   } catch (error) {
-    console.warn("football-data.org request failed before receiving a response.", error);
+    console.warn("football-data.org matches fetch/parse failed.", error);
     return { matches: [], headers: {}, status: 0 };
   }
-  const headers = {
-    apiVersion: response.headers.get("x-api-version"),
-    authenticatedClient: response.headers.get("x-authenticated-client"),
-    requestCounterReset: response.headers.get("x-requestcounter-reset"),
-    requestsAvailable: response.headers.get("x-requestsavailable"),
-  };
-
-  if (response.status === 429) {
-    console.warn("football-data.org rate limit reached.", headers);
-    return { matches: [], headers, status: response.status };
-  }
-  if (!response.ok) {
-    console.warn(`football-data.org request failed with ${response.status}.`, headers);
-    return { matches: [], headers, status: response.status };
-  }
-
-  const data = await response.json();
-  const matches = (data.matches ?? []).map(normalizeFootballDataMatch).filter(Boolean);
-  return { matches, headers, status: response.status };
 }
 
 async function fetchFootballDataStandings() {
@@ -530,63 +539,58 @@ async function fetchFootballDataStandings() {
     return { groups: {}, teams: [], headers: {}, status: 0 };
   }
 
-  let response;
   try {
-    response = await fetch(FOOTBALL_DATA_WC_STANDINGS_URL, {
+    const response = await fetch(FOOTBALL_DATA_WC_STANDINGS_URL, {
       headers: { "X-Auth-Token": token },
     });
-  } catch (error) {
-    console.warn("football-data.org standings request failed before receiving a response.", error);
-    return { groups: {}, teams: [], headers: {}, status: 0 };
-  }
 
-  const headers = {
-    apiVersion: response.headers.get("x-api-version"),
-    authenticatedClient: response.headers.get("x-authenticated-client"),
-    requestCounterReset: response.headers.get("x-requestcounter-reset"),
-    requestsAvailable: response.headers.get("x-requestsavailable"),
-  };
+    const headers = {
+      apiVersion: response.headers.get("x-api-version"),
+      authenticatedClient: response.headers.get("x-authenticated-client"),
+      requestCounterReset: response.headers.get("x-requestcounter-reset"),
+      requestsAvailable: response.headers.get("x-requestsavailable"),
+    };
 
-  if (response.status === 429) {
-    console.warn("football-data.org standings rate limit reached.", headers);
-    return { groups: {}, teams: [], headers, status: response.status };
-  }
-  if (!response.ok) {
-    console.warn(`football-data.org standings request failed with ${response.status}.`, headers);
-    return { groups: {}, teams: [], headers, status: response.status };
-  }
-
-  const data = await response.json();
-  const groups = {};
-  const teams = [];
-  for (const standing of data.standings ?? []) {
-    if (standing.type && standing.type !== "TOTAL") continue;
-    const group = groupKey(standing.group);
-    const rows = [];
-    for (const row of standing.table ?? []) {
-      const team = displayTeamName(row.team?.name);
-      if (!team) continue;
-      rows.push({
-        position: Number(row.position ?? 0),
-        team,
-        played: Number(row.playedGames ?? 0),
-        won: Number(row.won ?? 0),
-        drawn: Number(row.draw ?? 0),
-        lost: Number(row.lost ?? 0),
-        goalsFor: Number(row.goalsFor ?? 0),
-        goalsAgainst: Number(row.goalsAgainst ?? 0),
-        goalDifference: Number(row.goalDifference ?? 0),
-        points: Number(row.points ?? 0),
-      });
-      teams.push(team);
+    if (response.status === 429) {
+      console.warn("football-data.org standings rate limit reached.", headers);
+      return { groups: {}, teams: [], headers, status: response.status };
     }
-    if (group && rows.length > 0) {
-      rows.sort((a, b) => a.position - b.position);
+    if (!response.ok) {
+      console.warn(`football-data.org standings request failed with ${response.status}.`, headers);
+      return { groups: {}, teams: [], headers, status: response.status };
+    }
+
+    const data = await response.json();
+    const groups = {};
+    const teams = [];
+    for (const standing of data.standings ?? []) {
+      if (standing.type && standing.type !== "TOTAL") continue;
+      const group = groupKey(standing.group);
+      const rows = [];
+      for (const row of standing.table ?? []) {
+        const team = displayTeamName(row.team?.name);
+        if (!team) continue;
+        rows.push({
+          position: Number(row.position ?? 0),
+          team,
+          played: Number(row.playedGames ?? 0),
+          won: Number(row.won ?? 0),
+          drawn: Number(row.draw ?? 0),
+          lost: Number(row.lost ?? 0),
+          goalsFor: Number(row.goalsFor ?? 0),
+          goalsAgainst: Number(row.goalsAgainst ?? 0),
+          goalDifference: Number(row.goalDifference ?? 0),
+          points: Number(row.points ?? 0),
+        });
+        teams.push(team);
+      }
       groups[group] = rows;
     }
+    return { groups, teams, headers, status: response.status };
+  } catch (error) {
+    console.warn("football-data.org standings fetch/parse failed.", error);
+    return { groups: {}, teams: [], headers: {}, status: 0 };
   }
-
-  return { groups, teams, headers, status: response.status };
 }
 
 async function syncOfficialTable({ allowOpenLigaFallback = true } = {}) {
@@ -1077,21 +1081,21 @@ function getKnockoutMatches() {
   const list = [];
   const sfMatches = [
     ['Zweiter Gruppe A', 'Zweiter Gruppe B', '2026-06-29T17:00:00Z'],
-    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
     ['Sieger Gruppe E', 'Bester 3. Gruppe A/B/C/D/F', '2026-06-30T17:00:00Z'],
     ['Sieger Gruppe F', 'Zweiter Gruppe C', '2026-06-30T20:00:00Z'],
-    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
+    ['Sieger Gruppe C', 'Zweiter Gruppe F', '2026-06-29T20:00:00Z'],
     ['Sieger Gruppe I', 'Bester 3. Gruppe C/D/F/G/H', '2026-07-01T20:00:00Z'],
+    ['Zweiter Gruppe E', 'Zweiter Gruppe I', '2026-07-01T17:00:00Z'],
     ['Sieger Gruppe A', 'Bester 3. Gruppe C/E/F/H/I', '2026-07-02T17:00:00Z'],
     ['Sieger Gruppe L', 'Bester 3. Gruppe E/H/I/J/K', '2026-07-02T20:00:00Z'],
-    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
     ['Sieger Gruppe D', 'Bester 3. Gruppe B/E/F/I/J', '2026-07-03T20:00:00Z'],
-    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
+    ['Sieger Gruppe G', 'Bester 3. Gruppe A/E/H/I/J', '2026-07-03T17:00:00Z'],
     ['Zweiter Gruppe K', 'Zweiter Gruppe L', '2026-07-04T20:00:00Z'],
+    ['Sieger Gruppe H', 'Zweiter Gruppe J', '2026-07-04T17:00:00Z'],
     ['Sieger Gruppe B', 'Bester 3. Gruppe E/F/G/I/J', '2026-07-05T17:00:00Z'],
-    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
     ['Sieger Gruppe J', 'Zweiter Gruppe H', '2026-07-06T17:00:00Z'],
     ['Sieger Gruppe K', 'Bester 3. Gruppe D/E/I/J/L', '2026-07-06T20:00:00Z'],
+    ['Zweiter Gruppe D', 'Zweiter Gruppe G', '2026-07-05T20:00:00Z'],
   ];
 
   for (let i = 0; i < sfMatches.length; i++) {
@@ -1110,14 +1114,14 @@ function getKnockoutMatches() {
   }
 
   const afMatches = [
-    ['Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', '2026-07-07T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 4', '2026-07-07T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 5', 'Sieger Sechzehntelfinale 7', '2026-07-08T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 6', 'Sieger Sechzehntelfinale 8', '2026-07-08T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 11', '2026-07-09T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 10', 'Sieger Sechzehntelfinale 12', '2026-07-09T20:00:00Z'],
-    ['Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', '2026-07-10T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', '2026-07-10T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 5', '2026-07-07T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', '2026-07-07T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 4', 'Sieger Sechzehntelfinale 6', '2026-07-08T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 7', 'Sieger Sechzehntelfinale 8', '2026-07-08T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 11', 'Sieger Sechzehntelfinale 12', '2026-07-09T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 9', 'Sieger Sechzehntelfinale 10', '2026-07-09T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 14', 'Sieger Sechzehntelfinale 16', '2026-07-10T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 13', 'Sieger Sechzehntelfinale 15', '2026-07-10T20:00:00Z'],
   ];
 
   for (let i = 0; i < afMatches.length; i++) {
@@ -1136,10 +1140,10 @@ function getKnockoutMatches() {
   }
 
   const vfMatches = [
-    ['Sieger Achtelfinale 1', 'Sieger Achtelfinale 3', '2026-07-12T17:00:00Z'],
-    ['Sieger Achtelfinale 2', 'Sieger Achtelfinale 4', '2026-07-12T20:00:00Z'],
-    ['Sieger Achtelfinale 5', 'Sieger Achtelfinale 7', '2026-07-13T17:00:00Z'],
-    ['Sieger Achtelfinale 6', 'Sieger Achtelfinale 8', '2026-07-13T20:00:00Z'],
+    ['Sieger Achtelfinale 1', 'Sieger Achtelfinale 2', '2026-07-12T17:00:00Z'],
+    ['Sieger Achtelfinale 5', 'Sieger Achtelfinale 6', '2026-07-12T20:00:00Z'],
+    ['Sieger Achtelfinale 3', 'Sieger Achtelfinale 4', '2026-07-13T17:00:00Z'],
+    ['Sieger Achtelfinale 7', 'Sieger Achtelfinale 8', '2026-07-13T20:00:00Z'],
   ];
 
   for (let i = 0; i < vfMatches.length; i++) {
@@ -1158,8 +1162,8 @@ function getKnockoutMatches() {
   }
 
   const hfMatches = [
-    ['Sieger Viertelfinale 1', 'Sieger Viertelfinale 3', '2026-07-15T19:00:00Z'],
-    ['Sieger Viertelfinale 2', 'Sieger Viertelfinale 4', '2026-07-16T19:00:00Z'],
+    ['Sieger Viertelfinale 1', 'Sieger Viertelfinale 2', '2026-07-15T19:00:00Z'],
+    ['Sieger Viertelfinale 3', 'Sieger Viertelfinale 4', '2026-07-16T19:00:00Z'],
   ];
 
   for (let i = 0; i < hfMatches.length; i++) {
@@ -1365,14 +1369,14 @@ function resolveThirdPlaceSlots(matches, groupMatches) {
   const assignments = getThirdPlaceAssignments(calculateCompletedGroupTables(groupMatches));
   if (!assignments) return matches;
   const winnerGroupByMatchId = {
-    "wc-ko-sf-3": "E",
-    "wc-ko-sf-6": "I",
+    "wc-ko-sf-2": "E",
+    "wc-ko-sf-5": "I",
     "wc-ko-sf-7": "A",
     "wc-ko-sf-8": "L",
-    "wc-ko-sf-9": "G",
     "wc-ko-sf-10": "D",
+    "wc-ko-sf-11": "G",
     "wc-ko-sf-13": "B",
-    "wc-ko-sf-16": "K",
+    "wc-ko-sf-15": "K",
   };
   for (const match of matches) {
     const winnerGroup = winnerGroupByMatchId[match.id];
@@ -1501,6 +1505,7 @@ async function recalculateScores(allMatches, finalMatches) {
         displayName: displayNames.get(uid) ?? "Spieler",
         photoUrl: photoUrls.get(uid) ?? null,
         totalPoints: leftAt !== null ? frozenPoints : frozenPoints,
+        tipPoints: 0,
         exactCount: leftAt !== null ? frozenExactCount : frozenExactCount,
         differenceCount: leftAt !== null ? frozenDifferenceCount : frozenDifferenceCount,
         tendencyCount: leftAt !== null ? frozenTendencyCount : frozenTendencyCount,
@@ -1566,6 +1571,7 @@ async function recalculateScores(allMatches, finalMatches) {
       audit.scoredTips += 1;
 
       current.totalPoints += score.points;
+      current.tipPoints += score.points;
       if (score.isExact) {
         current.exactCount += 1;
       } else if (score.isDifference) {
@@ -1604,6 +1610,7 @@ async function recalculateScores(allMatches, finalMatches) {
       batch.set(standingRef, {
         displayName: standing.displayName,
         totalPoints: standing.totalPoints,
+        tipPoints: standing.tipPoints ?? 0,
         exactCount: standing.exactCount,
         differenceCount: standing.differenceCount ?? 0,
         tendencyCount: standing.tendencyCount,
@@ -1814,6 +1821,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     existingMatchMap.set(doc.id, {
       homeTeam: data.homeTeam ?? null,
       awayTeam: data.awayTeam ?? null,
+      kickoff: data.kickoff ?? null,
       homeScore: data.homeScore ?? null,
       awayScore: data.awayScore ?? null,
       regularHomeScore: data.regularHomeScore ?? null,
@@ -1897,6 +1905,7 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
     const changed = !existing ||
       existing.homeTeam !== match.homeTeam ||
       existing.awayTeam !== match.awayTeam ||
+      !sameKickoff(existing.kickoff, match.kickoff) ||
       existing.homeScore !== match.homeScore ||
       existing.awayScore !== match.awayScore ||
       existing.regularHomeScore !== (match.regularHomeScore ?? null) ||
@@ -2022,6 +2031,152 @@ function hasNoActiveMembers(leagueData) {
   return Array.isArray(memberIds) && memberIds.length === 0;
 }
 
+function berlinDayKey(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function reminderWindowForMatch(match, now = new Date()) {
+  const kickoff = new Date(match.kickoff);
+  const diff = kickoff.getTime() - now.getTime();
+  const tolerance = 5 * 60 * 1000;
+  if (diff >= 12 * 60 * 60 * 1000 && diff < 12 * 60 * 60 * 1000 + tolerance) return "12h";
+  if (diff >= 60 * 60 * 1000 && diff < 60 * 60 * 1000 + tolerance) return "1h";
+  return null;
+}
+
+async function sendTipRemindersForMatches(matches, now = new Date()) {
+  const scheduled = matches.filter((match) => match.status !== "finalResult" && new Date(match.kickoff) > now);
+  const targets = new Map();
+  for (const match of scheduled) {
+    const window = reminderWindowForMatch(match, now);
+    if (!window) continue;
+    const dayKey = berlinDayKey(new Date(match.kickoff));
+    targets.set(`${dayKey}:${window}`, { dayKey, window });
+  }
+  if (targets.size === 0) return { sent: 0, skipped: 0, targetCount: 0 };
+
+  const leaguesSnap = await db.collection("leagues").get();
+  const activeUids = new Set();
+  const memberLeagueIds = new Map();
+  leaguesSnap.forEach((leagueDoc) => {
+    const ids = Array.isArray(leagueDoc.data().memberIds) ? leagueDoc.data().memberIds : [];
+    for (const uid of ids) {
+      activeUids.add(uid);
+      const list = memberLeagueIds.get(uid) ?? [];
+      list.push(leagueDoc.id);
+      memberLeagueIds.set(uid, list);
+    }
+  });
+
+  let sent = 0;
+  let skipped = 0;
+  for (const { dayKey, window } of targets.values()) {
+    const dayMatches = scheduled.filter((match) => berlinDayKey(new Date(match.kickoff)) === dayKey);
+    for (const uid of activeUids) {
+      const leagueIds = memberLeagueIds.get(uid) ?? [];
+      const tipsById = new Map();
+      for (const leagueId of leagueIds) {
+        const tipsSnap = await db.collection("leagues").doc(leagueId).collection("tips")
+          .where("uid", "==", uid).get();
+        tipsSnap.forEach((doc) => {
+          const tip = doc.data();
+          tipsById.set(tip.matchId, tip);
+        });
+      }
+      const missing = dayMatches.some((match) => !equivalentTipMatchIds(match).some((id) => {
+        const tip = tipsById.get(id);
+        return tip != null && tipIsCompleteForMatch(tip, match);
+      }));
+      if (!missing) {
+        skipped += 1;
+        continue;
+      }
+
+      const dedupeRef = db.collection("notificationDedup").doc(`tipReminder_${uid}_${dayKey}_${window}`);
+      try {
+        await dedupeRef.create({ uid, dayKey, window, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      } catch (_) {
+        skipped += 1;
+        continue;
+      }
+
+      const tokensSnap = await db.collection("users").doc(uid).collection("fcmTokens").get();
+      const tokens = tokensSnap.docs.map((doc) => doc.data().token).filter(Boolean);
+      if (tokens.length === 0) {
+        skipped += 1;
+        continue;
+      }
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: {
+          title: window === "12h" ? "Tipps nicht vergessen" : "Letzte Chance zum Tippen",
+          body: "Du hast für heute noch nicht alle Spiele getippt.",
+        },
+        data: { type: "tip_reminder", dayKey, window },
+      });
+      sent += response.successCount;
+      response.responses.forEach((result, index) => {
+        if (!result.error) return;
+        const code = result.error.code;
+        if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+          tokensSnap.docs[index]?.ref.delete().catch(() => undefined);
+        }
+      });
+    }
+  }
+  return { sent, skipped, targetCount: targets.size };
+}
+
+async function fetchReminderCandidateMatches(now = new Date()) {
+  const windows = [60 * 60 * 1000, 12 * 60 * 60 * 1000];
+  const tolerance = 5 * 60 * 1000;
+  const byId = new Map();
+  for (const offset of windows) {
+    const start = new Date(now.getTime() + offset);
+    const end = new Date(start.getTime() + tolerance);
+    const snap = await db.collection("matches")
+      .where("kickoff", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("kickoff", "<", admin.firestore.Timestamp.fromDate(end))
+      .get();
+    snap.forEach((doc) => {
+      const data = doc.data();
+      byId.set(doc.id, {
+        id: doc.id,
+        ...data,
+        kickoff: data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff,
+      });
+    });
+  }
+  return [...byId.values()].filter((match) => match.kickoff);
+}
+
+async function fetchReminderDayMatches(targets, now = new Date()) {
+  const byId = new Map();
+  for (const { dayKey } of targets.values()) {
+    const [year, month, day] = dayKey.split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day - 1, 22, 0, 0));
+    const end = new Date(Date.UTC(year, month - 1, day + 1, 2, 0, 0));
+    const snap = await db.collection("matches")
+      .where("kickoff", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("kickoff", "<", admin.firestore.Timestamp.fromDate(end))
+      .get();
+    snap.forEach((doc) => {
+      const data = doc.data();
+      const kickoff = data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff;
+      if (!kickoff) return;
+      if (berlinDayKey(new Date(kickoff)) !== dayKey) return;
+      if (new Date(kickoff) <= now) return;
+      byId.set(doc.id, { id: doc.id, ...data, kickoff });
+    });
+  }
+  return [...byId.values()];
+}
+
 if (process.env.NODE_ENV === "test") {
   exports.__test = {
     calculateExtraPoints,
@@ -2042,6 +2197,9 @@ if (process.env.NODE_ENV === "test") {
     resolveDirectGroupSlots,
     getThirdPlaceAssignments,
     resolveThirdPlaceSlots,
+    berlinDayKey,
+    reminderWindowForMatch,
+    sendTipRemindersForMatches,
   };
 }
 
@@ -2069,6 +2227,27 @@ exports.cleanupEmptyLeagues = functions.region("europe-west3").runWith({
   }
 
   console.log(`cleanupEmptyLeagues deleted ${deletedCount} empty league(s).`);
+  return null;
+});
+
+exports.sendTipReminders = functions.region("europe-west3").runWith({
+  timeoutSeconds: 300,
+  memory: "256MB",
+}).pubsub.schedule("*/5 * * * *").timeZone("Europe/Berlin").onRun(async () => {
+  const now = new Date();
+  const candidateMatches = await fetchReminderCandidateMatches(now);
+  const targets = new Map();
+  for (const match of candidateMatches) {
+    const window = reminderWindowForMatch(match, now);
+    if (!window) continue;
+    const dayKey = berlinDayKey(new Date(match.kickoff));
+    targets.set(`${dayKey}:${window}`, { dayKey, window });
+  }
+  const matches = targets.size === 0
+    ? candidateMatches
+    : await fetchReminderDayMatches(targets, now);
+  const result = await sendTipRemindersForMatches(matches);
+  console.log("Tip reminder result", JSON.stringify(result));
   return null;
 });
 
@@ -2142,6 +2321,7 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
         continue;
       }
       const changed = !existingDoc.exists ||
+        !sameKickoff(existing.kickoff, match.kickoff) ||
         (existing.homeScore ?? null) !== match.homeScore ||
         (existing.awayScore ?? null) !== match.awayScore ||
         (existing.regularHomeScore ?? null) !== (match.regularHomeScore ?? null) ||

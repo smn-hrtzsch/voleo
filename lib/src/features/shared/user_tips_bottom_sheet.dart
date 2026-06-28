@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain/clock.dart';
@@ -69,7 +70,7 @@ void showUserTipsBottomSheet({
   );
 }
 
-class UserTipsBottomSheetContent extends StatefulWidget {
+class UserTipsBottomSheetContent extends ConsumerStatefulWidget {
   const UserTipsBottomSheetContent({
     required this.scrollController,
     required this.displayName,
@@ -92,13 +93,22 @@ class UserTipsBottomSheetContent extends StatefulWidget {
   final bool showPicks;
 
   @override
-  State<UserTipsBottomSheetContent> createState() =>
+  ConsumerState<UserTipsBottomSheetContent> createState() =>
       _UserTipsBottomSheetContentState();
 }
 
 class _UserTipsBottomSheetContentState
-    extends State<UserTipsBottomSheetContent> {
+    extends ConsumerState<UserTipsBottomSheetContent> {
   late String _selectedFilter;
+  final _pageController = PageController();
+  var _selectedDayIndex = 0;
+  var _didSetInitialDay = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -146,6 +156,7 @@ class _UserTipsBottomSheetContentState
 
   @override
   Widget build(BuildContext context) {
+    final swipeByDay = ref.watch(dateModeProvider);
     // Filter matches
     final filteredMatches = widget.matches.where((match) {
       if (_selectedFilter == 'Alle') return true;
@@ -155,6 +166,11 @@ class _UserTipsBottomSheetContentState
       }
       return match.stage == _selectedFilter;
     }).toList();
+    final days = _groupByDay(filteredMatches);
+    final dayKeys = days.keys.toList()..sort();
+    _setInitialDay(dayKeys);
+    final safeDayIndex =
+        dayKeys.isEmpty ? 0 : _selectedDayIndex.clamp(0, dayKeys.length - 1);
 
     final favPoints = (widget.showPicks &&
             widget.userProfile?.favoriteTeam != null &&
@@ -243,6 +259,18 @@ class _UserTipsBottomSheetContentState
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            FilterChip(
+              selected: swipeByDay,
+              showCheckmark: false,
+              avatar: const Icon(Icons.calendar_today_outlined, size: 16),
+              label: Text(swipeByDay ? 'Swipe' : 'Liste'),
+              onSelected: (_) {
+                final next = !swipeByDay;
+                ref.read(dateModeProvider.notifier).setSwipeByDay(next);
+                if (next) _jumpToSelectedDayAfterBuild();
+              },
+            ),
+            const SizedBox(width: 8),
             // Stage filters dropdown
             DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -251,6 +279,8 @@ class _UserTipsBottomSheetContentState
                   if (newValue != null) {
                     setState(() {
                       _selectedFilter = newValue;
+                      _selectedDayIndex = 0;
+                      _didSetInitialDay = false;
                     });
                   }
                 },
@@ -278,7 +308,7 @@ class _UserTipsBottomSheetContentState
           ],
         ),
         const Divider(),
-        if (filteredMatches.isNotEmpty) ...[
+        if (filteredMatches.isNotEmpty && !swipeByDay) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
@@ -317,353 +347,406 @@ class _UserTipsBottomSheetContentState
               child: Text('Keine Spiele in dieser Phase.'),
             ),
           )
-        else
-          for (final match in filteredMatches) ...[
-            (() {
-              final tip = widget.userTips.cast<Tip?>().firstWhere(
-                (t) {
-                  if (t == null) return false;
-                  if (t.matchId == match.id) return true;
-                  if (match.originalId != null) {
-                    final cleanTipId = t.matchId.replaceAll('openligadb-', '');
-                    final cleanOrigId =
-                        match.originalId!.replaceAll('openligadb-', '');
-                    if (cleanTipId == cleanOrigId) return true;
-                  }
-                  return false;
-                },
-                orElse: () => null,
-              );
-              final isMatchLocked = match.status != MatchStatus.scheduled ||
-                  VoleoClock.now.isAfter(match.kickoff);
-              final showTip = widget.isCurrentUser || isMatchLocked;
-
-              final homeFlag = CountryFlags.getFlag(match.homeTeam);
-              final awayFlag = CountryFlags.getFlag(match.awayTeam);
-
-              Widget tipWidget;
-              Widget? trailingWidget;
-
-              if (showTip) {
-                if (tip != null) {
-                  final isLive = match.status == MatchStatus.live;
-                  final finalScore = match.status == MatchStatus.finalResult
-                      ? scoreTipForMatch(tip: tip, match: match)
-                      : null;
-                  final liveScore =
-                      isLive ? scoreLiveTip(tip: tip, match: match) : null;
-                  final liveTipPoints = liveScore?.points ?? 0;
-
-                  final liveTotalPts = isLive
-                      ? getLiveMatchTotalPoints(
-                          tipPoints: liveTipPoints,
-                          favoriteTeam: widget.userProfile?.favoriteTeam,
-                          predictedChampion:
-                              widget.userProfile?.predictedChampion,
-                          match: match,
-                        )
-                      : 0;
-
-                  final totalPts = getMatchTotalPoints(
-                    tipPoints: tip.points,
-                    favoriteTeam: widget.userProfile?.favoriteTeam,
-                    predictedChampion: widget.userProfile?.predictedChampion,
-                    match: match,
-                  );
-
-                  final isCompleted = match.status == MatchStatus.finalResult;
-                  final compactTip = _compactTipLabel(tip, match);
-
-                  if (isCompleted) {
-                    tipWidget = Text(
-                      'Tipp: $compactTip (${_compactAssessmentLabel(
-                        finalScore,
-                        match: match,
-                        fallbackPoints: tip.points,
-                      )})',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    );
-                  } else if (isLive) {
-                    tipWidget = Text(
-                      'Tipp: $compactTip (aktuell ${_compactAssessmentLabel(
-                        liveScore,
-                        match: match,
-                        fallbackPoints: liveTipPoints,
-                      )})',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.green),
-                    );
-                  } else {
-                    tipWidget = Text(
-                      'Tipp: $compactTip',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    );
-                  }
-
-                  if (!isTipCompleteForMatch(tip, match)) {
-                    tipWidget = Row(
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          size: 18,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(child: tipWidget),
-                      ],
-                    );
-                  }
-
-                  if (isLive) {
-                    trailingWidget = Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withAlpha(38),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '+$liveTotalPts',
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        const LivePulseDot(size: 6),
-                      ],
-                    );
-                  } else if (isCompleted) {
-                    trailingWidget = Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: totalPts > 0
-                            ? Colors.green.withAlpha(38)
-                            : Colors.grey.withAlpha(38),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '+$totalPts',
-                        style: TextStyle(
-                          color: totalPts > 0 ? Colors.green : Colors.grey,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    );
-                  }
-                } else {
-                  tipWidget = const Text(
-                    'Kein Tipp',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  );
-                }
-              } else {
-                tipWidget = const Row(
-                  mainAxisSize: MainAxisSize.min,
+        else if (swipeByDay) ...[
+          _PlayerDaySwitcher(
+            day: dayKeys[safeDayIndex],
+            index: safeDayIndex,
+            count: dayKeys.length,
+            onPrevious:
+                safeDayIndex == 0 ? null : () => _goToDay(safeDayIndex - 1),
+            onNext: safeDayIndex == dayKeys.length - 1
+                ? null
+                : () => _goToDay(safeDayIndex + 1),
+          ),
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.52,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: dayKeys.length,
+              onPageChanged: (index) =>
+                  setState(() => _selectedDayIndex = index),
+              itemBuilder: (context, index) {
+                final dayMatches = days[dayKeys[index]] ?? const <CupMatch>[];
+                return ListView(
+                  padding: EdgeInsets.zero,
                   children: [
-                    Icon(Icons.lock, size: 14, color: Colors.grey),
-                    SizedBox(width: 4),
-                    Text(
-                      'Tipp verdeckt',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
+                    for (final match in dayMatches)
+                      _buildMatchEntry(context, match),
                   ],
                 );
-              }
-              final pointsWidget = SizedBox(
-                width: 40,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: trailingWidget ?? const SizedBox.shrink(),
-                ),
-              );
-
-              final kickoffStr =
-                  DateFormat('dd.MM. HH:mm').format(match.kickoff);
-              final isLive = match.status == MatchStatus.live;
-              final winner =
-                  match.isKnockout && match.status == MatchStatus.finalResult
-                      ? getMatchWinner(match)
-                      : null;
-              final isHomeWinner =
-                  winner != null && isSameTeam(winner, match.homeTeam);
-              final isAwayWinner =
-                  winner != null && isSameTeam(winner, match.awayTeam);
-              final stageLabel = match.group.isNotEmpty
-                  ? '${match.stage} · Gruppe ${match.group}'
-                  : match.stage;
-
-              final hasProgression =
-                  match.otHomeScore != null || match.penaltyHomeScore != null;
-              final progressionParts = <String>[];
-              if (match.otHomeScore != null) {
-                progressionParts
-                    .add('${match.otHomeScore}:${match.otAwayScore} n.V.');
-              }
-              if (match.penaltyHomeScore != null) {
-                progressionParts.add(
-                    '${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
-              }
-              final progressionText = progressionParts.join(' • ');
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '$kickoffStr · $stageLabel',
-                          style:
-                              const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                        if (isLive) ...[
-                          const SizedBox(width: 6),
-                          const LivePulseDot(),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'LIVE',
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const SizedBox(width: 40),
-                        const SizedBox(width: 4),
-                        // Home Team Name (Right aligned)
-                        Expanded(
-                          flex: 3,
-                          child: TeamNameWithPicks(
-                            teamName: match.homeTeam,
-                            user: widget.userProfile,
-                            isRightAligned: true,
-                            isWinner: isHomeWinner,
-                            isLoser: winner != null && !isHomeWinner,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isHomeWinner
-                                  ? FontWeight.bold
-                                  : FontWeight.w500,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        // Flags and Score in the middle (Correct flags in the middle alignment)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(homeFlag,
-                                style: const TextStyle(fontSize: 20)),
-                            const SizedBox(width: 4),
-                            SizedBox(
-                              width: 36,
-                              child: Text(
-                                match.status == MatchStatus.finalResult ||
-                                        match.status == MatchStatus.live
-                                    ? '${match.regularHomeScore ?? match.homeScore} : ${match.regularAwayScore ?? match.awayScore}'
-                                    : '- : -',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: isLive
-                                      ? Colors.green
-                                      : Theme.of(context).colorScheme.onSurface,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(awayFlag,
-                                style: const TextStyle(fontSize: 20)),
-                          ],
-                        ),
-                        const SizedBox(width: 4),
-                        // Away Team Name (Left aligned)
-                        Expanded(
-                          flex: 3,
-                          child: TeamNameWithPicks(
-                            teamName: match.awayTeam,
-                            user: widget.userProfile,
-                            isRightAligned: false,
-                            isWinner: isAwayWinner,
-                            isLoser: winner != null && !isAwayWinner,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isAwayWinner
-                                  ? FontWeight.bold
-                                  : FontWeight.w500,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        pointsWidget,
-                      ],
-                    ),
-                    if (hasProgression)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Center(
-                          child: Text(
-                            progressionText,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 4),
-                    Center(
-                      child: DefaultTextStyle(
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        child: tipWidget,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Divider(height: 1),
-                  ],
-                ),
-              );
-            })(),
+              },
+            ),
+          ),
+        ] else
+          for (final match in filteredMatches) ...[
+            _buildMatchEntry(context, match),
           ],
       ],
+    );
+  }
+
+  Widget _buildMatchEntry(BuildContext context, CupMatch match) {
+    return (() {
+      final tip = widget.userTips.cast<Tip?>().firstWhere(
+        (t) {
+          if (t == null) return false;
+          if (t.matchId == match.id) return true;
+          if (match.originalId != null) {
+            final cleanTipId = t.matchId.replaceAll('openligadb-', '');
+            final cleanOrigId = match.originalId!.replaceAll('openligadb-', '');
+            if (cleanTipId == cleanOrigId) return true;
+          }
+          return false;
+        },
+        orElse: () => null,
+      );
+      final isMatchLocked = match.status != MatchStatus.scheduled ||
+          VoleoClock.now.isAfter(match.kickoff);
+      final showTip = widget.isCurrentUser || isMatchLocked;
+
+      final homeFlag = CountryFlags.getFlag(match.homeTeam);
+      final awayFlag = CountryFlags.getFlag(match.awayTeam);
+
+      Widget tipWidget;
+      Widget? trailingWidget;
+
+      if (showTip) {
+        if (tip != null) {
+          final isLive = match.status == MatchStatus.live;
+          final finalScore = match.status == MatchStatus.finalResult
+              ? scoreTipForMatch(tip: tip, match: match)
+              : null;
+          final liveScore =
+              isLive ? scoreLiveTip(tip: tip, match: match) : null;
+          final liveTipPoints = liveScore?.points ?? 0;
+
+          final liveTotalPts = isLive
+              ? getLiveMatchTotalPoints(
+                  tipPoints: liveTipPoints,
+                  favoriteTeam: widget.userProfile?.favoriteTeam,
+                  predictedChampion: widget.userProfile?.predictedChampion,
+                  match: match,
+                )
+              : 0;
+
+          final totalPts = getMatchTotalPoints(
+            tipPoints: tip.points,
+            favoriteTeam: widget.userProfile?.favoriteTeam,
+            predictedChampion: widget.userProfile?.predictedChampion,
+            match: match,
+          );
+
+          final isCompleted = match.status == MatchStatus.finalResult;
+          final compactTip = _compactTipLabel(tip, match);
+
+          if (isCompleted) {
+            tipWidget = Text(
+              'Tipp: $compactTip (${_compactAssessmentLabel(
+                finalScore,
+                match: match,
+                fallbackPoints: tip.points,
+              )})',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            );
+          } else if (isLive) {
+            tipWidget = Text(
+              'Tipp: $compactTip (aktuell ${_compactAssessmentLabel(
+                liveScore,
+                match: match,
+                fallbackPoints: liveTipPoints,
+              )})',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.green),
+            );
+          } else {
+            tipWidget = Text(
+              'Tipp: $compactTip',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            );
+          }
+
+          if (!isTipCompleteForMatch(tip, match)) {
+            tipWidget = Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 4),
+                Expanded(child: tipWidget),
+              ],
+            );
+          }
+
+          if (isLive) {
+            trailingWidget = Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withAlpha(38),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '+$liveTotalPts',
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const LivePulseDot(size: 6),
+              ],
+            );
+          } else if (isCompleted) {
+            trailingWidget = Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: totalPts > 0
+                    ? Colors.green.withAlpha(38)
+                    : Colors.grey.withAlpha(38),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '+$totalPts',
+                style: TextStyle(
+                  color: totalPts > 0 ? Colors.green : Colors.grey,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            );
+          }
+        } else {
+          tipWidget = const Text(
+            'Kein Tipp',
+            style: TextStyle(
+              color: Colors.grey,
+              fontStyle: FontStyle.italic,
+            ),
+          );
+        }
+      } else {
+        tipWidget = const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock, size: 14, color: Colors.grey),
+            SizedBox(width: 4),
+            Text(
+              'Tipp verdeckt',
+              style: TextStyle(
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        );
+      }
+      final pointsWidget = SizedBox(
+        width: 40,
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: trailingWidget ?? const SizedBox.shrink(),
+        ),
+      );
+
+      final kickoffStr = DateFormat('dd.MM. HH:mm').format(match.kickoff);
+      final isLive = match.status == MatchStatus.live;
+      final winner = match.isKnockout && match.status == MatchStatus.finalResult
+          ? getMatchWinner(match)
+          : null;
+      final isHomeWinner = winner != null && isSameTeam(winner, match.homeTeam);
+      final isAwayWinner = winner != null && isSameTeam(winner, match.awayTeam);
+      final stageLabel = match.group.isNotEmpty
+          ? '${match.stage} · Gruppe ${match.group}'
+          : match.stage;
+
+      final hasProgression =
+          match.otHomeScore != null || match.penaltyHomeScore != null;
+      final progressionParts = <String>[];
+      if (match.otHomeScore != null) {
+        progressionParts.add('${match.otHomeScore}:${match.otAwayScore} n.V.');
+      }
+      if (match.penaltyHomeScore != null) {
+        progressionParts
+            .add('${match.penaltyHomeScore}:${match.penaltyAwayScore} i.E.');
+      }
+      final progressionText = progressionParts.join(' • ');
+
+      return InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => context.push('/league/tip/${match.id}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '$kickoffStr · $stageLabel',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                  if (isLive) ...[
+                    const SizedBox(width: 6),
+                    const LivePulseDot(),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'LIVE',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(width: 40),
+                  const SizedBox(width: 4),
+                  // Home Team Name (Right aligned)
+                  Expanded(
+                    flex: 3,
+                    child: TeamNameWithPicks(
+                      teamName: match.homeTeam,
+                      user: widget.userProfile,
+                      isRightAligned: true,
+                      isWinner: isHomeWinner,
+                      isLoser: winner != null && !isHomeWinner,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            isHomeWinner ? FontWeight.bold : FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Flags and Score in the middle (Correct flags in the middle alignment)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(homeFlag, style: const TextStyle(fontSize: 20)),
+                      const SizedBox(width: 4),
+                      SizedBox(
+                        width: 36,
+                        child: Text(
+                          match.status == MatchStatus.finalResult ||
+                                  match.status == MatchStatus.live
+                              ? '${match.regularHomeScore ?? match.homeScore} : ${match.regularAwayScore ?? match.awayScore}'
+                              : '- : -',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isLive
+                                ? Colors.green
+                                : Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(awayFlag, style: const TextStyle(fontSize: 20)),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  // Away Team Name (Left aligned)
+                  Expanded(
+                    flex: 3,
+                    child: TeamNameWithPicks(
+                      teamName: match.awayTeam,
+                      user: widget.userProfile,
+                      isRightAligned: false,
+                      isWinner: isAwayWinner,
+                      isLoser: winner != null && !isAwayWinner,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            isAwayWinner ? FontWeight.bold : FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  pointsWidget,
+                ],
+              ),
+              if (hasProgression)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Center(
+                    child: Text(
+                      progressionText,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Center(
+                child: DefaultTextStyle(
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  child: tipWidget,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Divider(height: 1),
+            ],
+          ),
+        ),
+      );
+    })();
+  }
+
+  void _setInitialDay(List<DateTime> dayKeys) {
+    if (_didSetInitialDay || dayKeys.isEmpty) return;
+    _didSetInitialDay = true;
+    final today = _dayFor(VoleoClock.now);
+    final todayIndex = dayKeys.indexWhere((day) => day == today);
+    final nextIndex = dayKeys.indexWhere((day) => day.isAfter(today));
+    _selectedDayIndex = todayIndex != -1
+        ? todayIndex
+        : nextIndex != -1
+            ? nextIndex
+            : dayKeys.length - 1;
+    _jumpToSelectedDayAfterBuild();
+  }
+
+  void _jumpToSelectedDayAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageController.hasClients) return;
+      _pageController.jumpToPage(_selectedDayIndex);
+    });
+  }
+
+  void _goToDay(int index) {
+    setState(() => _selectedDayIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
     );
   }
 
@@ -776,6 +859,81 @@ class _UserTipsBottomSheetContentState
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+Map<DateTime, List<CupMatch>> _groupByDay(List<CupMatch> matches) {
+  final result = <DateTime, List<CupMatch>>{};
+  for (final match in matches) {
+    final day = _dayFor(match.kickoff);
+    result.putIfAbsent(day, () => <CupMatch>[]).add(match);
+  }
+  return result;
+}
+
+DateTime _dayFor(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
+
+String _formatPlayerDay(DateTime day) {
+  const weekdays = [
+    'Montag',
+    'Dienstag',
+    'Mittwoch',
+    'Donnerstag',
+    'Freitag',
+    'Samstag',
+    'Sonntag',
+  ];
+  return '${weekdays[day.weekday - 1]}, ${DateFormat('dd.MM.').format(day)}';
+}
+
+class _PlayerDaySwitcher extends StatelessWidget {
+  const _PlayerDaySwitcher({
+    required this.day,
+    required this.index,
+    required this.count,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final DateTime day;
+  final int index;
+  final int count;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          IconButton.filledTonal(
+            onPressed: onPrevious,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  _formatPlayerDay(day),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  '${index + 1} von $count',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onNext,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
       ),
     );
   }

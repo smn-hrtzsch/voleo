@@ -316,6 +316,7 @@ List<Standing> rankStandings(List<Standing> standings) {
           uid: current.uid,
           displayName: current.displayName,
           totalPoints: current.totalPoints,
+          tipPoints: current.tipPoints,
           exactCount: current.exactCount,
           differenceCount: current.differenceCount,
           tendencyCount: current.tendencyCount,
