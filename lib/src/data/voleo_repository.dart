@@ -39,6 +39,9 @@ abstract class VoleoRepository {
     required String matchId,
     required int home,
     required int away,
+    int? otHome,
+    int? otAway,
+    PenaltyWinnerSide? penaltyWinner,
   });
   Future<void> deleteTip({required String matchId});
   Future<void> linkEmail(String email);

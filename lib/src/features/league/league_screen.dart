@@ -57,12 +57,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                     orElse: () => null,
                   );
               if (tip != null) {
-                final score = scoreTip(
-                  predictedHome: tip.predictedHome,
-                  predictedAway: tip.predictedAway,
-                  actualHome: match.homeScore ?? 0,
-                  actualAway: match.awayScore ?? 0,
-                );
+                final score = scoreLiveTip(tip: tip, match: match);
 
                 final pts = getLiveMatchTotalPoints(
                   tipPoints: score.points,
@@ -75,7 +70,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                 updated = true;
                 if (score.isExact) {
                   exact++;
-                } else if (score.points == 3) {
+                } else if (score.isDifference) {
                   diff++;
                 } else if (score.isTendency) {
                   tendency++;

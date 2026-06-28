@@ -50,13 +50,23 @@ service cloud.firestore {
     }
     match /leagues/{leagueId} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if signedIn();
+      allow read: if signedIn() && (
+        request.auth.uid in resource.data.memberIds
+        || resource.data.isTestLeague != true
+      );
       allow update: if isLeagueOwner(leagueId)
         || (signedIn() && onlyUpdatesOwnLeagueMembership());
       allow delete: if isLeagueOwner(leagueId);
 
+      match /testMatches/{matchId} {
+        allow read: if isLeagueMember(leagueId);
+        allow write: if false;
+      }
+
       match /members/{uid} {
-        allow read: if signedIn();
+        allow read: if isLeagueMember(leagueId)
+          || (signedIn()
+            && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isTestLeague != true);
         allow create: if signedIn() && request.auth.uid == uid;
         allow update: if signedIn() && request.auth.uid == uid;
         allow delete: if isLeagueOwner(leagueId) || (signedIn() && request.auth.uid == uid);

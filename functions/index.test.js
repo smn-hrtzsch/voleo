@@ -269,3 +269,128 @@ test("OpenLigaDB final cannot replace an existing football-data final", () => {
     source: "openligadb",
   }), true);
 });
+
+test("knockout tips award 5, 4 and 3 points after 90 minutes", () => {
+  const match = knockoutMatch({ regularHomeScore: 2, regularAwayScore: 0 });
+
+  assert.equal(__test.scoreTipForMatch(tip(2, 0), match).points, 5);
+  assert.equal(__test.scoreTipForMatch(tip(3, 1), match).points, 4);
+  assert.equal(__test.scoreTipForMatch(tip(1, 0), match).points, 3);
+});
+
+test("knockout tips award at most 5 points after extra time", () => {
+  const match = knockoutMatch({
+    regularHomeScore: 1,
+    regularAwayScore: 1,
+    otHomeScore: 2,
+    otAwayScore: 1,
+    resultNote: "EXTRA_TIME",
+  });
+
+  assert.equal(__test.scoreTipForMatch(tip(1, 1, { predictedOtHome: 2, predictedOtAway: 1 }), match).points, 5);
+  assert.equal(__test.scoreTipForMatch(tip(0, 0, { predictedOtHome: 1, predictedOtAway: 0 }), match).points, 3);
+});
+
+test("knockout tips award 6 points for an exact penalty shootout path", () => {
+  const match = knockoutMatch({
+    regularHomeScore: 1,
+    regularAwayScore: 1,
+    otHomeScore: 2,
+    otAwayScore: 2,
+    penaltyHomeScore: 5,
+    penaltyAwayScore: 4,
+    resultNote: "PENALTY_SHOOTOUT",
+  });
+  const score = __test.scoreTipForMatch(tip(1, 1, {
+    predictedOtHome: 2,
+    predictedOtAway: 2,
+    predictedPenaltyWinner: "home",
+  }), match);
+
+  assert.equal(score.points, 6);
+  assert.equal(score.isExact, true);
+});
+
+test("a penalty prediction is ignored when the real match ends in extra time", () => {
+  const match = knockoutMatch({
+    regularHomeScore: 1,
+    regularAwayScore: 1,
+    otHomeScore: 2,
+    otAwayScore: 1,
+    resultNote: "EXTRA_TIME",
+  });
+  const score = __test.scoreTipForMatch(tip(1, 1, {
+    predictedOtHome: 2,
+    predictedOtAway: 1,
+    predictedPenaltyWinner: "home",
+  }), match);
+
+  assert.equal(score.points, 5);
+});
+
+test("incomplete knockout drafts do not score", () => {
+  const match = knockoutMatch({
+    regularHomeScore: 1,
+    regularAwayScore: 1,
+    otHomeScore: 1,
+    otAwayScore: 1,
+    penaltyHomeScore: 4,
+    penaltyAwayScore: 5,
+    resultNote: "PENALTY_SHOOTOUT",
+  });
+
+  assert.equal(__test.scoreTipForMatch(tip(1, 1, {
+    predictedOtHome: 1,
+    predictedOtAway: 1,
+    isComplete: false,
+  }), match).points, 0);
+  assert.equal(__test.scoreTipForMatch(tip(1, 1, {
+    predictedOtHome: 1,
+    predictedOtAway: 1,
+  }), match).points, 0);
+});
+
+test("football-data penalty scores are normalized into cumulative extra time and shootout scores", () => {
+  const match = __test.normalizeFootballDataMatch({
+    id: 42,
+    utcDate: "2026-07-10T19:00:00Z",
+    status: "FINISHED",
+    stage: "QUARTER_FINALS",
+    homeTeam: { name: "Germany" },
+    awayTeam: { name: "France" },
+    score: {
+      winner: "HOME_TEAM",
+      duration: "PENALTY_SHOOTOUT",
+      fullTime: { home: 7, away: 6 },
+      regularTime: { home: 1, away: 1 },
+      extraTime: { home: 0, away: 0 },
+      penalties: { home: 6, away: 5 },
+    },
+  });
+
+  assert.equal(match.regularHomeScore, 1);
+  assert.equal(match.otHomeScore, 1);
+  assert.equal(match.penaltyHomeScore, 6);
+  assert.equal(match.resultNote, "PENALTY_SHOOTOUT");
+});
+
+function knockoutMatch(overrides) {
+  return {
+    id: "ko-1",
+    homeTeam: "Deutschland",
+    awayTeam: "Frankreich",
+    stage: "Achtelfinale",
+    group: "",
+    status: "finalResult",
+    ...overrides,
+  };
+}
+
+function tip(predictedHome, predictedAway, overrides = {}) {
+  return {
+    predictedHome,
+    predictedAway,
+    isComplete: true,
+    ...overrides,
+  };
+}

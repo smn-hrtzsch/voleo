@@ -112,6 +112,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
               ownerUid: data['ownerUid'] as String? ?? user.uid,
               imageUrl: data['imageUrl'] as String?,
               isActive: true,
+              isTestLeague: data['isTestLeague'] as bool? ?? false,
             );
           }
           return League(
@@ -121,6 +122,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
             ownerUid: data['ownerUid'] as String? ?? user.uid,
             imageUrl: data['imageUrl'] as String?,
             isActive: true,
+            isTestLeague: data['isTestLeague'] as bool? ?? false,
           );
         });
       });
@@ -152,6 +154,7 @@ class FirestoreVoleoRepository implements VoleoRepository {
               ownerUid: data['ownerUid'] as String? ?? user.uid,
               imageUrl: data['imageUrl'] as String?,
               isActive: league.id == activeLeagueId,
+              isTestLeague: data['isTestLeague'] as bool? ?? false,
             );
           }).toList()
             ..sort((a, b) {
@@ -166,6 +169,24 @@ class FirestoreVoleoRepository implements VoleoRepository {
 
   @override
   Stream<List<CupMatch>> watchMatches() {
+    return watchLeague().asyncExpand((league) {
+      if (league?.isTestLeague == true) {
+        return _firestore
+            .collection('leagues')
+            .doc(league!.id)
+            .collection('testMatches')
+            .snapshots()
+            .map((snapshot) {
+          final matches = snapshot.docs.map(_matchFromDoc).toList()
+            ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+          return matches;
+        });
+      }
+      return _watchTournamentMatches();
+    });
+  }
+
+  Stream<List<CupMatch>> _watchTournamentMatches() {
     return _firestore.collection('matches').snapshots().map((snapshot) {
       final staticMatches = buildWc2026GroupStageMatches();
       final firestoreMatches = snapshot.docs.map(_matchFromDoc).toList();
@@ -1066,6 +1087,9 @@ class FirestoreVoleoRepository implements VoleoRepository {
     required String matchId,
     required int home,
     required int away,
+    int? otHome,
+    int? otAway,
+    PenaltyWinnerSide? penaltyWinner,
   }) async {
     final user = _requireFirebaseUser();
     final matches = await watchMatches().first;
@@ -1074,6 +1098,30 @@ class FirestoreVoleoRepository implements VoleoRepository {
     if (!canEditTip(match, VoleoClock.now)) {
       throw StateError('Tipps sind ab Anpfiff gesperrt.');
     }
+    _validateTipSelection(
+      match: match,
+      home: home,
+      away: away,
+      otHome: otHome,
+      otAway: otAway,
+      penaltyWinner: penaltyWinner,
+    );
+
+    final includesExtraTime = match.isKnockout && home == away;
+    final storedOtHome = includesExtraTime ? otHome : null;
+    final storedOtAway = includesExtraTime ? otAway : null;
+    final includesPenalties = storedOtHome != null &&
+        storedOtAway != null &&
+        storedOtHome == storedOtAway;
+    final storedPenaltyWinner = includesPenalties ? penaltyWinner : null;
+    final isComplete = isTipSelectionComplete(
+      match: match,
+      home: home,
+      away: away,
+      otHome: storedOtHome,
+      otAway: storedOtAway,
+      penaltyWinner: storedPenaltyWinner,
+    );
 
     final leaguesSnapshot = await _firestore
         .collection('leagues')
@@ -1094,6 +1142,10 @@ class FirestoreVoleoRepository implements VoleoRepository {
             'matchId': matchId,
             'predictedHome': home,
             'predictedAway': away,
+            'predictedOtHome': storedOtHome,
+            'predictedOtAway': storedOtAway,
+            'predictedPenaltyWinner': storedPenaltyWinner?.name,
+            'isComplete': isComplete,
             'lockedAt': Timestamp.fromDate(match.kickoff),
             'points': 0,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1401,10 +1453,47 @@ class FirestoreVoleoRepository implements VoleoRepository {
       matchId: data['matchId'] as String,
       predictedHome: data['predictedHome'] as int,
       predictedAway: data['predictedAway'] as int,
+      predictedOtHome: data['predictedOtHome'] as int?,
+      predictedOtAway: data['predictedOtAway'] as int?,
+      predictedPenaltyWinner: PenaltyWinnerSide.values
+          .where((side) => side.name == data['predictedPenaltyWinner'])
+          .firstOrNull,
+      isComplete: data['isComplete'] as bool? ?? true,
       lockedAt: (data['lockedAt'] as Timestamp).toDate(),
       points: data['points'] as int? ?? 0,
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
+  }
+
+  void _validateTipSelection({
+    required CupMatch match,
+    required int home,
+    required int away,
+    required int? otHome,
+    required int? otAway,
+    required PenaltyWinnerSide? penaltyWinner,
+  }) {
+    if (home < 0 || away < 0) {
+      throw StateError('Torwerte dürfen nicht negativ sein.');
+    }
+    if ((otHome == null) != (otAway == null)) {
+      throw StateError('Das Ergebnis n.V. muss vollständig sein.');
+    }
+    if (otHome != null && (otHome < home || otAway! < away)) {
+      throw StateError(
+        'Das Ergebnis n.V. darf nicht unter dem Stand nach 90 Minuten liegen.',
+      );
+    }
+    if (penaltyWinner != null &&
+        (!match.isKnockout ||
+            home != away ||
+            otHome == null ||
+            otAway == null ||
+            otHome != otAway)) {
+      throw StateError(
+        'Ein Sieger im Elfmeterschießen ist nur nach einem Remis n.V. möglich.',
+      );
+    }
   }
 
   Standing _standingFromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {

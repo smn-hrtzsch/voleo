@@ -85,6 +85,7 @@ class League {
     required this.ownerUid,
     this.imageUrl,
     this.isActive = false,
+    this.isTestLeague = false,
   });
 
   final String id;
@@ -93,6 +94,7 @@ class League {
   final String ownerUid;
   final String? imageUrl;
   final bool isActive;
+  final bool isTestLeague;
 }
 
 class LeagueMember {
@@ -153,6 +155,7 @@ class CupMatch {
   final String? originalId;
 
   bool get isLocked => VoleoClock.now.isAfter(kickoff);
+  bool get isKnockout => group.isEmpty && stage != 'Gruppenphase';
 
   CupMatch copyWith({
     String? id,
@@ -193,6 +196,8 @@ class CupMatch {
   }
 }
 
+enum PenaltyWinnerSide { home, away }
+
 class Tip {
   const Tip({
     required this.uid,
@@ -201,6 +206,10 @@ class Tip {
     required this.predictedAway,
     required this.lockedAt,
     required this.points,
+    this.predictedOtHome,
+    this.predictedOtAway,
+    this.predictedPenaltyWinner,
+    this.isComplete = true,
     this.updatedAt,
   });
 
@@ -210,9 +219,21 @@ class Tip {
   final int predictedAway;
   final DateTime lockedAt;
   final int points;
+  final int? predictedOtHome;
+  final int? predictedOtAway;
+  final PenaltyWinnerSide? predictedPenaltyWinner;
+  final bool isComplete;
   final DateTime? updatedAt;
 
-  Tip copyWith({int? predictedHome, int? predictedAway, int? points}) {
+  Tip copyWith({
+    int? predictedHome,
+    int? predictedAway,
+    int? predictedOtHome,
+    int? predictedOtAway,
+    PenaltyWinnerSide? predictedPenaltyWinner,
+    bool? isComplete,
+    int? points,
+  }) {
     return Tip(
       uid: uid,
       matchId: matchId,
@@ -220,6 +241,11 @@ class Tip {
       predictedAway: predictedAway ?? this.predictedAway,
       lockedAt: lockedAt,
       points: points ?? this.points,
+      predictedOtHome: predictedOtHome ?? this.predictedOtHome,
+      predictedOtAway: predictedOtAway ?? this.predictedOtAway,
+      predictedPenaltyWinner:
+          predictedPenaltyWinner ?? this.predictedPenaltyWinner,
+      isComplete: isComplete ?? this.isComplete,
       updatedAt: updatedAt,
     );
   }
