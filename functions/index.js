@@ -1110,8 +1110,8 @@ function getKnockoutMatches() {
   }
 
   const afMatches = [
-    ['Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', '2026-07-07T17:00:00Z'],
-    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 5', '2026-07-07T20:00:00Z'],
+    ['Sieger Sechzehntelfinale 2', 'Sieger Sechzehntelfinale 5', '2026-07-07T17:00:00Z'],
+    ['Sieger Sechzehntelfinale 1', 'Sieger Sechzehntelfinale 3', '2026-07-07T20:00:00Z'],
     ['Sieger Sechzehntelfinale 4', 'Sieger Sechzehntelfinale 6', '2026-07-08T17:00:00Z'],
     ['Sieger Sechzehntelfinale 7', 'Sieger Sechzehntelfinale 8', '2026-07-08T20:00:00Z'],
     ['Sieger Sechzehntelfinale 11', 'Sieger Sechzehntelfinale 12', '2026-07-09T17:00:00Z'],
@@ -1139,7 +1139,7 @@ function getKnockoutMatches() {
     ['Sieger Achtelfinale 1', 'Sieger Achtelfinale 2', '2026-07-12T17:00:00Z'],
     ['Sieger Achtelfinale 5', 'Sieger Achtelfinale 6', '2026-07-12T20:00:00Z'],
     ['Sieger Achtelfinale 3', 'Sieger Achtelfinale 4', '2026-07-13T17:00:00Z'],
-    ['Sieger Achtelfinale 6', 'Sieger Achtelfinale 8', '2026-07-13T20:00:00Z'],
+    ['Sieger Achtelfinale 7', 'Sieger Achtelfinale 8', '2026-07-13T20:00:00Z'],
   ];
 
   for (let i = 0; i < vfMatches.length; i++) {
@@ -1158,8 +1158,8 @@ function getKnockoutMatches() {
   }
 
   const hfMatches = [
-    ['Sieger Viertelfinale 1', 'Sieger Viertelfinale 3', '2026-07-15T19:00:00Z'],
-    ['Sieger Viertelfinale 2', 'Sieger Viertelfinale 4', '2026-07-16T19:00:00Z'],
+    ['Sieger Viertelfinale 1', 'Sieger Viertelfinale 2', '2026-07-15T19:00:00Z'],
+    ['Sieger Viertelfinale 3', 'Sieger Viertelfinale 4', '2026-07-16T19:00:00Z'],
   ];
 
   for (let i = 0; i < hfMatches.length; i++) {
@@ -2126,6 +2126,51 @@ async function sendTipRemindersForMatches(matches, now = new Date()) {
   return { sent, skipped, targetCount: targets.size };
 }
 
+async function fetchReminderCandidateMatches(now = new Date()) {
+  const windows = [60 * 60 * 1000, 12 * 60 * 60 * 1000];
+  const tolerance = 5 * 60 * 1000;
+  const byId = new Map();
+  for (const offset of windows) {
+    const start = new Date(now.getTime() + offset);
+    const end = new Date(start.getTime() + tolerance);
+    const snap = await db.collection("matches")
+      .where("kickoff", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("kickoff", "<", admin.firestore.Timestamp.fromDate(end))
+      .get();
+    snap.forEach((doc) => {
+      const data = doc.data();
+      byId.set(doc.id, {
+        id: doc.id,
+        ...data,
+        kickoff: data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff,
+      });
+    });
+  }
+  return [...byId.values()].filter((match) => match.kickoff);
+}
+
+async function fetchReminderDayMatches(targets, now = new Date()) {
+  const byId = new Map();
+  for (const { dayKey } of targets.values()) {
+    const [year, month, day] = dayKey.split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day - 1, 22, 0, 0));
+    const end = new Date(Date.UTC(year, month - 1, day + 1, 2, 0, 0));
+    const snap = await db.collection("matches")
+      .where("kickoff", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("kickoff", "<", admin.firestore.Timestamp.fromDate(end))
+      .get();
+    snap.forEach((doc) => {
+      const data = doc.data();
+      const kickoff = data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff;
+      if (!kickoff) return;
+      if (berlinDayKey(new Date(kickoff)) !== dayKey) return;
+      if (new Date(kickoff) <= now) return;
+      byId.set(doc.id, { id: doc.id, ...data, kickoff });
+    });
+  }
+  return [...byId.values()];
+}
+
 if (process.env.NODE_ENV === "test") {
   exports.__test = {
     calculateExtraPoints,
@@ -2183,15 +2228,18 @@ exports.sendTipReminders = functions.region("europe-west3").runWith({
   timeoutSeconds: 300,
   memory: "256MB",
 }).pubsub.schedule("*/5 * * * *").timeZone("Europe/Berlin").onRun(async () => {
-  const matchesSnap = await db.collection("matches").get();
-  const matches = matchesSnap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      kickoff: data.kickoff?.toDate ? data.kickoff.toDate().toISOString() : data.kickoff,
-    };
-  }).filter((match) => match.kickoff);
+  const now = new Date();
+  const candidateMatches = await fetchReminderCandidateMatches(now);
+  const targets = new Map();
+  for (const match of candidateMatches) {
+    const window = reminderWindowForMatch(match, now);
+    if (!window) continue;
+    const dayKey = berlinDayKey(new Date(match.kickoff));
+    targets.set(`${dayKey}:${window}`, { dayKey, window });
+  }
+  const matches = targets.size === 0
+    ? candidateMatches
+    : await fetchReminderDayMatches(targets, now);
   const result = await sendTipRemindersForMatches(matches);
   console.log("Tip reminder result", JSON.stringify(result));
   return null;

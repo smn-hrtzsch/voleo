@@ -489,23 +489,23 @@ List<CupMatch> buildWc2026GroupStageMatches() {
   // 2. Achtelfinale (July 7 - July 10)
   final afMatches = [
     (
-      'Sieger Sechzehntelfinale 1',
-      'Sieger Sechzehntelfinale 3',
+      'Sieger Sechzehntelfinale 2',
+      'Sieger Sechzehntelfinale 5',
       DateTime(2026, 7, 7, 19)
     ),
     (
-      'Sieger Sechzehntelfinale 2',
-      'Sieger Sechzehntelfinale 5',
+      'Sieger Sechzehntelfinale 1',
+      'Sieger Sechzehntelfinale 3',
       DateTime(2026, 7, 7, 22)
     ),
     (
-      'Sieger Sechzehntelfinale 5',
+      'Sieger Sechzehntelfinale 4',
       'Sieger Sechzehntelfinale 6',
       DateTime(2026, 7, 8, 19)
     ),
     (
-      'Sieger Sechzehntelfinale 6',
       'Sieger Sechzehntelfinale 7',
+      'Sieger Sechzehntelfinale 8',
       DateTime(2026, 7, 8, 22)
     ),
     (
@@ -561,7 +561,7 @@ List<CupMatch> buildWc2026GroupStageMatches() {
       DateTime(2026, 7, 13, 19)
     ),
     (
-      'Sieger Achtelfinale 6',
+      'Sieger Achtelfinale 7',
       'Sieger Achtelfinale 8',
       DateTime(2026, 7, 13, 22)
     ),
@@ -584,11 +584,11 @@ List<CupMatch> buildWc2026GroupStageMatches() {
   final hfMatches = [
     (
       'Sieger Viertelfinale 1',
-      'Sieger Viertelfinale 3',
+      'Sieger Viertelfinale 2',
       DateTime(2026, 7, 15, 21)
     ),
     (
-      'Sieger Viertelfinale 2',
+      'Sieger Viertelfinale 3',
       'Sieger Viertelfinale 4',
       DateTime(2026, 7, 16, 21)
     ),

@@ -705,8 +705,65 @@ class _TournamentTreeView extends StatelessWidget {
   }
 
   int _matchSlot(CupMatch match) {
-    final matchNumber = RegExp(r'-(\d+)$').firstMatch(match.id);
-    return int.tryParse(matchNumber?.group(1) ?? '') ?? 999;
+    final matchNumberStr = RegExp(r'-(\d+)$').firstMatch(match.id)?.group(1);
+    final idx = int.tryParse(matchNumberStr ?? '') ?? 999;
+    if (idx == 999) return 999;
+
+    if (match.stage == 'Sechzehntelfinale') {
+      const sfMap = {
+        2: 0,   // sf-2 (Germany vs Paraguay)
+        5: 1,   // sf-5 (Frankreich vs Schweden)
+        1: 2,   // sf-1 (South Africa vs Canada)
+        3: 3,   // sf-3 (Netherlands vs Marokko)
+        11: 4,  // sf-11 (Portugal vs Kroatien)
+        12: 5,  // sf-12 (Spanien vs Österreich)
+        9: 6,   // sf-9 (USA vs Bosnien-Herzegowina)
+        10: 7,  // sf-10 (Belgien vs Senegal)
+        4: 8,   // sf-4 (Brasilien vs Japan)
+        6: 9,   // sf-6 (Elfenbeinküste vs Norwegen)
+        7: 10,  // sf-7 (Mexiko vs Ecuador)
+        8: 11,  // sf-8 (England vs DR Kongo)
+        14: 12, // sf-14 (Argentinien vs Kap Verde)
+        16: 13, // sf-16 (Zweiter Gruppe D vs Zweiter G)
+        13: 14, // sf-13 (Schweiz vs Algerien)
+        15: 15, // sf-15 (Sieger Gruppe K vs Bester 3.)
+      };
+      return sfMap[idx] ?? idx;
+    }
+
+    if (match.stage == 'Achtelfinale') {
+      const afMap = {
+        1: 0, // af-1
+        2: 1, // af-2
+        5: 2, // af-5
+        6: 3, // af-6
+        3: 4, // af-3
+        4: 5, // af-4
+        7: 6, // af-7
+        8: 7, // af-8
+      };
+      return afMap[idx] ?? idx;
+    }
+
+    if (match.stage == 'Viertelfinale') {
+      const vfMap = {
+        1: 0, // vf-1
+        2: 1, // vf-2
+        3: 2, // vf-3
+        4: 3, // vf-4
+      };
+      return vfMap[idx] ?? idx;
+    }
+
+    if (match.stage == 'Halbfinale') {
+      const hfMap = {
+        1: 0, // hf-1
+        2: 1, // hf-2
+      };
+      return hfMap[idx] ?? idx;
+    }
+
+    return idx;
   }
 
   @override
@@ -728,7 +785,7 @@ class _TournamentTreeView extends StatelessWidget {
         scrollDirection: Axis.vertical,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          height: 1540,
+          height: 2100,
           child: Stack(
             children: [
               Positioned.fill(
@@ -764,6 +821,56 @@ class _TournamentTreeView extends StatelessWidget {
       BuildContext context, String title, List<CupMatch> roundMatches, int slots) {
     final scheme = Theme.of(context).colorScheme;
 
+    Widget body;
+    if (title == 'Finals') {
+      final finalMatches = matches.where((m) => m.stage == 'Finale').toList();
+      final p3Matches =
+          matches.where((m) => m.stage == 'Spiel um Platz 3').toList();
+
+      body = Stack(
+        children: [
+          Align(
+            alignment: Alignment.center,
+            child: finalMatches.isNotEmpty
+                ? _TournamentMatchCard(
+                    match: finalMatches[0],
+                    matchIndex: 1,
+                    roundLabel: 'Finale',
+                  )
+                : const _PlaceholderMatchCard(),
+          ),
+          Align(
+            alignment: const Alignment(0, 0.5), // Positioned at 75% height (step * 12)
+            child: p3Matches.isNotEmpty
+                ? _TournamentMatchCard(
+                    match: p3Matches[0],
+                    matchIndex: 1,
+                    roundLabel: 'Spiel um Platz 3',
+                  )
+                : const _PlaceholderMatchCard(),
+          ),
+        ],
+      );
+    } else {
+      body = Column(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          if (roundMatches.isEmpty)
+            for (var i = 0; i < slots; i++) const _PlaceholderMatchCard()
+          else
+            for (var i = 0; i < slots; i++)
+              if (i < roundMatches.length)
+                _TournamentMatchCard(
+                  match: roundMatches[i],
+                  matchIndex: i + 1,
+                  roundLabel: title,
+                )
+              else
+                const _PlaceholderMatchCard(),
+        ],
+      );
+    }
+
     return SizedBox(
       width: 190,
       child: Column(
@@ -786,23 +893,7 @@ class _TournamentTreeView extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                if (roundMatches.isEmpty)
-                  for (var i = 0; i < slots; i++) const _PlaceholderMatchCard()
-                else
-                  for (var i = 0; i < slots; i++)
-                    if (i < roundMatches.length)
-                      _TournamentMatchCard(
-                        match: roundMatches[i],
-                        matchIndex: i + 1,
-                        roundLabel: title,
-                      )
-                    else
-                      const _PlaceholderMatchCard(),
-              ],
-            ),
+            child: body,
           ),
         ],
       ),
@@ -862,16 +953,19 @@ class _TournamentMatchCard extends ConsumerWidget {
   String _matchLabel() {
     if (match.stage == 'Finale') return 'Finale';
     if (match.stage == 'Spiel um Platz 3') return 'Platz 3';
-    if (matchIndex <= 0) return '';
+    
+    final matchNumberStr = RegExp(r'-(\d+)$').firstMatch(match.id)?.group(1);
+    final idx = int.tryParse(matchNumberStr ?? '') ?? matchIndex;
+    
     switch (match.stage) {
       case 'Sechzehntelfinale':
-        return '1/16 Finale $matchIndex';
+        return '1/16 Finale $idx';
       case 'Achtelfinale':
-        return 'Achtelfinale $matchIndex';
+        return 'Achtelfinale $idx';
       case 'Viertelfinale':
-        return 'Viertelfinale $matchIndex';
+        return 'Viertelfinale $idx';
       case 'Halbfinale':
-        return 'Halbfinale $matchIndex';
+        return 'Halbfinale $idx';
       default:
         return '';
     }
