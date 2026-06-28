@@ -161,11 +161,13 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
               ] else ...[
                 // Spaltenüberschriften auf Höhe der Tabelle-Überschrift
                 Padding(
-                  padding: const EdgeInsets.only(left: 4.0, right: 28.0, top: 8.0, bottom: 4.0),
+                  padding: const EdgeInsets.only(
+                      left: 4.0, right: 28.0, top: 8.0, bottom: 4.0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('Tabelle', style: Theme.of(context).textTheme.titleLarge),
+                      Text('Tabelle',
+                          style: Theme.of(context).textTheme.titleLarge),
                       const Expanded(child: SizedBox()),
                       // Platzhalter entsprechend dem LivePulseDot (14px)
                       const SizedBox(width: 14),
@@ -174,10 +176,11 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         child: Text(
                           'Ges.',
                           textAlign: TextAlign.right,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -186,10 +189,11 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
                         child: Text(
                           'Tipps',
                           textAlign: TextAlign.right,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                       ),
                     ],

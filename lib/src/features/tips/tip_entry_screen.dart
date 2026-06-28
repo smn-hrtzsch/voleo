@@ -1245,9 +1245,11 @@ class _RecentFormCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _FormColumn(team: match.homeTeam, rows: homeForm)),
+                Expanded(
+                    child: _FormColumn(team: match.homeTeam, rows: homeForm)),
                 const SizedBox(width: 12),
-                Expanded(child: _FormColumn(team: match.awayTeam, rows: awayForm)),
+                Expanded(
+                    child: _FormColumn(team: match.awayTeam, rows: awayForm)),
               ],
             ),
           ],
@@ -1260,7 +1262,8 @@ class _RecentFormCard extends StatelessWidget {
     final finished = matches.where((candidate) {
       if (candidate.status != MatchStatus.finalResult) return false;
       if (!candidate.kickoff.isBefore(match.kickoff)) return false;
-      return isSameTeam(candidate.homeTeam, team) || isSameTeam(candidate.awayTeam, team);
+      return isSameTeam(candidate.homeTeam, team) ||
+          isSameTeam(candidate.awayTeam, team);
     }).toList()
       ..sort((a, b) => b.kickoff.compareTo(a.kickoff));
     return finished.take(5).map((candidate) {
@@ -1306,7 +1309,8 @@ class _FormColumn extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         if (rows.isEmpty)
-          Text('Noch keine Spiele', style: Theme.of(context).textTheme.bodySmall)
+          Text('Noch keine Spiele',
+              style: Theme.of(context).textTheme.bodySmall)
         else
           for (final row in rows) _FormResultRow(row: row),
       ],
@@ -1340,7 +1344,8 @@ class _FormResultRow extends StatelessWidget {
             ),
             child: Text(
               row.result,
-              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.bold, fontSize: 11),
             ),
           ),
           const SizedBox(width: 6),

@@ -711,18 +711,18 @@ class _TournamentTreeView extends StatelessWidget {
 
     if (match.stage == 'Sechzehntelfinale') {
       const sfMap = {
-        2: 0,   // sf-2 (Germany vs Paraguay)
-        5: 1,   // sf-5 (Frankreich vs Schweden)
-        1: 2,   // sf-1 (South Africa vs Canada)
-        3: 3,   // sf-3 (Netherlands vs Marokko)
-        11: 4,  // sf-11 (Portugal vs Kroatien)
-        12: 5,  // sf-12 (Spanien vs Österreich)
-        9: 6,   // sf-9 (USA vs Bosnien-Herzegowina)
-        10: 7,  // sf-10 (Belgien vs Senegal)
-        4: 8,   // sf-4 (Brasilien vs Japan)
-        6: 9,   // sf-6 (Elfenbeinküste vs Norwegen)
-        7: 10,  // sf-7 (Mexiko vs Ecuador)
-        8: 11,  // sf-8 (England vs DR Kongo)
+        2: 0, // sf-2 (Germany vs Paraguay)
+        5: 1, // sf-5 (Frankreich vs Schweden)
+        1: 2, // sf-1 (South Africa vs Canada)
+        3: 3, // sf-3 (Netherlands vs Marokko)
+        11: 4, // sf-11 (Portugal vs Kroatien)
+        12: 5, // sf-12 (Spanien vs Österreich)
+        9: 6, // sf-9 (USA vs Bosnien-Herzegowina)
+        10: 7, // sf-10 (Belgien vs Senegal)
+        4: 8, // sf-4 (Brasilien vs Japan)
+        6: 9, // sf-6 (Elfenbeinküste vs Norwegen)
+        7: 10, // sf-7 (Mexiko vs Ecuador)
+        8: 11, // sf-8 (England vs DR Kongo)
         14: 12, // sf-14 (Argentinien vs Kap Verde)
         16: 13, // sf-16 (Zweiter Gruppe D vs Zweiter G)
         13: 14, // sf-13 (Schweiz vs Algerien)
@@ -817,8 +817,8 @@ class _TournamentTreeView extends StatelessWidget {
     );
   }
 
-  Widget _buildRoundColumn(
-      BuildContext context, String title, List<CupMatch> roundMatches, int slots) {
+  Widget _buildRoundColumn(BuildContext context, String title,
+      List<CupMatch> roundMatches, int slots) {
     final scheme = Theme.of(context).colorScheme;
 
     Widget body;
@@ -840,7 +840,8 @@ class _TournamentTreeView extends StatelessWidget {
                 : const _PlaceholderMatchCard(),
           ),
           Align(
-            alignment: const Alignment(0, 0.5), // Positioned at 75% height (step * 12)
+            alignment:
+                const Alignment(0, 0.5), // Positioned at 75% height (step * 12)
             child: p3Matches.isNotEmpty
                 ? _TournamentMatchCard(
                     match: p3Matches[0],
@@ -927,8 +928,10 @@ class _BracketConnectorPainter extends CustomPainter {
         final midY = (y1 + y2) / 2;
         canvas.drawLine(Offset(leftX, y1), Offset(leftX + gap / 2, y1), paint);
         canvas.drawLine(Offset(leftX, y2), Offset(leftX + gap / 2, y2), paint);
-        canvas.drawLine(Offset(leftX + gap / 2, y1), Offset(leftX + gap / 2, y2), paint);
-        canvas.drawLine(Offset(leftX + gap / 2, midY), Offset(rightX, midY), paint);
+        canvas.drawLine(
+            Offset(leftX + gap / 2, y1), Offset(leftX + gap / 2, y2), paint);
+        canvas.drawLine(
+            Offset(leftX + gap / 2, midY), Offset(rightX, midY), paint);
       }
     }
   }
@@ -953,10 +956,10 @@ class _TournamentMatchCard extends ConsumerWidget {
   String _matchLabel() {
     if (match.stage == 'Finale') return 'Finale';
     if (match.stage == 'Spiel um Platz 3') return 'Platz 3';
-    
+
     final matchNumberStr = RegExp(r'-(\d+)$').firstMatch(match.id)?.group(1);
     final idx = int.tryParse(matchNumberStr ?? '') ?? matchIndex;
-    
+
     switch (match.stage) {
       case 'Sechzehntelfinale':
         return '1/16 Finale $idx';
