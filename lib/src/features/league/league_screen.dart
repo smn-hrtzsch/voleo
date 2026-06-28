@@ -161,7 +161,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen> {
               ] else ...[
                 // Spaltenüberschriften auf Höhe der Tabelle-Überschrift
                 Padding(
-                  padding: const EdgeInsets.only(left: 4.0, right: 20.0, top: 8.0, bottom: 4.0),
+                  padding: const EdgeInsets.only(left: 4.0, right: 28.0, top: 8.0, bottom: 4.0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
