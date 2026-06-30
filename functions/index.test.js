@@ -99,6 +99,27 @@ test("winning a knockout match immediately disproves an exit in that round", () 
   assert.equal(points, -30);
 });
 
+test("winning the round of 32 keeps later Brazil exit calls unresolved", () => {
+  const matches = [{
+    homeTeam: "Brasilien",
+    awayTeam: "Japan",
+    stage: "Sechzehntelfinale",
+    status: "finalResult",
+    homeScore: 2,
+    awayScore: 1,
+    winner: "Brasilien",
+  }];
+
+  assert.equal(__test.calculateExtraPoints({
+    riskTeam: "Brasilien",
+    riskStage: "Achtelfinale",
+  }, matches), 0);
+  assert.equal(__test.calculateExtraPoints({
+    riskTeam: "Brasilien",
+    riskStage: "Viertelfinale",
+  }, matches), 0);
+});
+
 test("keeps already resolved participants across later full syncs", () => {
   const preserved = __test.preserveResolvedParticipants({
     homeTeam: "Sieger Gruppe G",
@@ -372,6 +393,58 @@ test("football-data penalty scores are normalized into cumulative extra time and
   assert.equal(match.otHomeScore, 1);
   assert.equal(match.penaltyHomeScore, 6);
   assert.equal(match.resultNote, "PENALTY_SHOOTOUT");
+});
+
+test("repairs tied football-data penalty scores from the cumulative final score", () => {
+  const match = __test.normalizeFootballDataMatch({
+    id: 537415,
+    utcDate: "2026-06-29T20:30:00Z",
+    status: "FINISHED",
+    stage: "LAST_32",
+    homeTeam: { name: "Germany" },
+    awayTeam: { name: "Paraguay" },
+    score: {
+      winner: null,
+      duration: "PENALTY_SHOOTOUT",
+      fullTime: { home: 4, away: 5 },
+      regularTime: { home: 1, away: 1 },
+      extraTime: { home: 0, away: 0 },
+      penalties: { home: 4, away: 4 },
+    },
+  });
+
+  assert.equal(match.otHomeScore, 1);
+  assert.equal(match.otAwayScore, 1);
+  assert.equal(match.penaltyHomeScore, 3);
+  assert.equal(match.penaltyAwayScore, 4);
+  assert.equal(match.winner, "Paraguay");
+});
+
+test("places completed round-of-32 winners into their actual round-of-16 slots", () => {
+  const templates = [
+    { id: "wc-ko-sf-1", stage: "Sechzehntelfinale", kickoff: "2026-06-28T19:00:00Z", homeTeam: "Südafrika", awayTeam: "Kanada" },
+    { id: "wc-ko-sf-2", stage: "Sechzehntelfinale", kickoff: "2026-06-29T20:30:00Z", homeTeam: "Deutschland", awayTeam: "Paraguay" },
+    { id: "wc-ko-sf-3", stage: "Sechzehntelfinale", kickoff: "2026-06-30T01:00:00Z", homeTeam: "Niederlande", awayTeam: "Marokko" },
+    { id: "wc-ko-sf-5", stage: "Sechzehntelfinale", kickoff: "2026-06-30T21:00:00Z", homeTeam: "Frankreich", awayTeam: "Schweden" },
+    { id: "wc-ko-af-1", stage: "Achtelfinale", kickoff: "2026-07-04T21:00:00Z", homeTeam: "Sieger Sechzehntelfinale 2", awayTeam: "Sieger Sechzehntelfinale 5" },
+    { id: "wc-ko-af-2", stage: "Achtelfinale", kickoff: "2026-07-04T17:00:00Z", homeTeam: "Sieger Sechzehntelfinale 1", awayTeam: "Sieger Sechzehntelfinale 3" },
+  ];
+  const providers = [
+    { stage: "Sechzehntelfinale", kickoff: "2026-06-28T19:00:00Z", homeTeam: "Südafrika", awayTeam: "Kanada", status: "finalResult", homeScore: 0, awayScore: 1, winner: "Kanada" },
+    { stage: "Sechzehntelfinale", kickoff: "2026-06-29T20:30:00Z", homeTeam: "Deutschland", awayTeam: "Paraguay", status: "finalResult", homeScore: 4, awayScore: 5, winner: "Paraguay" },
+    { stage: "Sechzehntelfinale", kickoff: "2026-06-30T01:00:00Z", homeTeam: "Niederlande", awayTeam: "Marokko", status: "finalResult", homeScore: 0, awayScore: 1, winner: "Marokko" },
+    { stage: "Achtelfinale", kickoff: "2026-07-04T17:00:00Z", homeTeam: "Kanada", awayTeam: null, status: "scheduled" },
+    { stage: "Achtelfinale", kickoff: "2026-07-04T21:00:00Z", homeTeam: null, awayTeam: null, status: "scheduled" },
+  ];
+
+  const merged = __test.mergeProviderKnockoutMatches(providers, templates);
+  const first = merged.find((match) => match.id === "wc-ko-af-1");
+  const second = merged.find((match) => match.id === "wc-ko-af-2");
+
+  assert.equal(first.homeTeam, "Paraguay");
+  assert.equal(first.awayTeam, "Sieger Sechzehntelfinale 5");
+  assert.equal(second.homeTeam, "Kanada");
+  assert.equal(second.awayTeam, "Marokko");
 });
 
 function knockoutMatch(overrides) {

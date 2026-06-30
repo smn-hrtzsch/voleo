@@ -412,6 +412,45 @@ void main() {
 
       expect(points, -30);
     });
+
+    test('keeps later Brazil exit calls unresolved after round-of-32 win', () {
+      final matches = [
+        CupMatch(
+          id: 'ko-brazil',
+          homeTeam: 'Brasilien',
+          awayTeam: 'Japan',
+          kickoff: DateTime(2026, 6, 29),
+          stage: 'Sechzehntelfinale',
+          group: '',
+          status: MatchStatus.finalResult,
+          homeScore: 2,
+          awayScore: 1,
+          winner: 'Brazil',
+        ),
+      ];
+
+      expect(
+        calculateExtraPoints(
+          const VoleoUser(
+            uid: 'philipp',
+            nickname: 'Philipp',
+            isAnonymous: false,
+            riskTeam: 'Brasilien',
+            riskStage: 'Achtelfinale',
+          ),
+          matches,
+        ),
+        0,
+      );
+      expect(
+        calculateCurrentRiskPoints(
+          'Brasilien',
+          'Viertelfinale',
+          matches,
+        ),
+        isNull,
+      );
+    });
   });
 
   group('isSameTeam', () {

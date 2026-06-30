@@ -11,8 +11,11 @@
 
 ## Bugs
 
-- [x] Im Spiele Tab wird die Auswahl zwischen "Spiele Liste" und "Spiele Swipe nach Tagen" nicht gespeichert. Außerdem wird beim Klick auf den Switch zwar der korrekte Tag oben angezeigt, aber die Spiele sind noch die vom 11.06., obwohl zum Beispiel schon der 27.06. ist.
 - [x] Im Turnierbaum sind zwar die Spiele zwar korrekt angezeigt mit Mannschaften, aber der Aufbau des Turnierbaums ist nicht korrekt. Es sind zum Beispiel die Spiele Südafrika vs. Kanada und Brasilien vs. Japan direkt die ersten Spiele oben links, aber die Sieger der Spieler spielen gar nicht gegeneinander. Verstehst du, was ich meine? Es ist nicht der korrekte Turnierbaum, wie von der FIFA vorgegeben. Außerdem sollten die Kacheln für die Spiele so verbunden werden, dass besser klar wird, welche Teams in der kommenden Runde dann auch gegeneinander spielen. Also die Kacheln sollten so verbunden werden, dass klar wird, dass die Sieger der Spiele in der nächsten Runde gegeneinander spielen.
+
+## Fixed Bugs
+
+- [x] Im Spiele Tab wird die Auswahl zwischen "Spiele Liste" und "Spiele Swipe nach Tagen" nicht gespeichert. Außerdem wird beim Klick auf den Switch zwar der korrekte Tag oben angezeigt, aber die Spiele sind noch die vom 11.06., obwohl zum Beispiel schon der 27.06. ist.
 
 ## Later
 
@@ -30,3 +33,4 @@
 - [x] Wir müssen das Tippen der K.O.-Spiele um Verlängerung (VL) und Elfmeterschießen erweitern. (siehe Features-Liste oben)
 - [x] Make documentation-only pull requests satisfy the required CI check without running Flutter setup, analysis, or tests.
 - [x] Add league tip-only points, Android push reminders, player detail date filtering/navigation, recent form, saved match date mode, and FIFA bracket connections.
+- [x] Fix knockout risk scoring after round-of-32 wins, repair inconsistent penalty-shootout results, and resolve bracket winners into the correct next-round slots.

@@ -411,11 +411,34 @@ function normalizeFootballDataMatch(match) {
   const otAwayScore = regularAwayScore !== null && extraTimeAway !== null
     ? regularAwayScore + extraTimeAway
     : null;
+  const fullTimeHome = scoreValue(fullTime, "home");
+  const fullTimeAway = scoreValue(fullTime, "away");
+  let penaltyHomeScore = scoreValue(penalties, "home");
+  let penaltyAwayScore = scoreValue(penalties, "away");
+  if (duration === "PENALTY_SHOOTOUT" &&
+      fullTimeHome !== null && fullTimeAway !== null &&
+      otHomeScore !== null && otAwayScore !== null) {
+    const derivedPenaltyHome = fullTimeHome - otHomeScore;
+    const derivedPenaltyAway = fullTimeAway - otAwayScore;
+    if (derivedPenaltyHome >= 0 && derivedPenaltyAway >= 0 &&
+        derivedPenaltyHome !== derivedPenaltyAway) {
+      // football-data.org can return a tied `penalties` node while its
+      // cumulative full-time score already contains the real shootout winner.
+      penaltyHomeScore = derivedPenaltyHome;
+      penaltyAwayScore = derivedPenaltyAway;
+    }
+  }
   const winner = match.score?.winner === "HOME_TEAM"
     ? homeTeam
     : match.score?.winner === "AWAY_TEAM"
       ? awayTeam
-      : null;
+      : status === "finalResult" && fullTimeHome !== null && fullTimeAway !== null
+        ? fullTimeHome > fullTimeAway
+          ? homeTeam
+          : fullTimeAway > fullTimeHome
+            ? awayTeam
+            : null
+        : null;
   const resultNote = duration !== "REGULAR"
     ? duration
     : null;
@@ -428,14 +451,14 @@ function normalizeFootballDataMatch(match) {
     status,
     rawStatus: match.status,
     minute: match.minute ?? null,
-    homeScore: scoreValue(fullTime, "home"),
-    awayScore: scoreValue(fullTime, "away"),
+    homeScore: fullTimeHome,
+    awayScore: fullTimeAway,
     regularHomeScore,
     regularAwayScore,
     otHomeScore,
     otAwayScore,
-    penaltyHomeScore: scoreValue(penalties, "home"),
-    penaltyAwayScore: scoreValue(penalties, "away"),
+    penaltyHomeScore,
+    penaltyAwayScore,
     halfHomeScore: scoreValue(halfTime, "home"),
     halfAwayScore: scoreValue(halfTime, "away"),
     winner,
@@ -566,6 +589,7 @@ async function fetchFootballDataStandings() {
     for (const standing of data.standings ?? []) {
       if (standing.type && standing.type !== "TOTAL") continue;
       const group = groupKey(standing.group);
+      if (!group) continue;
       const rows = [];
       for (const row of standing.table ?? []) {
         const team = displayTeamName(row.team?.name);
@@ -946,9 +970,7 @@ function getEliminationStage(team, allMatches) {
 
   const hasWonFinal = knockouts.some(
     (m) =>
-      m.stage.toLowerCase().includes("final") &&
-      !m.stage.toLowerCase().includes("halb") &&
-      !m.stage.toLowerCase().includes("viertel") &&
+      ["final", "finale"].includes(m.stage.trim().toLowerCase()) &&
       m.status === "finalResult" &&
       isSameTeam(getMatchWinner(m), team)
   );
@@ -1231,6 +1253,39 @@ function preserveResolvedParticipants(template, existing) {
   };
 }
 
+function resolveKnockoutWinnerSlots(matches, completedMatches = matches) {
+  const byStageAndSlot = new Map();
+  for (const match of completedMatches) {
+    const slot = Number.parseInt(String(match.id ?? "").match(/-(\d+)$/)?.[1] ?? "", 10);
+    const winner = getMatchWinner(match);
+    if (!Number.isFinite(slot) || !winner || match.status !== "finalResult") continue;
+    byStageAndSlot.set(`${match.stage}:${slot}`, winner);
+  }
+
+  const resolve = (participant) => {
+    const parsed = /^Sieger (Sechzehntelfinale|Achtelfinale|Viertelfinale|Halbfinale) (\d+)$/.exec(
+      String(participant ?? "")
+    );
+    if (!parsed) return participant;
+    return byStageAndSlot.get(`${parsed[1]}:${Number.parseInt(parsed[2], 10)}`) ?? participant;
+  };
+
+  for (const match of matches) {
+    match.homeTeam = resolve(match.homeTeam);
+    match.awayTeam = resolve(match.awayTeam);
+  }
+  return matches;
+}
+
+function providerMatchesTemplate(provider, template) {
+  const providedParticipants = [provider.homeTeam, provider.awayTeam]
+    .filter((team) => team && !isPlaceholderTeam(team));
+  if (providedParticipants.length === 0) return false;
+  return providedParticipants.every((team) =>
+    isSameTeam(team, template.homeTeam) || isSameTeam(team, template.awayTeam)
+  );
+}
+
 function mergeProviderKnockoutMatches(providerMatches, templates, existingMatchMap = new Map()) {
   const stageOrder = [
     "Sechzehntelfinale",
@@ -1245,14 +1300,35 @@ function mergeProviderKnockoutMatches(providerMatches, templates, existingMatchM
   for (const stage of stageOrder) {
     const stageTemplates = templates.filter((match) => match.stage === stage)
       .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+    resolveKnockoutWinnerSlots(stageTemplates, merged);
     const stageProviders = providerMatches.filter((match) => match.stage === stage)
       .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
 
-    for (let index = 0; index < stageTemplates.length; index++) {
-      const template = stageTemplates[index];
+    const providerByTemplateId = new Map();
+    const unmatchedProviders = [...stageProviders];
+    for (const template of stageTemplates) {
+      const matchingProviders = unmatchedProviders.filter((provider) =>
+        providerMatchesTemplate(provider, template)
+      );
+      if (matchingProviders.length !== 1) continue;
+      const provider = matchingProviders[0];
+      providerByTemplateId.set(template.id, provider);
+      unmatchedProviders.splice(unmatchedProviders.indexOf(provider), 1);
+    }
+
+    const unmatchedTemplates = stageTemplates.filter((template) =>
+      !providerByTemplateId.has(template.id)
+    );
+    for (let index = 0; index < unmatchedTemplates.length; index++) {
+      if (unmatchedProviders[index]) {
+        providerByTemplateId.set(unmatchedTemplates[index].id, unmatchedProviders[index]);
+      }
+    }
+
+    for (const template of stageTemplates) {
       const existing = existingMatchMap.get(template.id);
       const preserved = preserveResolvedParticipants(template, existing);
-      const provider = stageProviders[index];
+      const provider = providerByTemplateId.get(template.id);
       if (!provider) {
         merged.push(preserved);
         continue;
@@ -1842,7 +1918,12 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
 
   const koTemplates = getKnockoutMatches().map((m) => {
     const existing = existingMatchMap.get(m.id);
-    const resolvedTemplate = preserveResolvedParticipants(m, existing);
+    // Round-of-32 participants originate from resolved group slots/provider
+    // fixtures. Later rounds are rebuilt from their actual predecessor winners
+    // so a stale or wrongly ordered provider preview cannot occupy another slot.
+    const resolvedTemplate = m.stage === "Sechzehntelfinale"
+      ? preserveResolvedParticipants(m, existing)
+      : m;
     if (existing) {
       return {
         ...resolvedTemplate,
@@ -2192,6 +2273,7 @@ if (process.env.NODE_ENV === "test") {
     isRecentMatchWindow,
     shouldKeepExistingMatch,
     preserveResolvedParticipants,
+    resolveKnockoutWinnerSlots,
     mergeProviderKnockoutMatches,
     calculateCompletedGroupTables,
     resolveDirectGroupSlots,

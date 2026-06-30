@@ -97,6 +97,9 @@ class _MatchesScreenState extends ConsumerState<MatchesScreen> {
           final days = _groupByDay(filtered);
           final dayKeys = days.keys.toList()..sort();
           _setInitialDay(dayKeys);
+          if (swipeByDay && !_pageController.hasClients) {
+            _jumpToSelectedDayAfterBuild();
+          }
           final safeDayIndex = dayKeys.isEmpty
               ? 0
               : _selectedDayIndex.clamp(0, dayKeys.length - 1);
