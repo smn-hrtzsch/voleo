@@ -514,7 +514,7 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
   for (final m in knockouts) {
     if (m.status == MatchStatus.finalResult) {
       final winner = getMatchWinner(m);
-      if (winner != null && winner != team) {
+      if (winner != null && !isSameTeam(winner, team)) {
         final stage = m.stage.toLowerCase();
         if (stage.contains('sechzehntel') || stage.contains('32')) {
           return 'Sechzehntelfinale';
@@ -536,9 +536,7 @@ String? getEliminationStage(String team, List<CupMatch> matches) {
   }
 
   final hasWonFinal = knockouts.any((m) =>
-      m.stage.toLowerCase().contains('final') &&
-      !m.stage.toLowerCase().contains('halb') &&
-      !m.stage.toLowerCase().contains('viertel') &&
+      const ['final', 'finale'].contains(m.stage.trim().toLowerCase()) &&
       m.status == MatchStatus.finalResult &&
       getMatchWinner(m) != null &&
       isSameTeam(getMatchWinner(m)!, team));
