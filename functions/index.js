@@ -413,6 +413,8 @@ function normalizeFootballDataMatch(match) {
     : null;
   const fullTimeHome = scoreValue(fullTime, "home");
   const fullTimeAway = scoreValue(fullTime, "away");
+  const liveHomeScore = status === "live" && fullTimeHome === null ? 0 : fullTimeHome;
+  const liveAwayScore = status === "live" && fullTimeAway === null ? 0 : fullTimeAway;
   let penaltyHomeScore = scoreValue(penalties, "home");
   let penaltyAwayScore = scoreValue(penalties, "away");
   if (duration === "PENALTY_SHOOTOUT" &&
@@ -451,8 +453,8 @@ function normalizeFootballDataMatch(match) {
     status,
     rawStatus: match.status,
     minute: match.minute ?? null,
-    homeScore: fullTimeHome,
-    awayScore: fullTimeAway,
+    homeScore: liveHomeScore,
+    awayScore: liveAwayScore,
     regularHomeScore,
     regularAwayScore,
     otHomeScore,

@@ -395,6 +395,28 @@ test("football-data penalty scores are normalized into cumulative extra time and
   assert.equal(match.resultNote, "PENALTY_SHOOTOUT");
 });
 
+test("football-data live matches without a score start at zero", () => {
+  const match = __test.normalizeFootballDataMatch({
+    id: 43,
+    utcDate: "2026-07-01T19:00:00Z",
+    status: "IN_PLAY",
+    stage: "LAST_16",
+    homeTeam: { name: "Germany" },
+    awayTeam: { name: "France" },
+    score: {
+      winner: null,
+      duration: "REGULAR",
+      fullTime: { home: null, away: null },
+    },
+  });
+
+  assert.equal(match.status, "live");
+  assert.equal(match.homeScore, 0);
+  assert.equal(match.awayScore, 0);
+  assert.equal(match.regularHomeScore, null);
+  assert.equal(match.regularAwayScore, null);
+});
+
 test("repairs tied football-data penalty scores from the cumulative final score", () => {
   const match = __test.normalizeFootballDataMatch({
     id: 537415,
