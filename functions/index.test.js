@@ -277,6 +277,33 @@ test("recent final matches stay in the minute sync window", () => {
   }, now), true);
 });
 
+test("final payload cannot erase an already known extra-time phase", () => {
+  const result = __test.preserveExistingKnockoutPhase({
+    status: "live",
+    regularHomeScore: 1,
+    regularAwayScore: 1,
+    otHomeScore: 3,
+    otAwayScore: 2,
+    resultNote: "EXTRA_TIME",
+  }, {
+    status: "finalResult",
+    source: "football-data",
+    homeScore: 3,
+    awayScore: 2,
+    regularHomeScore: 3,
+    regularAwayScore: 2,
+    resultNote: null,
+  });
+
+  assert.equal(result.status, "finalResult");
+  assert.equal(result.regularHomeScore, 1);
+  assert.equal(result.regularAwayScore, 1);
+  assert.equal(result.otHomeScore, 3);
+  assert.equal(result.otAwayScore, 2);
+  assert.equal(result.resultNote, "EXTRA_TIME");
+  assert.equal(__test.scoreTipForMatch(tip(2, 1), result).points, 0);
+});
+
 test("OpenLigaDB final cannot replace an existing football-data final", () => {
   assert.equal(__test.shouldKeepExistingMatch({
     status: "finalResult",
