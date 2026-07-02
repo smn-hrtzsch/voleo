@@ -17,6 +17,7 @@
 
 - [x] Im Spiele Tab wird die Auswahl zwischen "Spiele Liste" und "Spiele Swipe nach Tagen" nicht gespeichert. Außerdem wird beim Klick auf den Switch zwar der korrekte Tag oben angezeigt, aber die Spiele sind noch die vom 11.06., obwohl zum Beispiel schon der 27.06. ist.
 - [x] Live-Spiele ohne initialen Provider-Spielstand werden in Firestore mit 0:0 statt null:null gespeichert.
+- [x] Finale K.-o.-Payloads dürfen eine bereits erkannte Verlängerung oder ein Elfmeterschießen nicht mehr zu einem regulären Spielende degradieren und dadurch falsche Punkte vergeben.
 
 ## Later
 

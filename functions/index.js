@@ -1877,6 +1877,27 @@ async function writeSyncStatus(kind, data) {
   }
 }
 
+function preserveExistingKnockoutPhase(existing, match) {
+  const existingExtraTime = existing?.resultNote === "EXTRA_TIME" ||
+    existing?.resultNote === "n.V." ||
+    existing?.resultNote === "PENALTY_SHOOTOUT" ||
+    existing?.resultNote === "n.E.";
+  const incomingLostPhase = match?.status === "finalResult" &&
+    (match.resultNote == null || match.resultNote === "REGULAR");
+  if (!existingExtraTime || !incomingLostPhase) return match;
+
+  return {
+    ...match,
+    regularHomeScore: existing.regularHomeScore,
+    regularAwayScore: existing.regularAwayScore,
+    otHomeScore: existing.otHomeScore,
+    otAwayScore: existing.otAwayScore,
+    penaltyHomeScore: existing.penaltyHomeScore,
+    penaltyAwayScore: existing.penaltyAwayScore,
+    resultNote: existing.resultNote,
+  };
+}
+
 async function syncFullResults({ includeTable = true, includeCleanup = false, forceRecalculate = false, reason = "scheduled" } = {}) {
   console.log(`Starting full syncResults job (${reason})...`);
   const openLigaMatches = await fetchOpenLigaMatches();
@@ -1962,8 +1983,11 @@ async function syncFullResults({ includeTable = true, includeCleanup = false, fo
 
   const matchBatch = db.batch();
   for (const rawMatch of allMatches) {
-    let match = rawMatch;
-    const existing = existingMatchMap.get(match.id);
+    const existing = existingMatchMap.get(rawMatch.id);
+    let match = preserveExistingKnockoutPhase(existing, rawMatch);
+    if (match !== rawMatch) {
+      console.warn(`Final payload lost the known knockout phase for ${match.homeTeam} - ${match.awayTeam}; preserving existing scoring fields.`);
+    }
     if (shouldKeepExistingMatch(existing, match)) {
       match = {
         ...match,
@@ -2270,6 +2294,7 @@ if (process.env.NODE_ENV === "test") {
     teamKey,
     scoreTip,
     scoreTipForMatch,
+    preserveExistingKnockoutPhase,
     normalizeFootballDataMatch,
     applyFootballDataOverlay,
     isRecentMatchWindow,
@@ -2393,10 +2418,14 @@ exports.syncLiveResults = functions.region("europe-west3").runWith({
     let tableStatus = 0;
     let tableChanged = false;
     const batch = db.batch();
-    for (const match of overlayMatches) {
-      const docRef = db.collection("matches").doc(match.id);
+    for (const rawMatch of overlayMatches) {
+      const docRef = db.collection("matches").doc(rawMatch.id);
       const existingDoc = await docRef.get();
       const existing = existingDoc.data() ?? {};
+      const match = preserveExistingKnockoutPhase(existingDoc.exists ? existing : null, rawMatch);
+      if (match !== rawMatch) {
+        console.warn(`Final payload lost the known knockout phase for ${match.homeTeam} - ${match.awayTeam}; preserving existing scoring fields.`);
+      }
       const existingStatus = existing.status ?? "scheduled";
       const existingSource = existing.source ?? "openligadb";
       const matchSource = match.source ?? "openligadb";
